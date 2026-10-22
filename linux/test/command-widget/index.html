@@ -1,0 +1,16 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><script src="https://umbra.local/shared/umbra.js"></script></head>
+<body style="background:#000;color:#fff;font:14px sans-serif;height:100vh;margin:0"><p>commands test</p>
+<script>
+  // linux/test/commands.sh sets "next" to a command id; the next click on the widget (or a store change to "go") runs it.
+  const log = (k, v) => umbra.store.set(k, v);
+  const run = async () => {
+    const id = await umbra.store.get("next", "hello");
+    try {
+      const r = await umbra.run(id, id === "hello" ? { who: "linux" } : undefined);
+      log("result", { id, ok: true, exitCode: r.exitCode, timedOut: r.timedOut, stdout: r.stdout });
+    } catch (e) { log("result", { id, ok: false, error: e.message || String(e) }); }
+  };
+  document.addEventListener("mousedown", run);
+  umbra.store.onChange((key) => { if (key === "go") run(); });
+</script></body></html>

@@ -786,6 +786,7 @@ sealed class SettingsWindow : ISettingsView
             copy["updateAvailable"] = Community.IsUpdate(copy, installed);
             copy["incompatible"] = Community.CatalogIncompatibility(copy);
             copy["local"] = installed is not null && Community.IsLocalInstall(wid);
+            copy["supported"] = WidgetPlatforms.Supports(copy, WidgetPlatforms.Current); // false: for another OS, Browse offers no install
             copy["previewUrl"] = previews.FirstOrDefault(x => x.wid == wid).Item2;
             list.Add(copy);
         }

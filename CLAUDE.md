@@ -46,6 +46,8 @@ community widgets in `widgets\`). `UMBRA_DATA_DIR` overrides the data folder (te
 | `src/Umbra.Core/WidgetTrash.cs` | Settings > Remove moves the widget folder, data and settings of every copy to `%APPDATA%\Umbra\trash\<id>-<timestamp>` for Undo; purged after 7 days at startup; never part of backups |
 | `src/Umbra.Core/UserScripts.cs` | The user's own scripts for widgets with `permissions.userScripts` (Script Runner): `UserScript` (validation, the argv it becomes) and the store in `%APPDATA%\Umbra\scripts.json` (+ code files in `scripts\<id>\`). Edited only in Settings (`saveScript`/`deleteScript`); `CommandService.All` merges them with declared commands; widgets list them with `umbra.commands()`. Scripts that keep running (tunnels, servers) are owned by `CommandService` (start/stop/restart, `OutputTail`, `CommandRunner.Start`); the tray lists them; `ShellLink.cs` reads a picked `.lnk` |
 | `src/Umbra.Core/WidgetManifest.cs`, `Settings.cs` | `widget.json` model and discovery; `settings.json` model |
+| `src/Umbra.Core/WidgetPlatforms.cs` | The optional `platforms` field (`["windows","linux"]`, absent = both): validation and the pure "does this run on OS X" policy for manifests and catalog entries (the OS is always a parameter). Browse flags "Windows only" and offers no install; `Community.PrepareAsync`, `WriteLocalWidget` and `WidgetManifest.Discover` refuse/skip widgets for another OS |
+| `src/Umbra.Core/CommandRunner.cs`, `CommandEnvironment.cs`, `CommandLaunch.cs`, `ProcessContainment.cs`, `ExecutableResolver.cs`, `OutputCapture.cs` | `permissions.commands` execution split into pure, testable-on-any-OS parts (environment allow-lists per OS, the argv that reaches the OS, PATH/absolute-path resolution with an injected file test, the capped output reader) and thin process code: `JobContainment` (Windows job object) and `ProcessGroupContainment` (Linux `setsid` group + `kill(-pgid)`; not run on Linux yet) |
 | `src/Umbra.Core/Protocol.cs` | Control protocol (shared source, linked into umbractl). Command list lives here |
 | `src/Umbra.Core/Linux/` | Pure Linux platform logic (namespace `Umbra.Linux`, tested on Windows too): `LinuxPaths.cs` (`LinuxAppPaths`: XDG data/cache dirs, `UMBRA_DATA_DIR`, portable, Flatpak detection, env injected), `DesktopEntry.cs` (autostart `.desktop` text: build, parse, Exec quoting), `LinuxAutostart.cs` (`IAutostart`: `.desktop` file or Background portal under Flatpak), `ProcParsers.cs` (`/proc/stat`, `meminfo`, `uptime`, `net/dev`, power_supply `uevent` from text), `LinuxMetrics.cs` (`umbra.system()` JSON, same shape as `WindowsMetrics`, reads through `IProcSource`). `PortableMode.DataDir` and `AppPaths.WebViewDataDir` use these paths off Windows (so `LinuxPaths.cs` is also linked into umbractl). `tests/Umbra.Core.Tests/Linux/LinuxLiveTests.cs` (`[LinuxFact]`) runs the file reader on the live `/proc` and the autostart file through `desktop-file-validate`; the Background portal call (Flatpak) is still only an interface |
 | `src/Umbra.Core/Control.cs` | Executes control commands against `IUmbraHost`: the single place that defines what automation can do |
@@ -124,8 +126,12 @@ New automation goes through the control protocol so the CLI, MCP and tests stay 
   command needs the user's approval, stored per widget id + command hash in `approvals.json` (a changed command is
   asked again). Only a host-drawn prompt (after a physical click on the widget, rate-limited) or the Settings button
   approves; **no control command, umbractl or MCP tool may approve** (`approvals` is read-only). Runs are as the
-  user, in the widget's data dir, with a scrubbed environment, a timeout (max 120 s) and a 1 MB output cap, never
-  while the widget is disabled. Built-in widgets get no automatic trust. Don't loosen any of this without an issue and review.
+  user, in the widget's data dir, with a scrubbed environment (an allow-list per OS in `CommandEnvironment`; on Linux
+  `PATH` keeps only absolute entries, and no `LD_*`, display or bus variables), a timeout (max 120 s) and a 1 MB output cap, never
+  while the widget is disabled. The approval is bound to the resolved program: its path (case-insensitive on Windows, exact
+  on Linux) and SHA-256 (`ExeIdentity.Matches`). Interpreters and launchers (shells, script runtimes, `env`, `sudo`, `xargs`...) never take
+  free-text parameters. The whole process tree dies with the run (Windows job object, Linux process group), and commands fail
+  closed where the program can't be identified (a Flatpak, until reviewed). Built-in widgets get no automatic trust. Don't loosen any of this without an issue and review.
 - `permissions.userScripts` (`UserScripts.cs`) lets the user write their own commands, never the widget: only the Settings page
   adds, edits, deletes or approves one (saving there is the approval, the row shows the exact command line), the page
   sees ids and names only (`umbra.commands()`), the host builds a fixed argv (no shell, no parameters) that passes
@@ -158,6 +164,7 @@ New automation goes through the control protocol so the CLI, MCP and tests stay 
   PNGs up to 1 MB are accepted (magic bytes checked), 30 saves per 10 minutes, disk space checked, and it can't read files back. The folder
   (`image-folders.json`) is forgotten when the widget stops declaring the permission or is removed; updates adding it go through `PermissionDiff`.
   No control command, umbractl or MCP tool may choose the folder or save (tested).
+- `platforms` is a compatibility hint, not a permission: it never grants anything, and the install gate reads the downloaded `widget.json`, not only the index.
 - Updating an installed catalog widget never grants new access silently: `Community.PrepareAsync` diffs the downloaded manifest against the
   installed one (`PermissionDiff`: hosts, system, media, notifications, camera, commands) and `PendingInstall.Require` refuses until the user accepted.
   Settings asks with a host-drawn box (`SettingsWindow.ConfirmNewAccess`), `umbractl install` needs `--accept-permissions`, and the MCP

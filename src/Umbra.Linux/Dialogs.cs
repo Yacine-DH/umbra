@@ -165,6 +165,120 @@ static class Dialogs
         finally { _open = false; }
     }
 
+    /// <summary>
+    /// "Allow this widget to run a program?" (the Linux <c>ApprovalDialog.Ask</c>): the exact command line, the program, what the
+    /// widget says it is for. Deny is the default and Esc. Allow works only 900 ms after the box appeared and once the pointer,
+    /// having been off the button since then, is on it: a click already in flight or aimed at where the button will appear can't
+    /// approve. No answer in 2 minutes is a refusal. True only for a click on Allow.
+    /// </summary>
+    public static async Task<bool> AskCommandAsync(ApprovalRequest r)
+    {
+        if (_open) return false;
+        _open = true;
+        try
+        {
+            var tcs = new TaskCompletionSource<bool>();
+            var win = Gtk.Window.New();
+            win.SetTitle("Umbra: allow this widget to run a program?");
+            win.SetResizable(false);
+            win.SetDefaultSize(560, -1);
+            var box = Gtk.Box.New(Gtk.Orientation.Vertical, 10);
+            box.SetMarginTop(18); box.SetMarginBottom(16); box.SetMarginStart(18); box.SetMarginEnd(18);
+            Gtk.Label L(string text, bool wrap = true)
+            {
+                var l = Gtk.Label.New(text);
+                l.SetXalign(0);
+                l.SetWrap(wrap);
+                l.SetMaxWidthChars(64);
+                l.SetSelectable(false);
+                return l;
+            }
+            var heading = L($"The widget \"{Clean(r.WidgetName, 40)}\" wants to run this on your computer:");
+            heading.AddCssClass("title-4");
+            var line = Gtk.TextView.New();
+            line.SetEditable(false);
+            line.SetCursorVisible(false);
+            line.SetWrapMode(Gtk.WrapMode.Char);
+            line.SetMonospace(true);
+            line.GetBuffer().SetText(r.CommandLine, -1);
+            var frame = Gtk.Frame.New(null);
+            frame.SetChild(line);
+            var where = L($"Program: {r.ExePath}");
+            where.SetEllipsize(Pango.EllipsizeMode.Middle);
+            var note = L((r.HasParams ? "Parts written ${like this} are filled in by the widget each time (as single arguments). " : "")
+                + "It runs as you, with no window, and is stopped after a time limit. You can revoke this any time in Settings > My widgets.");
+            var said = L("What the widget says it is for (not verified): " + (string.IsNullOrWhiteSpace(r.Description) ? "(no description)" : Clean(r.Description, 200)));
+            box.Append(heading);
+            box.Append(frame);
+            box.Append(where);
+            box.Append(note);
+            box.Append(said);
+            if (r.IsInterpreter)
+            {
+                var warn = L("This program can run anything: whoever controls this widget controls what it does.");
+                warn.AddCssClass("error");
+                box.Append(warn);
+            }
+            var buttons = Gtk.Box.New(Gtk.Orientation.Horizontal, 8);
+            buttons.SetHalign(Gtk.Align.End);
+            buttons.SetMarginTop(6);
+            var allow = Gtk.Button.NewWithLabel("Allow");
+            var deny = Gtk.Button.NewWithLabel("Deny");
+            allow.SetSensitive(false);
+            buttons.Append(allow);
+            buttons.Append(deny);
+            box.Append(buttons);
+            win.SetChild(box);
+
+            var shownAt = Environment.TickCount64;
+            bool inside = false, sawOutside = false;
+            // Tracked on the window, not the button: a disabled (insensitive) GTK button gets no pointer events at all.
+            void Track(double x, double y)
+            {
+                inside = allow.ComputeBounds(win, out var b) && x >= b.GetX() && y >= b.GetY()
+                    && x < b.GetX() + b.GetWidth() && y < b.GetY() + b.GetHeight();
+                if (!inside) sawOutside = true;
+            }
+            var winMotion = Gtk.EventControllerMotion.New();
+            winMotion.OnEnter += (_, e) => Track(e.X, e.Y);
+            winMotion.OnMotion += (_, e) => Track(e.X, e.Y);
+            // No "leave" handler: pressing the button makes GTK grab the pointer, which sends a crossing event between press and
+            // release; reacting to it would disarm Allow in the middle of the user's click. Position alone decides.
+            winMotion.OnLeave += (_, _) => sawOutside = true;
+            win.AddController(winMotion);
+            UiThread.Every(40, () =>
+            {
+                if (tcs.Task.IsCompleted) return false;
+                // Once armed it stays armed: the press itself makes GTK send crossing and motion events that must not disarm it mid-click.
+                if (!allow.GetSensitive()) allow.SetSensitive(sawOutside && inside && Environment.TickCount64 - shownAt >= 900);
+                if (Environment.TickCount64 - shownAt >= 120_000) { tcs.TrySetResult(false); win.Destroy(); return false; }
+                return true;
+            });
+            allow.OnClicked += (_, _) =>
+            {
+                // GTK only emits clicked for a sensitive button, and only the arming tick above makes it sensitive.
+                if (!allow.GetSensitive()) return;
+                tcs.TrySetResult(true); win.Destroy();
+            };
+            deny.OnClicked += (_, _) => { tcs.TrySetResult(false); win.Destroy(); };
+            win.OnCloseRequest += (_, _) => { tcs.TrySetResult(false); return false; };
+            var keys = Gtk.EventControllerKey.New();
+            keys.OnKeyPressed += (_, e) =>
+            {
+                if (e.Keyval != 0xff1b /* Escape */) return false;
+                tcs.TrySetResult(false); win.Destroy(); return true;
+            };
+            win.AddController(keys);
+            win.SetDefaultWidget(deny);
+            win.Present();
+            deny.GrabFocus();
+            var allowed = await tcs.Task;
+            Log.Write($"Command prompt for {r.WidgetId}/{r.CommandId}: {(allowed ? "allowed" : "denied")}");
+            return allowed;
+        }
+        finally { _open = false; }
+    }
+
     /// <summary>A message with only an OK button.</summary>
     public static async Task InfoAsync(Gtk.Window? parent, string message)
     {

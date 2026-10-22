@@ -328,6 +328,7 @@ sealed class Control(IUmbraHost app)
                     copy["incompatible"] = Community.CatalogIncompatibility(copy);
                     // Installed from a file with the same id: never updated from the catalog; "install" would replace it.
                     copy["local"] = installed is not null && Community.IsLocalInstall(installed.Id);
+                    copy["supported"] = WidgetPlatforms.Supports(copy, WidgetPlatforms.Current); // false: for another OS, install is refused
                     list.Add(copy);
                 }
                 return list;

@@ -19,8 +19,8 @@ sealed class App : IUmbraHost
     public List<WidgetManifest> Manifests { get; private set; }
     public Layouts Layouts { get; } = Layouts.Load();
 
-    /// <summary>No host-drawn approval prompt exists on Linux yet (#194), so every request is refused: nothing runs unapproved.</summary>
-    public CommandService Commands { get; } = new(CommandApprovals.Shared, _ => Task.FromResult(false), scripts: UserScripts.Shared);
+    /// <summary>Runs widget-declared commands and the user's own scripts behind the approval gate (prompt: <see cref="Dialogs.AskCommandAsync"/>).</summary>
+    public CommandService Commands { get; } = new(CommandApprovals.Shared, Dialogs.AskCommandAsync, scripts: UserScripts.Shared);
 
     public IUpdater Updater { get; } = new LinuxUpdater();
 
@@ -87,7 +87,7 @@ sealed class App : IUmbraHost
         if (Gdk.Display.GetDefault() is { } display)
             Gtk.StyleContext.AddProviderForDisplay(display, css, 600 /* GTK_STYLE_PROVIDER_PRIORITY_APPLICATION */);
 
-        Commands.ServicesChanged += _ => _ui.Post(_ => SettingsChangedElsewhere(), null);
+        Commands.ServicesChanged += id => _ui.Post(_ => { CommandsChanged(id); SettingsChangedElsewhere(); }, null);
         if (Gdk.Display.GetDefault() is { } iconDisplay)
             Gtk.IconTheme.GetForDisplay(iconDisplay).AddSearchPath(Path.Combine(AppPaths.AppDir, "icons"));
         _tray = LinuxTray.TryStart(_ui, TrayItems, () => ShowSettings());
@@ -315,9 +315,16 @@ sealed class App : IUmbraHost
                 {
                     win = new WidgetWindow(this, m, inst);
                     var created = win;
-                    win.Closed += () => { if (_windows.GetValueOrDefault(inst) == created) _windows.Remove(inst); };
+                    var widgetId = m.Id;
+                    win.Closed += () =>
+                    {
+                        if (_windows.GetValueOrDefault(inst) == created) _windows.Remove(inst);
+                        // The widget's last window closed: the scripts it keeps running stop with it.
+                        if (!_windows.Values.Any(w => w.Manifest.Id == widgetId)) Commands.StopWidget(widgetId);
+                    };
                     _windows[inst] = win;
                     if (WantVisible(inst)) win.Show();
+                    Commands.AutoStart(m); // scripts the user set to start whenever the widget is on
                 }
                 else if (!enabled && open)
                 {

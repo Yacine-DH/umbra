@@ -1,0 +1,20 @@
+{
+  "id": "command-widget",
+  "name": "Command widget (commands test)",
+  "description": "Test only: runs its declared commands when linux/test/commands.sh asks or the widget is clicked. Never installed.",
+  "author": "Umbra tests",
+  "version": "1.0.0",
+  "manifestVersion": 1,
+  "entry": "index.html",
+  "width": 300,
+  "height": 160,
+  "defaultPosition": { "x": 400, "y": 300 },
+  "permissions": {
+    "hosts": [],
+    "commands": [
+      { "id": "hello", "run": ["echo", "hello from", "${who}"], "params": { "who": { "choices": ["linux", "umbra"] } }, "description": "Says hello" },
+      { "id": "hang", "run": ["sh", "-c", "sleep 600 & sleep 600"], "description": "Never ends on its own", "timeoutSeconds": 3 },
+      { "id": "env", "run": ["env"], "description": "Prints its environment" }
+    ]
+  }
+}

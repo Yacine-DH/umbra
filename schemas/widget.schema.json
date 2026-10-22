@@ -40,7 +40,7 @@
     },
     "entry": { "type": "string", "default": "index.html", "description": "The page Umbra loads, relative to the widget folder." },
     "preview": { "type": "string", "description": "Screenshot shown in Browse (PNG, 2x, black background)." },
-    "icon": { "type": "string", "pattern": "^[A-Za-z0-9_-]+\.png$", "description": "Tab icon for widget groups: a small PNG (64x64 recommended, light grey on transparent, at most 128 px and 64 KB) in the widget folder. Without one the tab shows the first letter of the widget name." },
+    "icon": { "type": "string", "pattern": "^[A-Za-z0-9_-]+\\.png$", "description": "Tab icon for widget groups: a small PNG (64x64 recommended, light grey on transparent, at most 128 px and 64 KB) in the widget folder. Without one the tab shows the first letter of the widget name." },
     "width": { "type": "integer", "minimum": 80, "maximum": 1200, "default": 320, "description": "Logical (96-DPI) pixels; Umbra scales for the display." },
     "height": { "type": "integer", "minimum": 80, "maximum": 1200, "default": 180, "description": "Logical (96-DPI) pixels." },
     "themeable": { "type": "boolean", "default": true, "description": "Set false to keep the widget's own look: the user's theme is not applied to it." },
@@ -51,6 +51,14 @@
       "required": ["x", "y"],
       "properties": { "x": { "type": "integer" }, "y": { "type": "integer" } },
       "additionalProperties": false
+    },
+    "platforms": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": { "enum": ["windows", "linux"] },
+      "description": "The operating systems the widget runs on. Leave it out for both. A widget that starts Windows-only programs (powershell, tasklist...) should say [\"windows\"]: Browse then shows \"Windows only\" and offers no install on Linux, and a local install there fails with a clear error."
     },
     "permissions": {
       "type": "object",
@@ -115,7 +123,7 @@
           "type": "array",
           "minItems": 1,
           "maxItems": 32,
-          "description": "[executable, ...arguments]. The executable is a plain program name found on PATH (\"claude\") or an absolute path (\"C:\\\\Tools\\\\app.exe\"). Each other element is a literal argument, or exactly \"${name}\" for a declared parameter (never part of a longer string).",
+          "description": "[executable, ...arguments]. The executable is a plain program name found on PATH (\"claude\") or an absolute path (\"C:\\\\Tools\\\\app.exe\" on Windows, \"/usr/bin/app\" on Linux; the other form is simply not found). Each other element is a literal argument, or exactly \"${name}\" for a declared parameter (never part of a longer string).",
           "items": { "type": "string", "maxLength": 1024 }
         },
         "description": { "type": "string", "maxLength": 200, "description": "Shown to the user in the approval prompt and in My widgets (not verified by Umbra)." },

@@ -53,31 +53,47 @@ public sealed partial class CommandSpec
     [GeneratedRegex(@"^[a-z0-9][a-z0-9-]{0,39}$")] private static partial Regex IdPattern();
     [GeneratedRegex(@"^\$\{([a-z][A-Za-z0-9]{0,31})\}$")] private static partial Regex PlaceholderPattern();
     [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$")] private static partial Regex BareExePattern();
-    [GeneratedRegex(@"^[A-Za-z]:[\\/][^\0*?""<>|]{1,250}$")] private static partial Regex AbsoluteExePattern();
+    [GeneratedRegex(@"^[A-Za-z]:[\\/][^\0*?""<>|]{1,250}$")] private static partial Regex WindowsAbsoluteExePattern();
+    // POSIX absolute path. No leading "//" (on Windows that is a UNC path) and no backslash or wildcard characters.
+    [GeneratedRegex(@"^/(?!/)[^\0*?""<>|\\]{1,250}$")] private static partial Regex PosixAbsoluteExePattern();
 
-    /// <summary>The executable: a bare name looked up on PATH, or an absolute local path (drive letter, no UNC).</summary>
+    /// <summary>
+    /// True for an absolute local path in either OS's form: a drive letter (no UNC) or a POSIX path from "/". The form is
+    /// checked the same everywhere so a catalog widget validates identically on every host; whether it exists is up to the
+    /// platform's <see cref="IExecutableResolver"/>, which accepts only its own form.
+    /// </summary>
+    internal static bool IsAbsoluteExe(string exe) => WindowsAbsoluteExePattern().IsMatch(exe) || PosixAbsoluteExePattern().IsMatch(exe);
+
+    /// <summary>The executable: a bare name looked up on PATH, or an absolute local path (drive letter or POSIX, no UNC).</summary>
     public string Exe => Run[0];
 
     public IEnumerable<string> Args => Run.Skip(1);
 
+    // Programs that run whatever code their arguments or input name: shells, script hosts, runtimes, and launchers that start
+    // another program ("env", "sudo", "xargs"...). Free-text parameters are never allowed into these (see Validate).
     static readonly HashSet<string> Interpreters = new(StringComparer.OrdinalIgnoreCase)
     {
         "cmd", "powershell", "pwsh", "wscript", "cscript", "mshta", "node", "python", "pythonw", "py", "bash", "sh", "wsl",
         "rundll32", "regsvr32", "msiexec",
+        "dash", "ash", "zsh", "fish", "ksh", "csh", "tcsh", "busybox", "nodejs", "deno", "bun", "perl", "ruby", "php", "lua", "osascript",
+        "env", "xargs", "sudo", "su", "doas", "pkexec", "nohup", "setsid", "nice", "ionice", "timeout", "systemd-run", "flatpak", "flatpak-spawn",
+        "awk", "gawk", "sed", "find", "xterm",
     };
-    static readonly string[] ScriptSuffixes = { ".ps1", ".bat", ".cmd", ".vbs", ".js" };
+    // python3, python3.12, perl5.38, ruby3.2...: a bare name may carry a version.
+    [GeneratedRegex(@"^(python|pypy|perl|ruby|php|lua|node)[0-9][0-9.]*$", RegexOptions.IgnoreCase)] private static partial Regex VersionedInterpreter();
+    static readonly string[] ScriptSuffixes = { ".ps1", ".bat", ".cmd", ".vbs", ".js", ".mjs", ".cjs", ".sh", ".bash", ".py", ".pl", ".rb", ".php", ".lua" };
 
-    /// <summary>True when the executable runs arbitrary code by design (a shell, script host, runtime or script file).</summary>
-    public bool IsInterpreter
+    /// <summary>True when the executable runs arbitrary code by design (a shell, script host, runtime, launcher or script file).</summary>
+    public bool IsInterpreter => IsInterpreterExe(Run[0]);
+
+    /// <summary>The rule behind <see cref="IsInterpreter"/> for any executable string (name or path, either slash).</summary>
+    internal static bool IsInterpreterExe(string exe)
     {
-        get
-        {
-            var file = Run[0].Replace('\\', '/');
-            file = file[(file.LastIndexOf('/') + 1)..];
-            if (ScriptSuffixes.Any(s => file.EndsWith(s, StringComparison.OrdinalIgnoreCase))) return true;
-            var name = file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".com", StringComparison.OrdinalIgnoreCase) ? file[..^4] : file;
-            return Interpreters.Contains(name);
-        }
+        var file = exe.Replace('\\', '/');
+        file = file[(file.LastIndexOf('/') + 1)..];
+        if (ScriptSuffixes.Any(s => file.EndsWith(s, StringComparison.OrdinalIgnoreCase))) return true;
+        var name = file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".com", StringComparison.OrdinalIgnoreCase) ? file[..^4] : file;
+        return Interpreters.Contains(name) || VersionedInterpreter().IsMatch(name);
     }
 
     /// <summary>The parameter a literal-or-placeholder argument stands for, or null for a literal.</summary>
@@ -93,8 +109,8 @@ public sealed partial class CommandSpec
         if (Run.Any(a => a is null || a.Length > MaxArgLength || a.Any(c => c == '\0' || (char.IsControl(c) && c is not ('\t'))))
             || Run.Skip(1).Any(a => a.Contains('\n') || a.Contains('\r')))
             throw new InvalidOperationException($"{Where()}: arguments must be strings of at most {MaxArgLength} characters without control characters");
-        if (!BareExePattern().IsMatch(Exe) && !AbsoluteExePattern().IsMatch(Exe))
-            throw new InvalidOperationException($"{Where()}: executable '{Exe}' must be a plain program name (e.g. \"claude\") or an absolute path like C:\\Tools\\app.exe");
+        if (!BareExePattern().IsMatch(Exe) && !IsAbsoluteExe(Exe))
+            throw new InvalidOperationException($"{Where()}: executable '{Exe}' must be a plain program name (e.g. \"claude\") or an absolute path like C:\\Tools\\app.exe or /usr/bin/app");
         if (Exe.EndsWith('/') || Exe.EndsWith('\\') || Exe.Contains("..")) throw new InvalidOperationException($"{Where()}: executable path is invalid");
         if (Description.Length > 200) throw new InvalidOperationException($"{Where()}: description is longer than 200 characters");
         if (TimeoutSeconds is < 1 or > MaxTimeoutSeconds) throw new InvalidOperationException($"{Where()}: timeoutSeconds must be 1-{MaxTimeoutSeconds}");

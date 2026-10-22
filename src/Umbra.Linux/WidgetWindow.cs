@@ -141,6 +141,7 @@ sealed partial class WidgetWindow : IWidgetView
     {
         if (_closed) return;
         _closed = true;
+        _closing.Cancel(); // running commands of this copy are killed
         CrashRecovery.SetStopped(Instance, false);
         Closed?.Invoke();
     }
@@ -282,9 +283,17 @@ sealed partial class WidgetWindow : IWidgetView
                     await HandleMedia(msg);
                     break;
 
+                case "run":
+                    await HandleRun(msg);
+                    break;
+
                 case "commands":
-                    // permissions.commands on Linux is #194: no command is offered until then.
-                    Post(new JsonObject { ["type"] = "commandsResult", ["id"] = msg["id"]?.DeepClone(), ["ok"] = true, ["data"] = new JsonArray() });
+                    Post(new JsonObject { ["type"] = "commandsResult", ["id"] = msg["id"]?.DeepClone(), ["ok"] = true, ["data"] = DescribeCommands() });
+                    break;
+
+                case "stop":
+                case "commandOutput":
+                    HandleScriptControl(type, msg);
                     break;
 
                 case null:
@@ -403,6 +412,63 @@ sealed partial class WidgetWindow : IWidgetView
         }
         Post(reply);
     }
+
+    /// <summary>Cancelled when the window closes (widget disabled or removed): running commands are killed.</summary>
+    readonly CancellationTokenSource _closing = new();
+
+    /// <summary>umbra.run: only a declared (or the user's own) command, approved, while the widget is on; a first approval needs a click.</summary>
+    async Task HandleRun(JsonNode msg)
+    {
+        var reply = new JsonObject { ["type"] = "runResult", ["id"] = msg["id"]?.DeepClone() };
+        try
+        {
+            if (msg["command"] is not JsonValue c || c.GetValueKind() != System.Text.Json.JsonValueKind.String)
+                throw new WidgetCommandException("A command id is required");
+            if (msg["params"] is not null && msg["params"] is not JsonObject)
+                throw new WidgetCommandException("params must be an object of strings");
+            reply["data"] = await _app.Commands.RunAsync(Manifest, Alive && Ws.Enabled, RecentUserPress(),
+                c.GetValue<string>(), msg["params"] as JsonObject, _closing.Token, Instance);
+            reply["ok"] = true;
+        }
+        catch (Exception ex)
+        {
+            reply["ok"] = false;
+            reply["error"] = ex is WidgetCommandException ? ex.Message : "The command failed";
+            if (ex is not WidgetCommandException) Log.Write($"[{Manifest.Id}] run failed: {ex}");
+        }
+        Post(reply);
+    }
+
+    /// <summary>umbra.stop(id) and umbra.commandOutput(id): neither starts anything, so neither needs a click or an approval.</summary>
+    void HandleScriptControl(string type, JsonNode msg)
+    {
+        var reply = new JsonObject { ["type"] = "runResult", ["id"] = msg["id"]?.DeepClone() };
+        if (msg["command"] is JsonValue c && c.GetValueKind() == System.Text.Json.JsonValueKind.String && c.GetValue<string>() is { Length: > 0 and <= 64 } command)
+        {
+            reply["ok"] = true;
+            reply["data"] = type == "stop"
+                ? JsonValue.Create(_app.Commands.Stop(Manifest.Id, Instance, command))
+                : _app.Commands.Output(Manifest.Id, Instance, command);
+        }
+        else
+        {
+            reply["ok"] = false;
+            reply["error"] = "A command id is required";
+        }
+        Post(reply);
+    }
+
+    /// <summary>umbra.commands(): ids and names only; the program, arguments and paths stay in the host.</summary>
+    JsonArray DescribeCommands() => new(_app.Commands.All(Manifest).Select(c => (JsonNode?)new JsonObject
+    {
+        ["id"] = c.Id,
+        ["title"] = c.Title ?? c.Id,
+        ["description"] = c.IsUserScript && c.Description == c.Title ? "" : c.Description,
+        ["user"] = c.IsUserScript,
+        ["keepsRunning"] = c.KeepsRunning,
+        ["running"] = c.KeepsRunning && _app.Commands.State(Manifest.Id, c.Id).Running,
+        ["runAsAdmin"] = false,
+    }).ToArray());
 
     /// <summary>Requests that expect an answer get a clean failure, so a widget's promise settles instead of hanging.</summary>
     void Unsupported(string type, JsonNode msg)

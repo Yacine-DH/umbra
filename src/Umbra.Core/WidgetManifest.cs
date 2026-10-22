@@ -35,6 +35,8 @@ public sealed partial class WidgetManifest
     /// </summary>
     public bool Private { get; set; }
     public PointSpec? DefaultPosition { get; set; }
+    /// <summary>The operating systems the widget runs on: any of "windows", "linux". Null (the default) means both. See <see cref="WidgetPlatforms"/>.</summary>
+    public List<string>? Platforms { get; set; }
     public PermissionSpec Permissions { get; set; } = new();
     /// <summary>Option schema shown in Settings: key -> {label, type, default, choices?}.</summary>
     public JsonObject Options { get; set; } = new();
@@ -123,6 +125,9 @@ public sealed partial class WidgetManifest
     /// </summary>
     public bool IsPermanent => Source == WidgetSource.BuiltIn && !Restore.LegacyIds.Contains(Id);
 
+    /// <summary>True when the widget can run on <paramref name="platform"/> (see <see cref="WidgetPlatforms.Current"/>).</summary>
+    public bool SupportsPlatform(string platform) => WidgetPlatforms.Supports(Platforms, platform);
+
     public static List<WidgetManifest> DiscoverAll()
     {
         var skipped = new List<(string Id, string Name, string Why)>();
@@ -183,6 +188,7 @@ public sealed partial class WidgetManifest
         if (m.MinUmbraVersion is not null && !SemVer().IsMatch(m.MinUmbraVersion)) throw new JsonException("\"minUmbraVersion\" must look like 1.9.0");
         m.Changelog = SanitizeChangelog(m.Changelog);
         CommandSpec.ValidateAll(m.Permissions.Commands);
+        WidgetPlatforms.Validate(m.Platforms);
         SystemMetrics.Validate(m.Permissions.System);
         MediaService.Validate(m.Permissions.Media);
         return m;
@@ -191,7 +197,11 @@ public sealed partial class WidgetManifest
     /// <summary>Widgets on disk that this Umbra can't run (made for a newer Umbra), from the last <see cref="DiscoverAll"/>: id, name, reason.</summary>
     public static IReadOnlyList<(string Id, string Name, string Why)> Skipped { get; private set; } = Array.Empty<(string, string, string)>();
 
-    internal static List<WidgetManifest> Discover(string root, WidgetSource source, List<(string Id, string Name, string Why)>? skipped = null)
+    internal static List<WidgetManifest> Discover(string root, WidgetSource source, List<(string Id, string Name, string Why)>? skipped = null) =>
+        Discover(root, source, WidgetPlatforms.Current, skipped);
+
+    /// <summary>Loads every valid widget folder under <paramref name="root"/> that can run on <paramref name="platform"/>; others are logged and skipped.</summary>
+    internal static List<WidgetManifest> Discover(string root, WidgetSource source, string platform, List<(string Id, string Name, string Why)>? skipped = null)
     {
         var list = new List<WidgetManifest>();
         if (!Directory.Exists(root)) return list;
@@ -205,6 +215,11 @@ public sealed partial class WidgetManifest
                 if (!IdPattern().IsMatch(m.Id)) continue;
                 // A widget for a newer Umbra stays on disk untouched and loads again once Umbra is updated.
                 if (m.Incompatibility() is { } why) { Log.Write($"Skipping widget {m.Id}: {why}"); skipped?.Add((m.Id, m.Name, why)); continue; }
+                if (!m.SupportsPlatform(platform))
+                {
+                    Log.Write($"Skipping widget {dir}: only for {string.Join(" and ", m.Platforms!)}, this is {platform}");
+                    continue;
+                }
                 m.Folder = Path.GetFileName(dir);
                 m.Source = source;
                 list.Add(m);

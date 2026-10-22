@@ -1475,6 +1475,13 @@ function renderCatalog() {
     $(".cauthor", card).textContent = w.author ? `by ${w.author}` : "";
     $(".cdesc", card).textContent = w.description || "";
     permissionChips($(".chips", card), w);
+    // A widget restricted to one OS says so ("Windows only"), whichever OS Umbra runs on.
+    if (Array.isArray(w.platforms) && w.platforms.length === 1) {
+      const c = document.createElement("span");
+      c.className = "chip";
+      c.append(`${w.platforms[0] === "windows" ? "Windows" : w.platforms[0] === "linux" ? "Linux" : w.platforms[0]} only`);
+      chips.append(c);
+    }
     // A widget that can start programs on this PC is flagged with the exact commands (you approve each one on first use).
     // Collapsed cards show one summary chip; "Read more" lists every command in full.
     const chips = $(".chips", card);
@@ -1519,6 +1526,10 @@ function renderCatalog() {
     } else if (w.builtin) {
       btn.classList.add("done");
       btn.innerHTML = '<span class="ico" data-icon="check"></span>Built in';
+    } else if (w.supported === false && !w.installed) {
+      // For another OS: no install is offered (the host refuses it too).
+      btn.disabled = true;
+      btn.textContent = "Not available here";
     } else if (w.updateAvailable) {
       btn.classList.add("primary");
       btn.innerHTML = `<span class="ico" data-icon="download"></span>Update to v${escapeHtml(w.version)}`;

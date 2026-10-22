@@ -40,6 +40,7 @@ widgets/
 - `permissions.hosts` lists every HTTPS hostname your widget may contact. **Everything else is blocked**, including `fetch`, images and scripts, so list exactly what you need. Use `[]` if the widget works offline.
 - `options` become a settings form in Umbra's **My widgets** page, in the order you write them. Option types are `text`, `number`, `select` and `toggle`.
 - Bump `version` whenever you change the widget. Users then see an **Update** button.
+- `platforms` is optional (`["windows"]`, `["linux"]`; leave it out for both). Set it when the widget starts programs that exist on one OS only. Browse then shows "Windows only" and offers no install on the other.
 
 ## 3. Use the SDK
 
