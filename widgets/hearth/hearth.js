@@ -1,6 +1,6 @@
 // Hearth: the per-copy view shell and the pairing UI. All relay and pairing logic lives in hearth-core.js; this file
 // only paints what `client.getView()` says and forwards clicks. Every copy of the widget picks a view in its options
-// (overview, board, pet); the content of those views is placeholder until #210 (Overview), #212 (Board) and #214 (Pet).
+// (overview, board, pet); the content of those views lives in overview.js, board.js and pet.js.
 (() => {
   "use strict";
   const core = window.HearthCore;
@@ -25,12 +25,13 @@
   // ---------- pieces ----------
 
   const statusOffline = () => !!(view && view.offline) || !!(umbra.status && umbra.status.state === "offline");
+  // <umbra-status> already says "Offline" when this copy's own fetches fail; the chip is for copies that don't poll.
+  const offlineChip = () => statusOffline() && !(umbra.status && umbra.status.state === "offline");
   const btn = (act, label, cls = "", extra = "") => `<button class="btn ${cls}" data-act="${act}" data-no-drag ${extra}>${label}</button>`;
 
   function top(v) {
-    const offline = statusOffline();
     return `<header class="top"><span class="brand">${HEART}Hearth</span><span class="grow"></span>` +
-      (offline ? `<span class="chip off" title="The relay can't be reached. Showing the last data.">Offline</span>` : "") +
+      (offlineChip() ? `<span class="chip off" title="The relay can't be reached. Showing the last data.">Offline</span>` : "") +
       `<umbra-status placement="below-end"></umbra-status>` +
       (v.paired ? `<button class="icon-btn" data-act="panel" data-no-drag aria-label="Hearth settings" title="Hearth settings">&#9881;</button>` : "") +
       `</header>`;
@@ -122,7 +123,7 @@
     const w = which();
     const days = core.daysTogether(v.togetherSince);
     const mood = moodOf(v);
-    const sig = JSON.stringify([w, v.phase, v.names, days, statusOffline(), v.invite && [v.invite.code, v.invite.kind, v.invite.expired], v.unpaired, v.notice && v.notice.text,
+    const sig = JSON.stringify([w, v.phase, v.names, days, statusOffline(), offlineChip(), v.invite && [v.invite.code, v.invite.kind, v.invite.expired], v.unpaired, v.notice && v.notice.text,
       v.busy, v.link, ui.panel, ui.joining, ui.confirm, w === "pet" ? [mood, v.sync.petName] : 0]);
     if (!force && sig === lastSig) return;
     lastSig = sig;

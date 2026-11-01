@@ -66,6 +66,12 @@
 @container card (max-height: 170px) {
   .hov-dot { width: 36px; height: 36px; }
   .hov.has-cheer .hov-names { display: none; }
+  /* The body is only about 62px tall here, so the Tap button sits in the header row, right after the brand, and only its
+     one-line "Sam tapped you" message stays under the count. Anchored from the left so an "Offline" chip on the right is clear of it. */
+  .hov-tap:not(:empty) { margin-top: 0; }
+  .hov-tap .ht { align-items: flex-start; }
+  .hov-tap .ht-btn { position: absolute; top: 7px; left: 92px; z-index: 1; }
+  .hov-tap .ht-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
 }
 
 /* ---------- the edit sheet ---------- */

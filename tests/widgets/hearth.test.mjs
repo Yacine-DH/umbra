@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const require = createRequire(import.meta.url);
 const H = require("../../widgets/hearth/hearth-core.js");
@@ -857,9 +857,9 @@ test("events reach every copy of the PC", async () => {
 
 // ---------- the widget folder ----------
 
-test("manifest: id, one declared host, notifications, the view option, no preview yet", () => {
+test("manifest: id, one declared host, notifications, the view option, a preview", () => {
   assert.equal(manifest.id, "hearth");
-  assert.equal(manifest.version, "1.3.1");
+  assert.equal(manifest.version, "1.4.0");
   assert.equal(manifest.author, "Yacine-DH");
   assert.deepEqual(manifest.permissions.hosts, [HOST]);
   assert.equal(manifest.permissions.notifications, true);
@@ -871,7 +871,17 @@ test("manifest: id, one declared host, notifications, the view option, no previe
   assert.deepEqual(Object.keys(manifest.options), ["view"]);
   assert.equal(manifest.width, 300);
   assert.equal(manifest.height, 120);
-  assert.equal("preview" in manifest, false);
+  assert.equal(manifest.preview, "preview.png");
+  assert.ok(existsSync(new URL("../../widgets/hearth/preview.png", import.meta.url)));
+});
+
+test("the bundled font: every @font-face file exists, the licence ships with it, and it is first in the stack", () => {
+  const css = readFileSync(new URL("../../widgets/hearth/hearth.css", import.meta.url), "utf8");
+  const files = [...css.matchAll(/url\("([^"]+)"\)/g)].map((m) => m[1]);
+  assert.deepEqual(files.sort(), ["nunito-latin-ext.woff2", "nunito-latin.woff2"]);
+  for (const f of files) assert.ok(existsSync(new URL(`../../widgets/hearth/${f}`, import.meta.url)), f);
+  assert.match(readFileSync(new URL("../../widgets/hearth/OFL.txt", import.meta.url), "utf8"), /SIL Open Font License/);
+  assert.match(css, /--hm-font:\s*"Nunito",/);
 });
 
 test("the pairing secret never goes to localStorage, and nothing but the relay host is named", () => {
