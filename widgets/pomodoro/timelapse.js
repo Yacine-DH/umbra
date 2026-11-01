@@ -2,29 +2,58 @@
 // Browser: window.PomodoroTimelapse. Node: module.exports.
 (function (root) {
   "use strict";
-  const MAX_STILLS = 3600; // the host's cap per video
-  const DEFAULTS = { on: false, interval: 30, length: 30, fps: 30 };
-  const num = (v, lo, hi, d) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
+  const MAX_STILLS = 3600, MAX_SECONDS = 12 * 3600; // the host's caps per video (TimelapsePlan.Create)
+  const INTERVALS = [15, 20, 30, 60], FPS = 30, SPARE_SECONDS = 3600;
+  const DEFAULTS = { on: false, interval: 30 };
 
-  /** Clean saved settings: interval 1-3600 s, max video length 1-3600 s, fps 1-60, and length * fps within the host's 3600 stills. */
+  /** Clean saved settings: the on switch and one of INTERVALS (older saves with any other number snap to the nearest). */
   function clean(t) {
     t = t || {};
-    const fps = num(t.fps, 1, 60, DEFAULTS.fps);
-    const length = Math.min(num(t.length, 1, 3600, DEFAULTS.length), Math.floor(MAX_STILLS / fps));
-    return { on: t.on === true, interval: num(t.interval, 1, 3600, DEFAULTS.interval), length: Math.max(1, length), fps };
+    const n = Number(t.interval);
+    const interval = Number.isFinite(n) ? INTERVALS.reduce((best, v) => (Math.abs(v - n) < Math.abs(best - n) ? v : best)) : DEFAULTS.interval;
+    return { on: t.on === true, interval };
   }
 
-  /** What a session of `minutes` will give: photos taken and the resulting video seconds (capped by the chosen length). */
+  /** The neighbouring speed: dir -1 is a shorter gap, +1 a longer one. Stays put at either end. */
+  function stepInterval(interval, dir) {
+    const i = INTERVALS.indexOf(clean({ interval }).interval);
+    return INTERVALS[Math.min(INTERVALS.length - 1, Math.max(0, i + dir))];
+  }
+
+  /** What a session of `minutes` will give: photos taken and the resulting video seconds. */
   function estimate(t, minutes) {
-    t = clean(t);
-    const cap = t.length * t.fps, raw = Math.floor((minutes * 60) / t.interval);
-    const frames = Math.max(1, Math.min(cap, raw));
-    return { frames, seconds: frames / t.fps, capped: raw > cap };
+    const frames = Math.max(1, Math.floor((minutes * 60) / clean(t).interval));
+    return { frames, seconds: frames / FPS };
+  }
+
+  /** "0.8 s", "8 s", "1 min 20 s": one decimal only while a tenth is still noticeable. */
+  function videoLength(seconds) {
+    if (seconds < 10) return `${Math.round(seconds * 10) / 10} s`;
+    const s = Math.round(seconds), m = Math.floor(s / 60);
+    return m ? `${m} min${s % 60 ? ` ${s % 60} s` : ""}` : `${s} s`;
+  }
+
+  /** The card's subtitle for a session of `minutes`. */
+  function summary(t, minutes) {
+    const e = estimate(t, minutes);
+    return `${videoLength(e.seconds)} video · ${e.frames} photo${e.frames === 1 ? "" : "s"}`;
+  }
+
+  /**
+   * Arguments for umbra.timelapse.start for a session of `minutes`. Ending the session stops the recording and renders what was
+   * taken. The host stops by itself at the stills asked for, so this asks for the session plus SPARE_SECONDS: Add 5 minutes or a
+   * short pause can't end it early, and if the page can't stop it (crashed, or a session left paused) the camera still goes off soon after.
+   */
+  function request(t, minutes) {
+    const interval = clean(t).interval;
+    const stills = Math.floor(Math.min(MAX_SECONDS, minutes * 60 + SPARE_SECONDS) / interval) + 1;
+    return { interval, length: Math.min(MAX_STILLS, stills) / FPS, fps: FPS };
   }
 
   /** Plain-words version of a host error. */
   function friendly(msg) {
     const m = String(msg || "");
+    if (/disk space/i.test(m)) return `${m.replace(/\.?$/, ".")} A slower speed needs less.`;
     if (/click/i.test(m)) return "Click Start on the widget to begin the timelapse.";
     if (/den(y|ied)|not allowed|approv|declin/i.test(m)) return "Camera access was not allowed for this widget. Allow it in Settings > My widgets.";
     if (/privacy|access is off|blocked/i.test(m)) return "Windows is blocking the camera. Turn on Settings > Privacy & security > Camera for desktop apps.";
@@ -49,6 +78,6 @@
     return { kind: "idle", text: "Timelapse not running", action: "Start" };
   }
 
-  const api = { MAX_STILLS, DEFAULTS, clean, estimate, friendly, status };
+  const api = { MAX_STILLS, MAX_SECONDS, INTERVALS, FPS, SPARE_SECONDS, DEFAULTS, clean, stepInterval, estimate, videoLength, summary, request, friendly, status };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.PomodoroTimelapse = api;
 })(typeof window !== "undefined" ? window : globalThis);

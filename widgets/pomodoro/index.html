@@ -39,10 +39,13 @@
           <span class="knob" aria-hidden="true"></span>
         </label>
         <div class="tl-body" id="tl-fields">
-          <div class="tl-grid">
-            <label>Photo every <span class="field"><input class="num" id="tl-interval" type="number" min="1" max="3600" aria-label="Seconds between photos"><i>s</i></span></label>
-            <label>Video up to <span class="field"><input class="num" id="tl-length" type="number" min="1" max="3600" aria-label="Maximum video seconds"><i>s</i></span></label>
-            <label>Frame rate <span class="field"><input class="num" id="tl-fps" type="number" min="1" max="60" aria-label="Frames per second"><i>fps</i></span></label>
+          <div class="tl-row">
+            <span>1 photo every</span>
+            <span class="tl-step">
+              <button type="button" id="tl-prev" aria-label="Shorter gap between photos">&lsaquo;</button>
+              <b class="num" id="tl-interval" aria-live="polite">30 s</b>
+              <button type="button" id="tl-next" aria-label="Longer gap between photos">&rsaquo;</button>
+            </span>
           </div>
           <div class="tl-row"><span>Save to</span><button type="button" class="link" id="tl-folder">Videos</button></div>
         </div>

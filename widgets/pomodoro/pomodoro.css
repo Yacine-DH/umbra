@@ -40,7 +40,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg, #000); }
 /* Run */
 .run { align-items: center; }
 .run .head { justify-content: center; }
-.dial { position: relative; width: 204px; height: 204px; margin-top: 4px; flex: none; }
+/* margin-top: auto here and on .ctl share the spare height, so the ring and "Up next" sit midway between the header and the controls. */
+.dial { position: relative; width: 220px; height: 220px; margin-top: auto; flex: none; }
 .dial svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
 .dial circle { fill: none; stroke-width: 3.6; }
 .track { stroke: rgba(255,255,255,0.07); }

@@ -93,9 +93,7 @@ async function startTl() {
   if (tlBusy || tlActive() || !session) return;
   tlBusy = true; tlError = ""; tlState = null; render();
   try {
-    // The video holds one frame per photo: aim for the session's own photo count, never above the chosen length.
-    const e = T.estimate(tl, session.total);
-    tlState = await umbra.timelapse.start({ interval: tl.interval, length: Math.max(1, Math.ceil(e.seconds)), fps: tl.fps });
+    tlState = await umbra.timelapse.start(T.request(tl, session.total));
     if (tlState && tlState.error) tlError = T.friendly(tlState.error);
   } catch (err) { tlError = T.friendly(err && err.message); }
   tlBusy = false; render();
@@ -125,14 +123,13 @@ function renderTl() {
   setText(act, v.action || "");
 }
 function renderTlSetup() {
-  if (document.activeElement.id !== "tl-interval") q("tl-interval").value = tl.interval;
-  if (document.activeElement.id !== "tl-length") q("tl-length").value = tl.length;
-  if (document.activeElement.id !== "tl-fps") q("tl-fps").value = tl.fps;
+  setText(q("tl-interval"), `${tl.interval} s`);
+  q("tl-prev").disabled = tl.interval === T.INTERVALS[0];
+  q("tl-next").disabled = tl.interval === T.INTERVALS.at(-1);
   q("tl-on").checked = tl.on;
   q("tl-fields").hidden = !tl.on;
   q("tl-folder").textContent = folderLabel;
-  const e = T.estimate(tl, setup.minutes);
-  setText(q("tl-sum"), tl.on ? `About ${plural(e.frames, "photo")}, ${Math.round(e.seconds * 10) / 10} s video${e.capped ? " (at the limit)" : ""}` : "Off");
+  setText(q("tl-sum"), tl.on ? T.summary(tl, setup.minutes) : "Off");
 }
 const setTl = (patch) => { tl = T.clean({ ...tl, ...patch }); store("timelapse", tl); render(); };
 function toggle() {
@@ -207,9 +204,10 @@ function render() {
   schedule();
 }
 
-// One timer per second, only while a phase runs and the PC is awake.
+// One timer per second, only while a phase runs and the PC is awake. A recording keeps it going while the PC is locked or
+// the display is off: the camera doesn't pause for those, and only this timer can notice that the session ended and stop it.
 function schedule() {
-  const want = !!(session && session.running) && !umbra.settings.paused;
+  const want = !!(session && session.running) && (!umbra.settings.paused || tlActive());
   if (want && !timer) timer = setInterval(tick, 1000);
   if (!want && timer) { clearInterval(timer); timer = null; }
 }
@@ -223,11 +221,8 @@ q("minutes").onchange = () => setMinutes(q("minutes").value);
 q("minutes").onkeydown = (e) => { if (e.key === "Enter") q("minutes").blur(); };
 q("skip-breaks").onchange = () => { setup.breaks = !q("skip-breaks").checked; store("setup", setup); render(); };
 q("tl-on").onchange = () => setTl({ on: q("tl-on").checked });
-for (const [id, key] of [["tl-interval", "interval"], ["tl-length", "length"], ["tl-fps", "fps"]]) {
-  q(id).onfocus = () => umbra.requestFocus?.();
-  q(id).onchange = () => setTl({ [key]: q(id).value });
-  q(id).onkeydown = (e) => { if (e.key === "Enter") q(id).blur(); };
-}
+q("tl-prev").onclick = () => setTl({ interval: T.stepInterval(tl.interval, -1) });
+q("tl-next").onclick = () => setTl({ interval: T.stepInterval(tl.interval, 1) });
 q("tl-folder").onclick = () => umbra.timelapse.chooseFolder()
   .then((r) => { if (r && r.folder) { folderLabel = r.folder; render(); } })
   .catch((err) => { const m = q("setup-msg"); m.textContent = T.friendly(err && err.message); m.hidden = false; });
@@ -253,7 +248,7 @@ umbra.store.onChange?.(async (k) => {
   if (!k || k === "setup") { const v = { ...setup, ...(await umbra.store.get("setup", {})) }; if (!same(v, setup)) { setup = v; changed = true; } }
   if (!k || k === "session") {
     const s = await umbra.store.get("session", null), v = S.valid(s) && !s.done ? s : null;
-    if (!same(v, session)) { session = v; changed = true; }
+    if (!same(v, session)) { session = v; changed = true; if (!session) stopTl(); } // removed from outside: the recording ends with it
   }
   if (changed) tick();
 });
