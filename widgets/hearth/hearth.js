@@ -25,13 +25,11 @@
   // ---------- pieces ----------
 
   const statusOffline = () => !!(view && view.offline) || !!(umbra.status && umbra.status.state === "offline");
-  // <umbra-status> already says "Offline" when this copy's own fetches fail; the chip is for copies that don't poll.
-  const offlineChip = () => statusOffline() && !(umbra.status && umbra.status.state === "offline");
   const btn = (act, label, cls = "", extra = "") => `<button class="btn ${cls}" data-act="${act}" data-no-drag ${extra}>${label}</button>`;
 
   function top(v) {
     return `<header class="top"><span class="brand">${HEART}Hearth</span><span class="grow"></span>` +
-      (offlineChip() ? `<span class="chip off" title="The relay can't be reached. Showing the last data.">Offline</span>` : "") +
+      (statusOffline() ? `<span class="chip off" title="The relay can't be reached. Showing the last data.">Offline</span>` : "") +
       `<umbra-status placement="below-end"></umbra-status>` +
       (v.paired ? `<button class="icon-btn" data-act="panel" data-no-drag aria-label="Hearth settings" title="Hearth settings">&#9881;</button>` : "") +
       `</header>`;
@@ -123,7 +121,7 @@
     const w = which();
     const days = core.daysTogether(v.togetherSince);
     const mood = moodOf(v);
-    const sig = JSON.stringify([w, v.phase, v.names, days, statusOffline(), offlineChip(), v.invite && [v.invite.code, v.invite.kind, v.invite.expired], v.unpaired, v.notice && v.notice.text,
+    const sig = JSON.stringify([w, v.phase, v.names, days, statusOffline(), v.invite && [v.invite.code, v.invite.kind, v.invite.expired], v.unpaired, v.notice && v.notice.text,
       v.busy, v.link, ui.panel, ui.joining, ui.confirm, w === "pet" ? [mood, v.sync.petName] : 0]);
     if (!force && sig === lastSig) return;
     lastSig = sig;

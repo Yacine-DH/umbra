@@ -67,7 +67,8 @@
   .hov-dot { width: 36px; height: 36px; }
   .hov.has-cheer .hov-names { display: none; }
   /* The body is only about 62px tall here, so the Tap button sits in the header row, right after the brand, and only its
-     one-line "Sam tapped you" message stays under the count. Anchored from the left so an "Offline" chip on the right is clear of it. */
+     one-line "Sam tapped you" message stays under the count. It is out of the header's flow, so the header's right side has to
+     stay short: on the strip, offline is the compact chip, not the long status label (hearth.css). */
   .hov-tap:not(:empty) { margin-top: 0; }
   .hov-tap .ht { align-items: flex-start; }
   .hov-tap .ht-btn { position: absolute; top: 7px; left: 92px; z-index: 1; }
@@ -119,6 +120,20 @@
   .hov-names { justify-content: center; }
   .hov-cheer { align-self: center; }
   .hov-fields { grid-template-columns: minmax(0, 1fr); }
+}
+/* A strip narrower than its default (widths here are the card's content box, about 38px less than the window): the header can't
+   hold the brand, Tap and the chip, so the brand and the circles give way and Tap is only its heart. font-size 0 keeps the word
+   for screen readers. Narrower still, the chip goes too, which leaves the hollow status dot on the copy that polls. */
+@container card (max-width: 256px) and (max-height: 170px) {
+  .top:has(~ .hov) .brand { display: none; }
+  .hov-pair { display: none; }
+  .hov-info { align-self: stretch; }
+  .hov-tap:not(:empty) { width: 100%; }
+  .hov-tap .ht-btn { left: 14px; gap: 0; }
+  .hov-tap .ht-label { font-size: 0; }
+}
+@container card (max-width: 165px) and (max-height: 170px) {
+  .top:has(~ .hov) .chip.off, .top:has(~ .hov):has(umbra-status[data-state="offline"]) .chip.off { display: none; }
 }
 
 /* ---------- confetti: lives outside the card so a re-render does not cut it short ---------- */

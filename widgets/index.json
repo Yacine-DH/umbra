@@ -233,9 +233,9 @@
       "name": "Hearth",
       "description": "A cozy shared space for two people on two PCs. Pair once with a code, then add copies of this widget as an Overview strip, a drawing Board or a Pet. Needs the Umbra relay, which stores your names, dates, drawings and pet state (deleted 7 days after unpairing or after 30 days unused) and never your location.",
       "author": "Yacine-DH",
-      "version": "1.4.0",
+      "version": "1.4.1",
       "manifestVersion": 1,
-      "changelog": "A preview picture for Browse, the rounded Nunito font, and an Overview strip that fits its default size: the Tap button moved up beside the name, so nothing overlaps or gets cut off.",
+      "changelog": "Overview strip fixes: the Tap button no longer covers the word Offline when you lose your connection, or the settings button when the widget is made narrow.",
       "preview": "preview.png",
       "icon": "icon.png",
       "hosts": [

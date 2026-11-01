@@ -131,7 +131,8 @@ A new relay starts empty, so a self-hosted hearth cannot reuse a pairing made on
   drawing. The relay's palette is 16 colours and 8 brush sizes. Strokes not yet acknowledged when you close the widget
   are lost. There is no download of a saved picture, because widgets have no file access; pictures stay in the gallery.
 - **Tap cooldown is per copy** (10 seconds), and the Windows toast is limited to a few per 10 minutes.
-- **Font coverage.** The bundled Nunito covers Latin alphabets. Names in other scripts use a font your PC has.
+- **Font coverage.** The bundled Nunito covers most Latin alphabets. Names in other scripts use a font your PC has, and
+  Vietnamese names can mix the two.
 - **Request budget.** On Cloudflare's free plan the relay allows 100,000 requests a day, shared with Buddy, which is
   roughly 25 couples by the relay README's estimate (an estimate, not a measurement). When the quota is used up, widgets
   show "Offline" until midnight UTC. Rate limiting is only documented, not set up.
