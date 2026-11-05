@@ -34,8 +34,8 @@ append [`linux.md`](linux.md) to the file you wrote, after "Ship": it holds the 
 - [ ] `node scripts/catalog.mjs --check` passes
 - [ ] `node scripts/check-versions.mjs` passes
 - [ ] `powershell -File build.ps1` succeeds
-- [ ] `dist/UmbraSetup-<ver>.exe` exists (about 35 MB)
-- [ ] portable zip exists with the expected name and size (portable zip, once feat/portable-mode lands)
+- [ ] `dist/UmbraSetup-<ver>.exe` exists (about 90 MB)
+- [ ] `dist/Umbra-<ver>-portable.zip` exists (about 105 MB)
 
 ### Per release
 - [ ] Semver chosen (patch fixes, minor features, major SDK/protocol breaks)
@@ -43,7 +43,7 @@ append [`linux.md`](linux.md) to the file you wrote, after "Ship": it holds the 
 - [ ] Changed widgets/themes have a bumped `version` (`node scripts/check-bump.mjs origin/main`)
 - [ ] README and docs current (docs-writer agent)
 - [ ] CI green on main; `gh issue list -l "priority: p0"` is empty
-- [ ] Notes from merged PRs saved to `dist/notes.md` (Added / Changed / Fixed)
+- [ ] Notes previewed with `node scripts/release.mjs <bump> --dry-run`, polished in the release PR body (Added / Changed / Fixed)
 
 ### Install tests
 - [ ] Silent install over the previous version (`/VERYSILENT`) keeps `%APPDATA%\Umbra` (settings, widgets, approvals)
@@ -64,8 +64,8 @@ append [`linux.md`](linux.md) to the file you wrote, after "Ship": it holds the 
 | [ ] | (one row per collected "needs human check" line, with `#PR`) | PR bodies |
 
 ### Ship
-- [ ] Commit `Release vX.Y.Z`, tag `vX.Y.Z`, push `main` and the tag
-- [ ] Watch `release.yml`; assets listed by `gh release view vX.Y.Z --json assets -q ".assets[].name"` (installer, plus portable zip once it lands)
-- [ ] Release notes applied (`gh release edit`)
+- [ ] `node scripts/release.mjs <bump>` opened the `Release vX.Y.Z` PR; CI green; PR merged (no manual tag)
+- [ ] Watch `release.yml`; assets listed by `gh release view vX.Y.Z --json assets -q ".assets[].name"` (installer and portable zip)
+- [ ] Release notes on GitHub match the PR body
 - [ ] winget submission (`scripts/winget.ps1`)
 - [ ] Note in the release text: installer is unsigned, SmartScreen will warn until #9 is done
