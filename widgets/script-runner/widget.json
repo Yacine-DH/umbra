@@ -2,9 +2,10 @@
   "$schema": "https://raw.githubusercontent.com/AmineChr54/umbra/main/schemas/widget.schema.json",
   "id": "script-runner",
   "name": "Script Runner",
-  "description": "Run your own PowerShell, Python or Bash scripts from the desktop and see the exit code, time and output. Scripts are the commands declared in widget.json; you approve each one once.",
+  "description": "Run your own PowerShell, Python or Bash scripts from the desktop and see the exit code, time and output. Add your scripts in Settings (a file, or code you write there), give them a name, and press Run.",
   "author": "AmineChr54",
-  "version": "1.0.1",
+  "version": "1.1.0",
+  "changelog": "Add, edit and delete your own scripts in Settings (My widgets, Script Runner), with names. No more editing widget.json.",
   "manifestVersion": 1,
   "entry": "index.html",
   "preview": "preview.png",
@@ -13,6 +14,7 @@
   "defaultPosition": { "x": 760, "y": 400 },
   "permissions": {
     "hosts": [],
+    "userScripts": true,
     "commands": [
       {
         "id": "system-info",
@@ -31,15 +33,15 @@
       {
         "id": "python-version",
         "run": ["python", "-c", "import sys, platform; print('Python', platform.python_version()); print(sys.executable)"],
-        "description": "Example: needs Python on PATH. Replace it with your own script.",
+        "description": "Example: needs Python on PATH.",
         "timeoutSeconds": 20
       }
     ]
   },
   "options": {
     "title": { "label": "Title", "type": "text", "default": "Scripts" },
-    "autoScript": { "label": "Script to run automatically (id)", "type": "text", "default": "",
-                    "hint": "The id of a command in widget.json, e.g. disk-free. Leave empty for button only. It only repeats on its own after you have run and approved it with the button." },
+    "autoScript": { "label": "Script to run automatically", "type": "text", "default": "",
+                    "hint": "The name of one of your scripts, e.g. Backup, or an example's id, e.g. disk-free. Leave empty for button only. Your scripts are approved when you save them; an example needs one click on Run and your approval first." },
     "everyMinutes": { "label": "Run it every (minutes)", "type": "number", "default": 15, "min": 1, "max": 1440, "step": 1 },
     "runOnStart": { "label": "Also run it when the widget starts", "type": "toggle", "default": false },
     "bigLine": { "label": "Show the last output line big", "type": "toggle", "default": false,

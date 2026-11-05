@@ -75,6 +75,10 @@
           "type": "boolean",
           "description": "Lets the widget use umbra.timelapse: the host takes webcam stills at an interval and renders them to an MP4 (no frame ever reaches the page). Recording starts only from a click on the widget, shows a red dot on the widget and in the tray, and stops after 12 h."
         },
+        "userScripts": {
+          "type": "boolean",
+          "description": "Lets the user add their own scripts for this widget in Settings > My widgets (PowerShell, Python, Bash or a program; a file or code typed there). The widget lists them with umbra.commands() and runs them by id with umbra.run, like declared commands. Grants nothing by itself: the user writes each script, and saving it is the approval."
+        },
         "media": {
           "type": "array",
           "description": "Windows media session: \"read\" for umbra.media.nowPlaying (title, artist, album art), \"control\" for umbra.media.control (play, pause, next, previous; needs a click on the widget).",

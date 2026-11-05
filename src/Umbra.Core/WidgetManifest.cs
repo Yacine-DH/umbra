@@ -56,6 +56,11 @@ public sealed partial class WidgetManifest
         /// <summary>Local programs the widget may ask to run; each needs the user's approval (see <see cref="CommandSpec"/>).</summary>
         public List<CommandSpec> Commands { get; set; } = new();
         /// <summary>
+        /// Lets the user add their own scripts for this widget in Settings (<see cref="UserScript"/>). Grants nothing by
+        /// itself: each script is written by the user in the host's Settings page, and the widget can only run it by id.
+        /// </summary>
+        public bool UserScripts { get; set; }
+        /// <summary>
         /// Allows <c>umbra.timelapse</c>: the host takes webcam stills and renders them to a video. Recording starts only
         /// from a click on the widget, shows a red dot on the widget and in the tray, and the page never sees a frame.
         /// </summary>

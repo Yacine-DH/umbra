@@ -33,6 +33,10 @@ public sealed partial class CommandSpec
     public string Description { get; set; } = "";
     public Dictionary<string, ParamSpec> Params { get; set; } = new();
     public int TimeoutSeconds { get; set; } = DefaultTimeoutSeconds;
+    /// <summary>The name shown for a script the user added in Settings (<see cref="UserScript"/>); null for a declared command.</summary>
+    [System.Text.Json.Serialization.JsonIgnore] public string? Title { get; set; }
+    /// <summary>True for a script the user added in Settings, false for one declared in widget.json.</summary>
+    [System.Text.Json.Serialization.JsonIgnore] public bool IsUserScript { get; set; }
 
     internal static readonly HashSet<string> KnownKeys = new(StringComparer.Ordinal) { "id", "run", "description", "params", "timeoutSeconds" };
 

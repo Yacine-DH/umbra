@@ -31,21 +31,67 @@ sealed class CommandService
     /// <summary>Lets a test shorten the declared timeout.</summary>
     public Func<CommandSpec, TimeSpan> Timeout { get; set; } = c => TimeSpan.FromSeconds(c.TimeoutSeconds);
 
-    public CommandService(CommandApprovals approvals, Func<ApprovalRequest, Task<bool>> prompt, Func<DateTime>? now = null)
+    readonly UserScripts? _scripts;
+
+    /// <param name="scripts">The user's own scripts (Settings); null = only declared commands.</param>
+    public CommandService(CommandApprovals approvals, Func<ApprovalRequest, Task<bool>> prompt, Func<DateTime>? now = null, UserScripts? scripts = null)
     {
         _approvals = approvals;
         _prompt = prompt;
         _now = now ?? (() => DateTime.UtcNow);
+        _scripts = scripts;
     }
 
     public CommandApprovals Approvals => _approvals;
+
+    /// <summary>Whether the widget takes scripts the user adds in Settings.</summary>
+    public bool TakesUserScripts(WidgetManifest m) => m.Permissions.UserScripts && _scripts is not null;
+
+    /// <summary>The user's scripts for the widget (for the Settings editor); empty unless it declares permissions.userScripts.</summary>
+    public IReadOnlyList<UserScript> UserScriptsOf(WidgetManifest m) => TakesUserScripts(m) ? _scripts!.For(m.Id) : [];
+
+    /// <summary>Everything the widget may run: its declared commands, then the user's scripts when it declares permissions.userScripts.</summary>
+    public IReadOnlyList<CommandSpec> All(WidgetManifest m) =>
+        TakesUserScripts(m) ? [.. m.Permissions.Commands, .. _scripts!.Specs(m.Id)] : m.Permissions.Commands;
+
+    /// <summary>A declared command wins over a script with the same id (a script can't take a declared id, but an update could add one).</summary>
+    CommandSpec? Find(WidgetManifest m, string commandId) => All(m).FirstOrDefault(c => c.Id == commandId);
+
+    /// <summary>Read-only listing for the control protocol and backups: declared commands and user scripts with their status.</summary>
+    public JsonArray Describe(IEnumerable<WidgetManifest> manifests, string? onlyWidget = null) =>
+        _approvals.Describe(manifests, onlyWidget, All);
+
+    /// <summary>
+    /// The Settings page's Save on a script the user wrote. Saving is the user's approval of exactly that command (they
+    /// typed it in the host's own page), so it is approved when its program is found; otherwise it waits as "pending".
+    /// Only <c>SettingsWindow</c> calls this: no control command, umbractl or MCP tool adds or approves a script.
+    /// </summary>
+    public (UserScript Script, bool Approved) SaveUserScript(WidgetManifest m, UserScript script)
+    {
+        if (!TakesUserScripts(m)) throw new WidgetCommandException("This widget doesn't take your own scripts");
+        UserScript saved; CommandSpec spec;
+        try { (saved, spec) = _scripts!.Save(m.Id, script, m.Permissions.Commands.Select(c => c.Id)); }
+        catch (InvalidOperationException ex) { throw new WidgetCommandException(ex.Message); }
+        var exe = ExeIdentity.Of(spec);
+        if (exe is null) { _approvals.Revoke(m.Id, saved.Id); return (saved, false); }
+        _approvals.Approve(m.Id, spec, exe);
+        lock (_gate) foreach (var k in _prompts.Keys.Where(k => InstanceId.WidgetOf(k) == m.Id).ToList()) _prompts.Remove(k);
+        return (saved, true);
+    }
+
+    /// <summary>The Settings page's Delete on a script: removes it, its saved code and its approval.</summary>
+    public void DeleteUserScript(WidgetManifest m, string id)
+    {
+        if (!TakesUserScripts(m) || !_scripts!.Delete(m.Id, id)) throw new WidgetCommandException("That script no longer exists");
+        _approvals.Revoke(m.Id, id);
+    }
 
     /// <param name="enabled">The widget is switched on in Settings.</param>
     /// <param name="userGesture">The user physically pressed the mouse on this widget moments ago.</param>
     public async Task<JsonObject> RunAsync(WidgetManifest m, bool enabled, bool userGesture, string commandId, JsonObject? values, CancellationToken ct, string? instance = null)
     {
         if (!enabled) throw new WidgetCommandException("The widget is disabled");
-        var spec = m.Permissions.Commands.FirstOrDefault(c => c.Id == commandId)
+        var spec = Find(m, commandId)
                    ?? throw new WidgetCommandException($"This widget did not declare a command '{commandId}'");
 
         // Everything that can be checked without the user is checked first, so a bad request never raises a prompt.
@@ -72,6 +118,8 @@ sealed class CommandService
         }
         try
         {
+            // A script's code is written again from scripts.json, so the file that runs holds what Settings showed.
+            if (spec.IsUserScript) _scripts!.Materialize(m.Id, spec.Id);
             Log.Write($"[{m.Id}] run '{spec.Id}' ({identity.Path})");
             var r = await CommandRunner.RunAsync(identity.Path, args, WorkingDir(InstanceId.FileName(instance)), Timeout(spec), MaxOutputBytes, ct);
             Log.Write($"[{m.Id}] '{spec.Id}' exit {r.ExitCode}{(r.TimedOut ? " (timed out)" : "")} in {r.DurationMs} ms");
@@ -129,7 +177,7 @@ sealed class CommandService
     /// <summary>The Settings page's Approve button. <paramref name="expectedHash"/> is what the page showed, so a command that changed in between is not approved blind.</summary>
     public void ApproveFromSettings(WidgetManifest m, string commandId, string expectedHash)
     {
-        var spec = m.Permissions.Commands.FirstOrDefault(c => c.Id == commandId) ?? throw new WidgetCommandException("Unknown command");
+        var spec = Find(m, commandId) ?? throw new WidgetCommandException("Unknown command");
         if (!string.Equals(spec.Hash(), expectedHash, StringComparison.Ordinal)) throw new WidgetCommandException("The command changed; review it again");
         var exe = ExeIdentity.Of(spec) ?? throw new WidgetCommandException($"'{spec.Exe}' was not found on this PC, so it can't be approved yet");
         _approvals.Approve(m.Id, spec, exe);

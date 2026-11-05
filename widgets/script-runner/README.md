@@ -1,42 +1,43 @@
 # Script Runner
 
-Runs your own PowerShell, Python or Bash scripts from the desktop and shows the exit code, duration, last run time and output.
+Runs your own PowerShell, Python or Bash scripts (or any program) from the desktop and shows the exit code, duration,
+last run time and output.
 
-## How to add a script
+## Add a script
 
-Umbra only lets a widget start programs that are written in its `widget.json`, and it refuses an interpreter
-(`powershell`, `python`, `bash`, `wsl`, `cmd`, `node`...) that would take free text from the page. So this widget
-**cannot run text you type into it**. Instead, each script is a fixed command that you declare:
+1. Open **Settings > My widgets > Script Runner** (or right-click the widget > Options).
+2. Under **Your scripts**, press **Add script** and fill in:
+   - **Name**: what the widget shows, e.g. *Backup photos*.
+   - **Type**: PowerShell, Python, Bash or Program.
+   - **Run**: a **script file** (type the full path or press **Browse...**) or **Write code** right there (PowerShell and
+     Python: as many lines as you like; Bash: one line, run with `bash -c`).
+   - **Arguments** (optional): separated by spaces, `"quotes"` around one with spaces.
+   - **Time limit** (1-120 s, default 60) and a **Description** (optional, shown under the name).
+3. Press **Add script**. It appears in the widget right away; press **Run**.
 
-1. Open `widget.json` (installed copies live in `%APPDATA%\Umbra\widgets\script-runner`).
-2. Add an entry to `permissions.commands`. The `id` is the name shown in the list.
-
-```json
-{ "id": "backup", "run": ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Scripts\\backup.ps1"],
-  "description": "Nightly backup", "timeoutSeconds": 120 }
-{ "id": "report", "run": ["python", "C:\\Scripts\\report.py"] }
-{ "id": "sync",   "run": ["bash", "-c", "~/bin/sync.sh"] }
-```
-
-3. Reload the widget (**My widgets**, or `umbractl reload`) and press **Run**. Umbra shows the exact command line
-   and asks you to approve it. Changing the command later (or the program it resolves to) needs a new approval.
+Saving is your approval of exactly that command (the row shows the command line Umbra runs). Edit or delete a script
+from the same list. If its program isn't installed yet (say Python isn't on `PATH`), the script is saved as
+*Not approved*; install the program, then press **Approve**.
 
 Notes:
 
-- Editing the script file itself does not need a new approval; editing the command in `widget.json` does.
-- Use absolute paths for your scripts. The working folder is `%APPDATA%\Umbra\data\run\script-runner`.
-- Timeout is 60 s by default (`timeoutSeconds`, max 120). Output over 1 MB is cut and flagged.
-- Updating the widget from Browse replaces `widget.json`, so keep a copy of your own commands.
-- The three shipped scripts are examples; delete or replace them.
+- What runs: `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File <script> <args>`, `python <script> <args>`,
+  `bash <script> <args>` or `<program> <args>`. Never a shell line.
+- Code you write in Settings is saved by Umbra in `%APPDATA%\Umbra\scripts\script-runner\` and run as a file.
+- Editing a script file you picked does not need a new approval; changing the script in Settings saves (and approves) the new one.
+- Scripts run in `%APPDATA%\Umbra\data\run\script-runner`, with a time limit and output cut at 1 MB (flagged).
+- Your scripts are stored apart from the widget (`%APPDATA%\Umbra\scripts.json`), so updating Script Runner keeps them.
+- The three examples (`system-info`, `disk-free`, `python-version`) come with the widget; each asks for your approval
+  on its first run.
 
 ## Options
 
-Automatic runs: set **Script to run automatically** to a command id and **Run it every (minutes)**; optionally
-**run it when the widget starts**. A background run can never show the approval prompt, so automatic runs only
-repeat a script you already ran with the button. **Show the last output line big** turns the last stdout line
-into a headline for one-number dashboards.
+Automatic runs: set **Script to run automatically** to a script's name (or an example's id) and **Run it every
+(minutes)**; optionally **run it when the widget starts**. Your own scripts are approved when you save them, so they
+run on their own straight away; an example needs one click on **Run** and your approval first. **Show the last output
+line big** turns the last stdout line into a headline for one-number dashboards.
 
-## Differences from the original idea (#26)
+## For widget authors
 
-- Scripts can't be chosen or typed in the UI (host rule above); they are declared in `widget.json`.
-- Interpreters are not searched or configured by option: write the executable in the command (`pwsh`, `python`, `bash`, or an absolute path).
+This widget sets `permissions.userScripts` and lists what it can run with `umbra.commands()`. See
+"The user's own scripts" in `docs/widget-sdk.md`.

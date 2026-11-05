@@ -489,10 +489,11 @@ function renderInstalled(refocus) {
       else if (!card.classList.contains("off")) fold.click();
     });
 
+    renderScripts($(".cmds", card), w); // the user's own first: they are why the widget is there
     renderCommands($(".cmds", card), w);
     // Approve and Revoke live in the folded part of the card, so the row says they are there, and when one needs the user.
     {
-      const cmds = w.commands || [];
+      const cmds = [...(w.commands || []), ...(w.scripts || [])];
       const text = cmds.some((c) => c.status === "changed") ? "Command changed"
         : cmds.some((c) => c.status !== "approved") ? "Needs approval"
         : cmds.length ? "Runs programs"
@@ -660,7 +661,7 @@ function renderCommands(root, w) {
     if (w.cameraApproved) {
       const btn = Object.assign(document.createElement("button"), { className: "btn small danger", textContent: "Revoke" });
       btn.setAttribute("aria-label", `Revoke camera access for ${w.name}`);
-      btn.addEventListener("click", () => post({ type: "revokeCamera", widget: w.id }));
+      btn.addEventListener("click", () => post({ type: "revokeCamera", widget: w.widget }));
       row.append(btn);
     }
     root.append(row);
@@ -683,10 +684,170 @@ function renderCommands(root, w) {
     btn.textContent = c.status === "approved" ? "Revoke" : "Approve";
     btn.setAttribute("aria-label", `${btn.textContent} ${c.line}`);
     btn.addEventListener("click", () =>
-      post({ type: c.status === "approved" ? "revokeCommand" : "approveCommand", widget: w.id, command: c.id, hash: c.hash }));
+      post({ type: c.status === "approved" ? "revokeCommand" : "approveCommand", widget: w.widget, command: c.id, hash: c.hash }));
     row.append(line, desc, btn);
     root.append(row);
   }
+}
+
+// ---------- The user's own scripts (permissions.userScripts, e.g. Script Runner) ----------
+// The host checks everything (UserScript.Normalize) and builds the command; this form only collects what the user
+// typed. Saving here is the user's approval of exactly that command, so the line the host runs is shown on each row.
+const scriptDrafts = new Map(); // widget copy id -> the script being added or edited (kept while the state re-renders)
+let scriptFocus = null;         // widget copy whose editor should take focus after the next render
+const SCRIPT_KINDS = [["powershell", "PowerShell"], ["python", "Python"], ["bash", "Bash"], ["program", "Program"]];
+const mk = (tag, className, text) => Object.assign(document.createElement(tag), className ? { className } : {}, text != null ? { textContent: text } : {});
+
+function editScript(w, draft) {
+  scriptDrafts.set(w.id, { widget: w.widget, kind: "powershell", mode: "file", path: "", code: "", args: "", description: "", title: "", timeoutSeconds: 60, ...draft });
+  scriptFocus = w.id;
+  try { localStorage.setItem("openCards", JSON.stringify([...openCards().add(w.id)])); } catch { /* storage unavailable */ }
+  renderInstalled();
+}
+
+function renderScripts(root, w) {
+  if (!w.userScripts) return;
+  const draft = scriptDrafts.get(w.id);
+  const scripts = w.scripts || [];
+  const head = mk("div", "scripts-head");
+  head.append(mk("div", "cmds-title", "Your scripts"));
+  if (!draft) {
+    const add = mk("button", "btn small");
+    add.innerHTML = '<span class="ico" data-icon="plus"></span>Add script';
+    add.setAttribute("aria-label", `Add a script to ${w.name}`);
+    add.addEventListener("click", () => editScript(w, {}));
+    head.append(add);
+  }
+  root.append(head);
+  if (!scripts.length && !draft)
+    root.append(mk("div", "cmd-desc", "Add a PowerShell, Python or Bash script, or any program. It shows up in the widget with a Run button."));
+  for (const s of scripts) {
+    if (draft && draft.id === s.id) { root.append(scriptEditor(w, draft)); continue; }
+    const row = mk("div", "cmd script");
+    const name = mk("div", "script-name", s.title);
+    const line = mk("div", "cmd-line", s.line || "(can't run: open it to fix)");
+    const desc = mk("div", "cmd-desc");
+    desc.append(mk("span", `cmd-status ${s.status === "invalid" ? "changed" : s.status}`,
+      s.status === "approved" ? "Approved" : s.status === "invalid" ? "Needs fixing" : s.status === "changed" ? "Changed, needs approval" : "Not approved"), s.description || "");
+    const actions = mk("div", "script-actions");
+    if (s.status === "pending" || s.status === "changed") {
+      const ok = mk("button", "btn small primary", "Approve");
+      ok.setAttribute("aria-label", `Approve ${s.title}: ${s.line}`);
+      ok.addEventListener("click", () => post({ type: "approveCommand", widget: w.widget, command: s.id, hash: s.hash }));
+      actions.append(ok);
+    }
+    const edit = mk("button", "btn small", "Edit");
+    edit.setAttribute("aria-label", `Edit ${s.title}`);
+    edit.addEventListener("click", () => editScript(w, s));
+    const del = mk("button", "btn small danger icon");
+    del.innerHTML = '<span class="ico" data-icon="trash"></span>';
+    del.title = "Delete";
+    del.setAttribute("aria-label", `Delete ${s.title}`);
+    del.addEventListener("click", () => post({ type: "deleteScript", widget: w.widget, script: s.id }));
+    actions.append(edit, del);
+    row.append(name, line, desc, actions);
+    root.append(row);
+  }
+  if (draft && !draft.id) root.append(scriptEditor(w, draft));
+}
+
+function scriptEditor(w, d) {
+  const form = mk("form", "script-edit");
+  form.noValidate = true;
+  form.setAttribute("aria-label", d.id ? `Edit ${d.title}` : `New script for ${w.name}`);
+  const row = (label, control, hint) => {
+    const f = mk("div", "field");
+    if (!control.hasAttribute("aria-label")) control.setAttribute("aria-label", label);
+    f.append(mk("span", "flabel", label), control);
+    if (hint) f.append(mk("span", "hint-text", hint));
+    return f;
+  };
+  const input = (key, attrs = {}) => {
+    const i = Object.assign(mk("input", "input"), { value: d[key] ?? "" }, attrs);
+    i.addEventListener("input", () => { d[key] = i.type === "number" ? Number(i.value) : i.value; });
+    return i;
+  };
+
+  const title = input("title", { maxLength: 60, placeholder: "Backup photos" });
+  const kind = mk("select", "select");
+  for (const [v, label] of SCRIPT_KINDS) kind.append(new Option(label, v));
+  kind.value = d.kind;
+  kind.addEventListener("change", () => { d.kind = kind.value; sync(); });
+
+  // Script file or code you write here (Program always runs a file).
+  const mode = mk("div", "segmented");
+  mode.setAttribute("role", "radiogroup");
+  const modeBtns = [["file", "Script file"], ["code", "Write code"]].map(([v, label]) => {
+    const b = mk("button", "", label);
+    b.type = "button";
+    b.setAttribute("role", "radio");
+    b.addEventListener("click", () => { d.mode = v; sync(); });
+    b.dataset.v = v;
+    mode.append(b);
+    return b;
+  });
+  const modeRow = row("Run", mode);
+
+  const path = input("path", { placeholder: "C:\\Scripts\\backup.ps1", spellcheck: false });
+  const browse = mk("button", "btn small", "Browse...");
+  browse.type = "button";
+  browse.addEventListener("click", () => post({ type: "pickScriptFile", kind: d.kind, ref: w.id }));
+  const pathBox = mk("div", "script-path");
+  pathBox.append(path, browse);
+  const pathRow = row("Script file", pathBox);
+
+  const code = Object.assign(mk("textarea", "input code"), { value: d.code ?? "", rows: 8, spellcheck: false });
+  code.setAttribute("aria-label", "Code");
+  code.addEventListener("input", () => { d.code = code.value; });
+  // Tab indents instead of leaving the box (Shift+Tab or Esc then Tab still moves on).
+  code.addEventListener("keydown", (e) => {
+    if (e.key !== "Tab" || e.shiftKey || e.ctrlKey || e.altKey) return;
+    e.preventDefault();
+    code.setRangeText("    ", code.selectionStart, code.selectionEnd, "end");
+    d.code = code.value;
+  });
+  const codeRow = row("Code", code);
+
+  const args = input("args", { placeholder: "--quiet \"D:\\My Photos\"", spellcheck: false });
+  const argsRow = row("Arguments", args, 'Optional. Separate them with spaces; put one with spaces in "quotes".');
+  const timeout = input("timeoutSeconds", { type: "number", min: 1, max: 120, step: 1 });
+  timeout.classList.add("num");
+  const desc = input("description", { maxLength: 200, placeholder: "Optional, shown under the name" });
+
+  const save = mk("button", "btn small primary", d.id ? "Save" : "Add script");
+  save.type = "submit";
+  const cancel = mk("button", "btn small", "Cancel");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => { scriptDrafts.delete(w.id); document.activeElement?.blur(); renderInstalled(); });
+  const actions = mk("div", "script-edit-actions");
+  actions.append(mk("span", "hint-text", "Saving approves exactly this command. It runs as you, with a time limit, never from a shell."), cancel, save);
+
+  form.append(row("Name", title), row("Type", kind), modeRow, pathRow, codeRow, argsRow, row("Time limit (seconds)", timeout), row("Description", desc), actions);
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const script = Object.fromEntries(["id", "title", "description", "kind", "mode", "path", "code", "args"].map((k) => [k, String(d[k] ?? "")]));
+    post({ type: "saveScript", widget: d.widget, script: { ...script, timeoutSeconds: Math.round(Number(d.timeoutSeconds)) || 60 } });
+    document.activeElement?.blur(); // so the state that follows rebuilds the list
+  });
+  form.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); cancel.click(); } });
+
+  function sync() {
+    const program = d.kind === "program", bashCode = d.kind === "bash" && d.mode === "code";
+    const isCode = !program && d.mode === "code";
+    modeRow.hidden = program;
+    for (const b of modeBtns) { const on = b.dataset.v === (program ? "file" : d.mode); b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on)); }
+    pathRow.hidden = isCode;
+    codeRow.hidden = !isCode;
+    code.rows = bashCode ? 2 : 8;
+    code.placeholder = { powershell: 'Get-Date\n"Hello from PowerShell"', python: 'import datetime\nprint(datetime.datetime.now())', bash: "date && uptime" }[d.kind] || "";
+    $(".flabel", pathRow).textContent = program ? "Program" : "Script file";
+    path.placeholder = { powershell: "C:\\Scripts\\backup.ps1", python: "C:\\Scripts\\report.py", bash: "~/bin/sync.sh", program: "C:\\Tools\\app.exe or pwsh" }[d.kind];
+    const hint = $(".hint-text", codeRow) || codeRow.appendChild(mk("span", "hint-text"));
+    hint.textContent = bashCode ? "One line, run with bash -c. For a longer script, save a .sh file and pick it." : "Saved by Umbra and run as a file.";
+  }
+  sync();
+  if (scriptFocus === w.id) { scriptFocus = null; requestAnimationFrame(() => title.focus()); }
+  return form;
 }
 
 // Arrange widgets (edit mode) is the one global lock (#234). The host owns it (general.lockAll), so it has its own message.
@@ -1332,6 +1493,14 @@ bridge && bridge.listen((m) => {
       $("#zoomOut").disabled = !!m.min;
       $("#zoomIn").disabled = !!m.max;
       break;
+    case "scriptSaved": // the state that follows shows the saved script; close its editor on every copy's card
+      for (const [k, d] of scriptDrafts) if (d.widget === m.widget) scriptDrafts.delete(k);
+      break;
+    case "scriptFile": { // the host's file picker answered for this copy's editor
+      const d = scriptDrafts.get(m.ref);
+      if (d && typeof m.path === "string") { d.path = m.path; document.activeElement?.blur(); renderInstalled(); }
+      break;
+    }
     case "layoutDeleted":
       toast(`Deleted layout ${m.name}`, false, { label: "Undo", run: () => post({ type: "undoDeleteLayout" }) });
       break;

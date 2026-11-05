@@ -12,10 +12,12 @@ public sealed class PermissionDiff
     public IReadOnlyList<string> Media { get; init; } = Array.Empty<string>();
     public bool Notifications { get; init; }
     public bool Camera { get; init; }
+    /// <summary>The update newly lets the user add their own scripts in Settings (nothing runs until the user writes one).</summary>
+    public bool UserScripts { get; init; }
     /// <summary>Commands that are new or whose executable, arguments or limits changed (the stored approval no longer matches).</summary>
     public IReadOnlyList<CommandSpec> Commands { get; init; } = Array.Empty<CommandSpec>();
 
-    public bool IsEmpty => Hosts.Count == 0 && System.Count == 0 && Media.Count == 0 && !Notifications && !Camera && Commands.Count == 0;
+    public bool IsEmpty => Hosts.Count == 0 && System.Count == 0 && Media.Count == 0 && !Notifications && !Camera && !UserScripts && Commands.Count == 0;
 
     /// <summary>The permissions of <paramref name="updated"/> that <paramref name="installed"/> does not have. A null installed manifest means everything is new.</summary>
     public static PermissionDiff Compute(WidgetManifest? installed, WidgetManifest updated)
@@ -30,6 +32,7 @@ public sealed class PermissionDiff
             Media = Added(old.Media, now.Media),
             Notifications = now.Notifications && !old.Notifications,
             Camera = now.Camera && !old.Camera,
+            UserScripts = now.UserScripts && !old.UserScripts,
             Commands = now.Commands.Where(c => !oldHashes.Contains(c.Hash())).ToList(),
         };
     }
@@ -50,6 +53,7 @@ public sealed class PermissionDiff
             lines.Add(m.Equals("control", StringComparison.OrdinalIgnoreCase) ? "Can control media playback (play, pause, next, previous)" : "Can read what media is playing");
         if (Notifications) lines.Add("Can show notifications");
         if (Camera) lines.Add("Can record timelapses with your webcam (only after you click it; a red dot shows while recording)");
+        if (UserScripts) lines.Add("Can run scripts you add yourself in Settings (you write and approve each one)");
         foreach (var c in Commands) lines.Add($"Can ask to run a program: {c.DisplayLine()} (you still approve it before it runs)");
         return lines;
     }

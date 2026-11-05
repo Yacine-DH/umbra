@@ -699,6 +699,10 @@ sealed class WidgetWindow : Form, IWidgetView
                 await HandleRun(msg!);
                 break;
 
+            case "commands":
+                Post(new JsonObject { ["type"] = "commandsResult", ["id"] = msg!["id"]?.DeepClone(), ["ok"] = true, ["data"] = DescribeCommands() });
+                break;
+
             case "timelapse":
                 await HandleTimelapse(msg!);
                 break;
@@ -1113,6 +1117,24 @@ sealed class WidgetWindow : Form, IWidgetView
             if (ex is not WidgetCommandException) Log.Write($"[{Manifest.Id}] run failed: {ex}");
         }
         Post(reply);
+    }
+
+    /// <summary>
+    /// umbra.commands(): what this widget can run, as ids and names only. The program, arguments and paths stay in the host,
+    /// so the page learns nothing it could not already do with umbra.run.
+    /// </summary>
+    JsonArray DescribeCommands() => new(_app.Commands.All(Manifest).Select(c => (JsonNode?)new JsonObject
+    {
+        ["id"] = c.Id,
+        ["title"] = c.Title ?? c.Id,
+        ["description"] = c.IsUserScript && c.Description == c.Title ? "" : c.Description, // a script without one borrows its name
+        ["user"] = c.IsUserScript,
+    }).ToArray());
+
+    /// <summary>The user added, changed or deleted one of this widget's scripts in Settings.</summary>
+    public void NotifyCommandsChanged()
+    {
+        if (_ready) Post(new JsonObject { ["type"] = "commandsChanged" });
     }
 
     /// <summary>Tells the page that its stored data was changed from outside (umbractl data, MCP).</summary>

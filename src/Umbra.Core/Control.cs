@@ -472,7 +472,7 @@ sealed class Control(IUmbraHost app)
 
             case "approvals":
                 // Read-only on purpose: there is no control command that approves or revokes a command.
-                return app.Commands.Approvals.Describe(app.Manifests, a["id"] is null ? null : Target(a).Manifest.Id);
+                return app.Commands.Describe(app.Manifests, a["id"] is null ? null : Target(a).Manifest.Id);
 
             case "privacy":
                 return Backup.Privacy(app, a["id"] is null ? null : Target(a).Manifest.Id);
@@ -637,7 +637,7 @@ sealed class Control(IUmbraHost app)
             ["open"] = win is not null,
             ["bounds"] = win is null ? null : new JsonObject { ["x"] = win.Left, ["y"] = win.Top, ["width"] = win.Width, ["height"] = win.Height },
             ["hosts"] = new JsonArray(m.Permissions.Hosts.Select(h => (JsonNode?)h).ToArray()),
-            ["commands"] = app.Commands.Approvals.Describe(new[] { m }),
+            ["commands"] = app.Commands.Describe(new[] { m }),
             ["options"] = ws.Options.DeepClone(),
             ["optionSchema"] = m.Options.DeepClone(),
         };

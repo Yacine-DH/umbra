@@ -54,3 +54,11 @@ Declaring a command makes your widget need a human review. Prefer fixed `choices
 :::
 
 `widgets/script-runner` is a worked example.
+
+## The user's own scripts
+
+A widget that runs whatever the user wants sets `"userScripts": true` in `permissions`. Its card in **Settings > My widgets** then gets a **Your scripts** section where the user adds, edits and deletes scripts (PowerShell, Python, Bash or a program; a file, or code typed right there). The widget lists them with `umbra.commands()`, re-reads them in `umbra.onCommandsChange`, and runs them by id with `umbra.run`.
+
+- Umbra builds the command (`powershell ... -File <script>`, `python <script>`, `bash <script>`, `<program>`), never a shell line, and the row in Settings shows it.
+- Saving in Settings is the approval. Only Settings can add, change, delete or approve a script; no `umbractl` or MCP tool can, and the widget's page only sees ids and names.
+- Scripts are kept outside the widget folder, so updating the widget keeps them. The same timeout, output cap and environment rules apply.

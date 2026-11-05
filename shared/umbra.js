@@ -22,7 +22,7 @@
 
   let settings = { refreshSeconds: 60, animations: true, locked: false, scale: 1, locale: "en-US", hour12: false, editMode: false, options: {} };
   let widget = { id: "", instance: "", name: "" }; // instance = id of this copy ("sp500", "sp500#2")
-  const handlers = { settings: [], refresh: [], store: [], status: [], time: [], notification: [], timelapse: [] };
+  const handlers = { settings: [], refresh: [], store: [], status: [], time: [], notification: [], timelapse: [], commands: [] };
   const pending = new Map();
   let nextId = 1;
   let resolveReady;
@@ -87,6 +87,7 @@
         break;
       case "fetchResult":
       case "runResult":
+      case "commandsResult":
       case "systemResult":
       case "notifyResult":
       case "mediaResult":
@@ -107,6 +108,9 @@
         break;
       case "storeChanged":
         handlers.store.forEach((fn) => fn(m.key ?? null));
+        break;
+      case "commandsChanged": // the user added, changed or deleted one of this widget's scripts in Settings
+        handlers.commands.forEach((fn) => fn());
         break;
     }
   });
@@ -216,6 +220,11 @@
    * Resolves { exitCode, stdout, stderr, timedOut, truncated, durationMs }; rejects when not declared, not approved, or invalid.
    */
   const run = (command, params) => request({ type: "run", command, params: params ?? undefined }, 300000);
+  /**
+   * What umbra.run can run: the commands in widget.json, then (with permissions.userScripts) the scripts the user added
+   * in Settings. Resolves [{ id, title, description, user }]; programs, arguments and paths stay in the host.
+   */
+  const commands = () => request({ type: "commands" }, 10000);
   /** Machine totals declared in widget.json permissions.system: { cpu:{percent}, memory:{totalBytes,usedBytes,percent}, network:{downBytesPerSec,upBytesPerSec} }. */
   const system = () => request({ type: "system" }, 10000);
   /**
@@ -460,6 +469,9 @@
     onTimeChanged: (fn) => handlers.time.push(fn),
     fetchJson,
     run,
+    commands,
+    /** fn() when the user adds, changes or deletes one of this widget's scripts in Settings; call umbra.commands() again. */
+    onCommandsChange: (fn) => handlers.commands.push(fn),
     system,
     notify,
     media,

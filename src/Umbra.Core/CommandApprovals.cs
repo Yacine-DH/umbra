@@ -156,12 +156,15 @@ sealed class CommandApprovals(string path)
         }
     }
 
-    /// <summary>For the control protocol: every declared command of the given widgets with its approval status (read-only).</summary>
-    public JsonArray Describe(IEnumerable<WidgetManifest> manifests, string? onlyWidget = null)
+    /// <summary>
+    /// For the control protocol: every command of the given widgets with its approval status (read-only).
+    /// <paramref name="commands"/> lists a widget's commands (declared plus the user's scripts); default: the declared ones.
+    /// </summary>
+    public JsonArray Describe(IEnumerable<WidgetManifest> manifests, string? onlyWidget = null, Func<WidgetManifest, IEnumerable<CommandSpec>>? commands = null)
     {
         var list = new JsonArray();
         foreach (var m in manifests.Where(m => onlyWidget is null || m.Id == onlyWidget))
-            foreach (var c in m.Permissions.Commands)
+            foreach (var c in commands?.Invoke(m) ?? m.Permissions.Commands)
             {
                 var a = List().FirstOrDefault(x => x.WidgetId == m.Id && x.CommandId == c.Id);
                 list.Add(new JsonObject
@@ -173,6 +176,7 @@ sealed class CommandApprovals(string path)
                     ["status"] = Status(m.Id, c),
                     ["approvedAt"] = a?.ApprovedAt.ToString("o"),
                 });
+                if (c.IsUserScript) ((JsonObject)list[^1]!)["userScript"] = true; // only on the user's own scripts
             }
         return list;
     }

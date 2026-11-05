@@ -34,16 +34,23 @@ const lastLine = (s) => (String(s || "").split(/\r?\n/).reverse().find((l) => l.
 
 // ---------- data ----------
 
+/** The scripts added in Settings plus the examples in widget.json. Umbra before umbra.commands() only had widget.json. */
 async function loadCommands() {
   try {
-    const res = await fetch("widget.json", { cache: "no-store" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const m = await res.json();
-    commands = ((m.permissions || {}).commands || []).filter((c) => c && c.id);
+    if (typeof umbra.commands === "function") {
+      commands = (await umbra.commands()).filter((c) => c && c.id);
+    } else {
+      const res = await fetch("widget.json", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const m = await res.json();
+      commands = ((m.permissions || {}).commands || []).filter((c) => c && c.id);
+    }
+    // Your own scripts first: they are why you added the widget; the shipped examples follow.
+    commands.sort((a, b) => Number(!!b.user) - Number(!!a.user));
     loadError = "";
   } catch (err) {
     commands = [];
-    loadError = `Could not read widget.json (${err.message || err})`;
+    loadError = `Could not load the scripts (${err.message || err})`;
   }
 }
 
@@ -76,7 +83,7 @@ async function runScript(id) {
     const r = await umbra.run(id);
     let kind = r.exitCode === 0 ? "ok" : "fail";
     let note = "";
-    if (r.timedOut) { kind = "timeout"; note = "Timed out and was stopped. Raise timeoutSeconds for this command in widget.json (max 120) if it needs longer."; }
+    if (r.timedOut) { kind = "timeout"; note = "Timed out and was stopped. Raise its time limit in Settings > My widgets > Script Runner (max 120 s) if it needs longer."; }
     else if (r.truncated) { note = "Output was larger than 1 MB and was cut."; }
     entry = { at: Date.now(), exitCode: r.exitCode, ms: r.durationMs ?? Date.now() - t0, stdout: String(r.stdout || "").slice(0, MAX_KEEP), stderr: String(r.stderr || "").slice(0, MAX_KEEP), kind, note, truncated: !!r.truncated };
   } catch (err) {
@@ -89,16 +96,32 @@ async function runScript(id) {
   render();
 }
 
+const nameOf = (c) => c.title || c.id;
+
+/** The option names a script by its name or its id. */
+function autoId() {
+  const want = String(opts().autoScript || "").trim().toLowerCase();
+  if (!want) return "";
+  const c = commands.find((x) => x.id === want) || commands.find((x) => nameOf(x).toLowerCase() === want);
+  return c ? c.id : "";
+}
+
 function setupAuto() {
   clearInterval(autoTimer); autoTimer = null;
-  const id = String(opts().autoScript || "").trim();
-  if (!id || !commands.some((c) => c.id === id)) return;
+  const id = autoId();
+  if (!id) return;
   const mins = Math.max(1, Number(opts().everyMinutes) || 15);
-  autoTimer = setInterval(() => {
-    // Background runs can't open the approval prompt, so only repeat what already ran with the user's approval.
-    const last = results[id];
-    if (last && last.kind !== "warn" && last.kind !== "error") runScript(id);
-  }, mins * 60000);
+  autoTimer = setInterval(() => { if (canAuto(id)) runScript(id); }, mins * 60000);
+}
+
+/**
+ * Background runs can't open the approval prompt. Your own scripts are approved when you save them in Settings, so they
+ * run unless the last try needed approval; an example only repeats after it ran with the button.
+ */
+function canAuto(id) {
+  const last = results[id], c = commands.find((x) => x.id === id);
+  if (c && c.user) return !last || last.kind !== "warn";
+  return !!last && last.kind !== "warn" && last.kind !== "error";
 }
 
 // ---------- rendering ----------
@@ -127,14 +150,14 @@ function dotClass(c) {
 function renderList() {
   if (loadError) { listEl.innerHTML = `<div class="empty">${esc(loadError)}</div>`; return; }
   if (!commands.length) {
-    listEl.innerHTML = `<div class="empty">No scripts yet. Add one to <code>permissions.commands</code> in this widget's <code>widget.json</code>, then reload.</div>`;
+    listEl.innerHTML = `<div class="empty">No scripts yet. Add one in Settings: My widgets, Script Runner, Add script.</div>`;
     return;
   }
   listEl.innerHTML = commands.map((c) => {
     const s = subtitle(c), busy = running.has(c.id);
     return `<div class="row${c.id === selected ? " sel" : ""}" data-id="${esc(c.id)}">
       <span class="dot ${dotClass(c)}"></span>
-      <div class="info"><div class="name">${esc(c.id)}</div><div class="sub num ${s.cls}">${esc(s.text)}</div></div>
+      <div class="info"><div class="name">${esc(nameOf(c))}</div><div class="sub num ${s.cls}">${esc(s.text)}</div></div>
       <button class="run" data-run="${esc(c.id)}" ${busy ? "disabled" : ""}>${busy ? "Running" : "Run"}</button>
     </div>`;
   }).join("");
@@ -158,7 +181,7 @@ function renderOutput() {
     logEl.innerHTML = commands.length ? '<span class="dim">Press Run on a script to see its output here.</span>' : "";
     return;
   }
-  $("out-name").textContent = c.id;
+  $("out-name").textContent = nameOf(c);
   if (running.has(c.id)) { logEl.innerHTML = '<span class="dim">Waiting for the script to finish...</span>'; return; }
   const r = results[c.id];
   if (!r) { logEl.innerHTML = `<span class="dim">${esc(c.description || "Never run.")}</span>`; return; }
@@ -206,9 +229,14 @@ setInterval(tick, 1000);
   if (!selected || !commands.some((c) => c.id === selected)) selected = commands.length ? commands[0].id : null;
   render();
   setupAuto();
-  const id = String(opts().autoScript || "").trim();
-  const prior = results[id];
-  if (opts().runOnStart && id && prior && prior.kind !== "warn" && prior.kind !== "error" && commands.some((c) => c.id === id)) runScript(id);
+  const id = autoId();
+  if (opts().runOnStart && id && canAuto(id)) runScript(id);
   umbra.onSettings(() => { render(); setupAuto(); });
+  // A script added, edited or deleted in Settings shows up at once.
+  if (umbra.onCommandsChange) umbra.onCommandsChange(async () => {
+    await loadCommands();
+    if (!commands.some((c) => c.id === selected)) { selected = commands.length ? commands[0].id : null; saveUi(); }
+    render(); setupAuto();
+  });
   umbra.store.onChange(async () => { await loadState(); render(); });
 })();

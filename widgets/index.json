@@ -399,12 +399,14 @@
     {
       "id": "script-runner",
       "name": "Script Runner",
-      "description": "Run your own PowerShell, Python or Bash scripts from the desktop and see the exit code, time and output. Scripts are the commands declared in widget.json; you approve each one once.",
+      "description": "Run your own PowerShell, Python or Bash scripts from the desktop and see the exit code, time and output. Add your scripts in Settings (a file, or code you write there), give them a name, and press Run.",
       "author": "AmineChr54",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "manifestVersion": 1,
+      "changelog": "Add, edit and delete your own scripts in Settings (My widgets, Script Runner), with names. No more editing widget.json.",
       "preview": "preview.png",
       "hosts": [],
+      "userScripts": true,
       "commands": [
         {
           "id": "system-info",
@@ -419,7 +421,7 @@
         {
           "id": "python-version",
           "run": "python -c \"import sys, platform; print('Python', platform.python_version()); print(sys.executable)\"",
-          "description": "Example: needs Python on PATH. Replace it with your own script."
+          "description": "Example: needs Python on PATH."
         }
       ],
       "files": [

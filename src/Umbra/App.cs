@@ -17,8 +17,14 @@ sealed class App : ApplicationContext, IUmbraHost
     SettingsWindow? _settingsWindow;
     public UpdateService Updater { get; }
 
-    /// <summary>Runs widget-declared local commands behind the approval gate.</summary>
-    public CommandService Commands { get; } = new(CommandApprovals.Shared, req => Task.FromResult(ApprovalDialog.Ask(req)));
+    /// <summary>Runs widget-declared local commands and the user's own scripts (Settings) behind the approval gate.</summary>
+    public CommandService Commands { get; } = new(CommandApprovals.Shared, req => Task.FromResult(ApprovalDialog.Ask(req)), scripts: UserScripts.Shared);
+
+    /// <summary>The user saved or deleted a script: tell every open copy of that widget (umbra.onCommandsChange).</summary>
+    public void CommandsChanged(string widgetId)
+    {
+        foreach (var w in _windows.Values) if (w.Manifest.Id == widgetId) w.NotifyCommandsChanged();
+    }
 
     /// <summary>Webcam timelapse recordings (umbra.timelapse, permissions.camera). Started only from a widget click, never by automation.</summary>
     public TimelapseService Timelapse { get; } = new(TimelapseService.DefaultRoot);

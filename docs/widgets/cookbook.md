@@ -102,6 +102,10 @@ const r = await umbra.run("system-info"); // { exitCode, stdout, stderr, timedOu
 [`script-runner`](../../widgets/script-runner/widget.json) declares several. An interpreter (`powershell`, `python`, `bash`...)
 with a parameter needs fixed `choices` for it; `umbractl validate` tells you. An agent or `umbractl` can never approve a command.
 
+To let the user add their own scripts in Settings instead, add `"userScripts": true` to `permissions` and list what can
+run with `umbra.commands()` (re-read it in `umbra.onCommandsChange`), as `script-runner` does. See
+[The user's own scripts](../widget-sdk.md#the-users-own-scripts).
+
 ## Media
 
 ```json

@@ -255,6 +255,66 @@ sealed class SettingsWindow : Form, ISettingsView
                 SendState();
                 break;
             }
+
+            case "saveScript":
+            case "deleteScript":
+            {
+                // The user's own scripts (permissions.userScripts). This page is the only writer: saving here is the user's
+                // approval of exactly that command, and there is no control command, umbractl or MCP tool for it.
+                var widget = _app.Manifests.FirstOrDefault(w => w.Id == (msg["widget"]?.GetValue<string>() ?? ""));
+                try
+                {
+                    if (widget is null) throw new WidgetCommandException("Unknown widget");
+                    if (msg["type"]!.GetValue<string>() == "deleteScript")
+                    {
+                        var sid = msg["script"]?.GetValue<string>() ?? "";
+                        var name = _app.Commands.UserScriptsOf(widget).FirstOrDefault(s => s.Id == sid)?.Title ?? sid;
+                        if (!HostDialog.Confirm(this, $"Delete the script {ApprovalDialog.Clean(name, 60)}?", yesText: "Delete", noText: "Cancel")) break;
+                        _app.Commands.DeleteUserScript(widget, sid);
+                        Post(new JsonObject { ["type"] = "notice", ["text"] = $"Deleted {name}" });
+                    }
+                    else
+                    {
+                        var input = msg["script"] as JsonObject ?? throw new WidgetCommandException("Nothing to save");
+                        string S(string k) => input[k] is JsonValue v && v.TryGetValue<string>(out var s) ? s : "";
+                        var script = new UserScript
+                        {
+                            Id = S("id"), Title = S("title"), Description = S("description"), Kind = S("kind"), Mode = S("mode"),
+                            Path = S("path"), Code = S("code"), Args = S("args"),
+                            TimeoutSeconds = input["timeoutSeconds"] is JsonValue t && t.TryGetValue<int>(out var n) ? n : CommandSpec.DefaultTimeoutSeconds,
+                        };
+                        var (saved, approved) = _app.Commands.SaveUserScript(widget, script);
+                        Post(new JsonObject { ["type"] = "scriptSaved", ["widget"] = widget.Id, ["script"] = saved.Id });
+                        Post(approved
+                            ? new JsonObject { ["type"] = "notice", ["text"] = $"Saved {saved.Title}" }
+                            : new JsonObject { ["type"] = "commandError", ["error"] = $"Saved {saved.Title}, but its program wasn't found on this PC. Install it (or use a full path), then press Approve." });
+                    }
+                    _app.CommandsChanged(widget.Id);
+                }
+                catch (WidgetCommandException ex) { Post(new JsonObject { ["type"] = "commandError", ["error"] = ex.Message }); }
+                SendState();
+                break;
+            }
+
+            case "pickScriptFile":
+            {
+                // A host file dialog, so the path comes from the user's pick (the page could also take a typed path).
+                var kind = msg["kind"]?.GetValue<string>() ?? "";
+                using var dlg = new OpenFileDialog
+                {
+                    Title = kind == "program" ? "Pick the program to run" : "Pick the script to run",
+                    Filter = kind switch
+                    {
+                        "powershell" => "PowerShell script (*.ps1)|*.ps1|All files (*.*)|*.*",
+                        "python" => "Python script (*.py;*.pyw)|*.py;*.pyw|All files (*.*)|*.*",
+                        "bash" => "Shell script (*.sh)|*.sh|All files (*.*)|*.*",
+                        _ => "Programs (*.exe;*.bat;*.cmd)|*.exe;*.bat;*.cmd|All files (*.*)|*.*",
+                    },
+                };
+                if (dlg.ShowDialog(this) != DialogResult.OK) break;
+                Post(new JsonObject { ["type"] = "scriptFile", ["ref"] = msg["ref"]?.DeepClone(), ["path"] = dlg.FileName });
+                break;
+            }
             case "addInstance":
                 if (_app.Manifests.FirstOrDefault(m => m.Id == id) is { } wm)
                 {
@@ -573,6 +633,31 @@ sealed class SettingsWindow : Form, ISettingsView
         _themesSent.TrySetResult();
     }
 
+    /// <summary>The user's scripts for the editor: what they typed, plus the exact command line, hash and approval status.</summary>
+    JsonArray ScriptsJson(WidgetManifest m)
+    {
+        var specs = _app.Commands.All(m).Where(c => c.IsUserScript).ToDictionary(c => c.Id);
+        return new JsonArray(_app.Commands.UserScriptsOf(m).Select(s =>
+        {
+            var spec = specs.GetValueOrDefault(s.Id);
+            return (JsonNode?)new JsonObject
+            {
+                ["id"] = s.Id,
+                ["title"] = s.Title,
+                ["description"] = s.Description,
+                ["kind"] = s.Kind,
+                ["mode"] = s.Mode,
+                ["path"] = s.Path,
+                ["code"] = s.Code,
+                ["args"] = s.Args,
+                ["timeoutSeconds"] = s.TimeoutSeconds,
+                ["line"] = spec?.DisplayLine() ?? "",
+                ["hash"] = spec?.Hash() ?? "",
+                ["status"] = spec is null ? "invalid" : _app.Commands.Approvals.Status(m.Id, spec),
+            };
+        }).ToArray());
+    }
+
     void SendState()
     {
         var widgets = new JsonArray();
@@ -609,6 +694,8 @@ sealed class SettingsWindow : Form, ISettingsView
                     ["hash"] = c.Hash(),
                     ["status"] = _app.Commands.Approvals.Status(m.Id, c),
                 }).ToArray()),
+                ["userScripts"] = _app.Commands.TakesUserScripts(m),
+                ["scripts"] = ScriptsJson(m),
                 ["options"] = m.Options.DeepClone(),
                 ["optionOrder"] = new JsonArray(m.OptionOrder.Select(k => (JsonNode?)k).ToArray()),
             });

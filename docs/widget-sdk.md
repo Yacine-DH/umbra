@@ -78,6 +78,7 @@ Nothing ships inside the app; every widget, including S&P 500, is installed from
 | `permissions.system` | Optional: any of `"cpu"`, `"memory"`, `"network"`. Needed for `umbra.system()`; Browse shows them as "Reads cpu usage" etc. |
 | `permissions.hosts` | Every HTTPS hostname the widget may reach. **All other requests are blocked** (fetch, XHR, images, scripts, fonts). `[]` for offline widgets |
 | `permissions.commands` | Local programs the widget may start with `umbra.run`. Empty by default. See [Running local commands](#running-local-commands) |
+| `permissions.userScripts` | Optional boolean. Lets the user add their own scripts for this widget in Settings > My widgets; the widget lists them with `umbra.commands()`. Grants nothing by itself. See [The user's own scripts](#the-users-own-scripts) |
 | `options` | Settings form shown in **My widgets**, in this order. Types: `text`, `number` (`min`/`max`/`step`), `select` (needs `choices`), `toggle`. Optional `hint` (text under the field), `group` (options with the same group fold into one collapsed section titled with it) and `advanced: true` (folds into a collapsed "Advanced" section); use them when a widget has many options |
 
 The JSON Schema is in [`schemas/widget.schema.json`](../schemas/widget.schema.json).
@@ -136,6 +137,8 @@ is WebView2 on Windows, and other platforms use a different one that `umbra.js` 
 | `umbra.timelapse.chooseFolder()` | Opens the host's folder dialog (after a click on the widget) and resolves `{ folder (its name only), changed }`. The page never passes a path |
 | `umbra.timelapse.onChange(fn)` | `fn(state)` on start, each still, rendering and the end (`state: "idle"` with `file` or `error`) |
 | `umbra.run(commandId, params?)` | Runs a command declared in `permissions.commands` and resolves `{ exitCode, stdout, stderr, timedOut, truncated, durationMs }`. Rejects when the command isn't declared, isn't approved yet, or `params` are invalid. See below |
+| `umbra.commands()` | Resolves what `umbra.run` can run: `[{ id, title, description, user }]`, the declared commands, then (with `permissions.userScripts`) the scripts the user added in Settings (`user: true`). Ids and names only; programs, arguments and paths stay in the host |
+| `umbra.onCommandsChange(fn)` | `fn()` when the user adds, edits or deletes one of this widget's scripts in Settings; call `umbra.commands()` again |
 | `umbra.fetchText(url)` | Like `fetchJson`, but resolves with the response body as a string (up to 2 MB), for Markdown, CSV or HTML |
 | `umbra.status` | Data freshness, tracked from every `fetchJson`/`fetchText`: `state` (`"none"`, `"live"`, `"stale"`, `"offline"`), `lastOk` (Date or `null`), `failures`, `ok(at?)`, `failed(err)`, `onChange(fn)`. See [Freshness and offline](#freshness-and-offline) |
 | `umbra.store.get(key, fallback?)` | Promise of this widget's saved value for `key` (any JSON), or `fallback` when it was never set |
@@ -356,6 +359,31 @@ Rules (checked when the widget loads, by `scripts/catalog.mjs`, and on install; 
   Settings > My widgets"). Users can approve and revoke each command there, and Browse flags widgets that declare commands.
 - Calls fail while the widget is disabled, and a running command is stopped when the widget closes.
 - Automation (`umbractl approvals`, MCP `list_command_approvals`) can only **read** the approval state.
+
+### The user's own scripts
+
+A widget that runs whatever the user wants (Script Runner) sets `"userScripts": true` in `permissions` instead of
+asking users to edit `widget.json`. Its card in **Settings > My widgets** then has a **Your scripts** section where the
+user adds, edits and deletes scripts: a name, a type (PowerShell, Python, Bash or Program), a script file (with a
+Browse button) or code typed right there, optional arguments, a time limit and a description.
+
+```js
+const list = await umbra.commands();   // [{ id: "backup", title: "Backup", description: "", user: true }, ...]
+await umbra.run("backup");             // same result and rules as a declared command
+umbra.onCommandsChange(async () => render(await umbra.commands()));
+```
+
+- The host builds the command, never a shell line: `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File <file> <args>`,
+  `python <file> <args>`, `bash <file> <args>` (a one-line Bash command runs as `bash -c "<line>"`), or `<program> <args>`.
+  Code typed in Settings is kept in `%APPDATA%\Umbra\scripts.json` and written to `%APPDATA%\Umbra\scripts\<widget id>\<id>-<hash>.ps1|.py`
+  again before every run. The file name carries a hash of the code, so other code is another command and needs a new approval.
+- **Saving is the approval**: the user typed the exact command in Umbra's own Settings page, which shows the command line
+  on each row. A script whose program isn't found is saved as "Not approved" with an Approve button. Everything else
+  (timeout of at most 120 s, 1 MB output cap, scrubbed environment, job object, never while disabled) is the same as above.
+- Only the Settings page adds, edits, deletes or approves scripts. No control command, `umbractl` or MCP tool can, and the
+  page of the widget only ever sees ids and names. A declared command id always wins over a script with the same id.
+- Scripts are stored per widget id outside the widget folder, so updating the widget keeps them. An update that newly
+  declares `userScripts` is listed in the update review box.
 
 ## Webcam timelapse
 
