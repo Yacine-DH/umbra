@@ -1,6 +1,6 @@
 ; Umbra installer (Inno Setup 6). Build with ..\build.ps1, which passes AppVersion and PublishDir.
 #ifndef AppVersion
-  #define AppVersion "1.10.0"
+  #define AppVersion "1.11.0"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\dist\publish"
