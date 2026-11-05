@@ -29,7 +29,7 @@ jobs:
       - name: Unit tests
         run: dotnet test Umbra.slnx -c Release --no-build --logger "console;verbosity=normal"
       - name: Widget parser and SDK tests
-        run: node --test tests/widgets/*.test.mjs tests/sdk/*.test.mjs
+        run: node --test tests/widgets/*.test.mjs tests/sdk/*.test.mjs tests/release/*.test.mjs
       - name: Relay tests
         run: node --test tests/relay/*.test.mjs
       - name: Version consistency

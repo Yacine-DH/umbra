@@ -14,6 +14,7 @@ dotnet test Umbra.Linux.slnf
 node --test tests/relay/*.test.mjs        # relay (Buddy + Hearth) Worker logic, no Cloudflare needed
 node scripts/catalog.mjs                  # validate widgets/ + themes/ and regenerate both index.json files (commit them)
 powershell -File build.ps1                # publish both exes + installer -> dist/UmbraSetup-<ver>.exe
+node scripts/release.mjs minor            # start a release (patch|minor|major|X.Y.Z): bump, checks, release PR; merging it publishes
 dotnet run --project src/Umbra            # run from source (exit the installed Umbra first: one instance per user)
 ```
 
@@ -153,7 +154,7 @@ Use `umbractl capture <widget-id|settings:<page>> out.png`, then look at the PNG
   dependencies without a reason (MCP and JSON-RPC are hand-rolled on purpose).
 - JS: no build step or frameworks in `shared/`, `settings/` or built-in widgets.
 - Widgets: true black `#000`, Segoe UI Variable via `umbra.css`, tabular numbers, respect `data-motion`.
-- Bump `version` in a widget's `widget.json` on every change; bump `Directory.Build.props` for app releases.
+- Bump `version` in a widget's `widget.json` on every change; the app version is bumped only by `node scripts/release.mjs`, never by hand.
 - Never hand-edit `widgets/index.json` or `themes/index.json`: run `node scripts/catalog.mjs` and commit the result in your PR. Nothing regenerates them after merge, and CI (`catalog.mjs --check`) fails the PR if they are stale.
 
 ## Workflow
@@ -167,7 +168,8 @@ Use `umbractl capture <widget-id|settings:<page>> out.png`, then look at the PNG
 - Contributors without write access work from a fork (`gh repo fork AmineChr54/umbra --clone`, then
   `gh pr create --repo AmineChr54/umbra`). They can't set labels, assignees or the board, and never merge; the
   maintainer does that. A first-time contributor's CI waits for the maintainer to approve the run.
-- Releases: bump the version, tag `vX.Y.Z` and push. `release.yml` builds and attaches the installer
-  (see `.claude/skills/release`).
+- Releases: `node scripts/release.mjs <patch|minor|major>` bumps `Directory.Build.props` and `installer/Umbra.iss`, runs the
+  checks and opens the `Release vX.Y.Z` PR with draft notes as its body. Merging it makes `release.yml` build the installer,
+  create the tag and the GitHub release with the PR body as notes. No manual tag (see `.claude/skills/release`).
 
 Project agents live in `.claude/agents/` and repeatable procedures in `.claude/skills/`.

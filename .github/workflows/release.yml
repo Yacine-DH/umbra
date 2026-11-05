@@ -1,8 +1,13 @@
 name: Release
 
-# Push a tag vX.Y.Z (matching Directory.Build.props) to build the installer and publish the GitHub release.
+# Publishes a release when the version in Directory.Build.props changes on main (the PR opened by
+# `node scripts/release.mjs minor`): builds the installer, creates the tag vX.Y.Z and the GitHub release, and uses the
+# merged PR's body (above "<!-- end of release notes -->") as the notes. A version whose tag already exists is skipped.
+# Pushing a tag vX.Y.Z by hand, or running it from the Actions tab with an existing tag, still (re)builds that release.
 on:
   push:
+    branches: [main]
+    paths: [Directory.Build.props] # not applied to tag pushes
     tags: ["v*"]
   workflow_dispatch:
     inputs:
@@ -12,17 +17,24 @@ on:
 
 permissions:
   contents: write
+  pull-requests: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: windows-latest
     env:
-      TAG: ${{ inputs.tag || github.ref_name }}
+      # The tag asked for (dispatch or tag push); empty on a push to main. "Resolve version" sets TAG for the later steps
+      # (a separate name, because an env key written here would win over GITHUB_ENV).
+      TAG_IN: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name || '') }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.tag || github.sha }}
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
@@ -30,27 +42,39 @@ jobs:
         with:
           node-version: 22
 
-      - name: Check tag matches version
+      - name: Resolve version
         shell: pwsh
         run: |
           $v = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
-          if ("v$v" -ne $env:TAG) { throw "Tag $env:TAG does not match Directory.Build.props version $v" }
           "VERSION=$v" >> $env:GITHUB_ENV
+          "TAG=v$v" >> $env:GITHUB_ENV
+          if ($env:TAG_IN) {
+            if ("v$v" -ne $env:TAG_IN) { throw "Tag $env:TAG_IN does not match Directory.Build.props version $v" }
+            "GO=true" >> $env:GITHUB_ENV
+          } else {
+            $exists = git ls-remote --tags origin "refs/tags/v$v"
+            if ($exists) { Write-Host "v$v is already released: nothing to do"; "GO=false" >> $env:GITHUB_ENV }
+            else { "GO=true" >> $env:GITHUB_ENV; "FROM_MAIN=true" >> $env:GITHUB_ENV }
+          }
 
       - name: Unit tests
+        if: env.GO == 'true'
         run: dotnet test Umbra.slnx -c Release
 
       - name: Install Inno Setup
+        if: env.GO == 'true'
         shell: pwsh
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
 
       - name: Build installer
+        if: env.GO == 'true'
         shell: pwsh
         run: ./build.ps1
 
       # Code signing needs a certificate we may not have yet: skip cleanly unless both secrets are set.
       - name: Check signing secrets
+        if: env.GO == 'true'
         shell: pwsh
         env:
           SIGN_CERT_BASE64: ${{ secrets.SIGN_CERT_BASE64 }}
@@ -61,7 +85,7 @@ jobs:
           if (-not $ok) { Write-Host "SIGN_CERT_BASE64 / SIGN_CERT_PASSWORD not set: publishing an unsigned installer" }
 
       - name: Sign installer
-        if: env.SIGN == 'true'
+        if: env.GO == 'true' && env.SIGN == 'true'
         shell: pwsh
         env:
           SIGN_CERT_BASE64: ${{ secrets.SIGN_CERT_BASE64 }}
@@ -79,20 +103,37 @@ jobs:
           } finally { Remove-Item $pfx -Force -ErrorAction SilentlyContinue }
 
       - name: Fill winget manifests
+        if: env.GO == 'true'
         shell: pwsh
         run: ./scripts/winget.ps1 -Installer "dist/UmbraSetup-$env:VERSION.exe" -Version $env:VERSION -Out dist/winget
 
+      # The release PR's body is the notes (edited in the PR before merging). A tag push or a rerun has none: GitHub generates them.
+      - name: Release notes from the merged PR
+        if: env.GO == 'true' && env.FROM_MAIN == 'true'
+        shell: pwsh
+        run: |
+          gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" --jq '.[0].body // ""' | Out-File -Encoding utf8 dist/release-pr-body.md
+          node --input-type=module -e "import { readFileSync, writeFileSync } from 'node:fs'; import { notesFromBody } from './scripts/release.mjs'; writeFileSync('dist/release-notes.md', notesFromBody(readFileSync('dist/release-pr-body.md', 'utf8')));"
+          if ((Get-Item dist/release-notes.md).Length -gt 0) { "NOTES=dist/release-notes.md" >> $env:GITHUB_ENV } else { Write-Host "No PR body found: GitHub will generate the notes" }
+
       - name: Publish release
+        if: env.GO == 'true'
         shell: pwsh
         run: |
           $setup = "dist/UmbraSetup-$env:VERSION.exe"
           $portable = "dist/Umbra-$env:VERSION-portable.zip"
           gh release view $env:TAG *> $null
           if ($LASTEXITCODE -eq 0) { gh release upload $env:TAG $setup $portable --clobber }
-          else { gh release create $env:TAG $setup $portable --title "Umbra $env:VERSION" --generate-notes }
+          else {
+            # From main this also creates the tag on the merged commit (a tag made with this token starts no other workflow).
+            $notes = if ($env:NOTES) { @('--notes-file', $env:NOTES) } else { @('--generate-notes') }
+            gh release create $env:TAG $setup $portable --title "Umbra $env:VERSION" --target $env:GITHUB_SHA @notes
+            if ($LASTEXITCODE) { throw "gh release create failed" }
+          }
 
       # Attach the filled manifests to the run; submit them to microsoft/winget-pkgs (see CONTRIBUTING.md).
       - uses: actions/upload-artifact@v4
+        if: env.GO == 'true'
         with:
           name: winget-manifests-${{ env.VERSION }}
           path: dist/winget/${{ env.VERSION }}
