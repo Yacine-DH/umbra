@@ -61,6 +61,17 @@ button:focus-visible, select:focus-visible, input[type=color]:focus-visible, inp
 .nav-sep { height: 1px; margin: 8px 12px; background: var(--line); }
 .nav .count:empty { display: none; }
 .side-foot { margin-top: auto; }
+.zoom { display: flex; align-items: center; gap: 2px; height: 38px; padding: 0 6px 0 12px; color: var(--text-2); font-weight: 500; }
+.zoom-label { margin-right: auto; }
+.zoom button {
+  height: 28px; min-width: 28px; padding: 0 8px; border-radius: 8px;
+  color: var(--text-2); font-variant-numeric: tabular-nums;
+  transition: background 160ms, color 160ms;
+}
+.zoom button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.06); color: var(--text); }
+.zoom button:disabled { opacity: 0.35; cursor: default; }
+#zoomOut, #zoomIn { font-size: 16px; line-height: 1; }
+#zoomReset { min-width: 52px; font-size: 12.5px; }
 
 /* ---------- content ---------- */
 .content { overflow-y: auto; scroll-behavior: smooth; }

@@ -1197,6 +1197,9 @@ sealed class App : ApplicationContext, IUmbraHost
     /// <summary>Remembers where the Settings window was closed (see <see cref="SettingsPlacement"/>).</summary>
     public void SaveSettingsPlacement(SettingsPlacement p) { Settings.SettingsPanel = p; Settings.Save(); }
 
+    /// <summary>The Settings window's zoom changed: keep it at once, not only when the window closes.</summary>
+    public void SaveSettingsZoom(double zoom) { Settings.SettingsPanel.Zoom = zoom; Settings.Save(); }
+
     public void SaveSettings() { Prefs.Configure(Settings.General); Settings.Save(); foreach (var w in _windows.Values) if (w.IsHandleCreated) DesktopPin.RoundCorners(w.Handle); }
 
     /// <summary>

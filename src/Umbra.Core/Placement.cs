@@ -62,9 +62,9 @@ public static class Placement
     /// Records a window's normal bounds (physical px) as a <see cref="SettingsPlacement"/>: the monitor it mostly sits on,
     /// its offset from that monitor's corner and its size, both in logical px (divided by <paramref name="scale"/>).
     /// </summary>
-    public static SettingsPlacement Capture(IReadOnlyList<MonitorInfo> screens, Rectangle bounds, float scale, bool maximized, string? page)
+    public static SettingsPlacement Capture(IReadOnlyList<MonitorInfo> screens, Rectangle bounds, float scale, bool maximized, string? page, double zoom = 1.0)
     {
-        var p = new SettingsPlacement { Maximized = maximized, Page = page };
+        var p = new SettingsPlacement { Maximized = maximized, Page = page, Zoom = zoom };
         if (scale <= 0 || Find(screens, bounds) is not { } m) return p;
         p.Monitor = m.Name;
         p.X = (int)Math.Round((bounds.X - m.Bounds.X) / scale);

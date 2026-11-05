@@ -1327,6 +1327,11 @@ bridge && bridge.listen((m) => {
     case "notice":
       toast(m.text);
       break;
+    case "zoom":
+      $("#zoomReset").textContent = `${m.percent}%`;
+      $("#zoomOut").disabled = !!m.min;
+      $("#zoomIn").disabled = !!m.max;
+      break;
     case "layoutDeleted":
       toast(`Deleted layout ${m.name}`, false, { label: "Undo", run: () => post({ type: "undoDeleteLayout" }) });
       break;
@@ -1561,6 +1566,28 @@ document.addEventListener("keydown", (e) => {
     if (b) { e.preventDefault(); show(b.dataset.page); }
   }
 });
+
+// ---------- zoom: like a browser, 5 % steps owned by the host (SettingsPlacement.Zoom) ----------
+const zoom = (step) => post({ type: "zoom", step });
+$("#zoomOut").addEventListener("click", () => zoom(-1));
+$("#zoomIn").addEventListener("click", () => zoom(1));
+$("#zoomReset").addEventListener("click", () => zoom(0));
+document.addEventListener("keydown", (e) => {
+  if (e.defaultPrevented || recording || !e.ctrlKey || e.altKey || e.metaKey) return;
+  const step = e.key === "=" || e.key === "+" ? 1 : e.key === "-" || e.key === "_" ? -1 : e.key === "0" && !e.shiftKey ? 0 : null;
+  if (step === null) return;
+  e.preventDefault();
+  zoom(step);
+});
+// A mouse notch is one step; a touchpad's small deltas add up to one.
+let wheelZoom = 0;
+document.addEventListener("wheel", (e) => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  if (Math.abs(e.deltaY) >= 50 || e.deltaMode !== 0) { wheelZoom = 0; zoom(e.deltaY < 0 ? 1 : -1); return; }
+  wheelZoom += e.deltaY;
+  if (Math.abs(wheelZoom) >= 100) { zoom(wheelZoom < 0 ? 1 : -1); wheelZoom = 0; }
+}, { passive: false });
 
 // ---------- welcome dialog (#241): described only, nothing here touches the user's widgets ----------
 const WELCOME = [

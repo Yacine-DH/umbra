@@ -170,6 +170,23 @@ public sealed class SettingsPlacement
     public bool Maximized { get; set; }
     /// <summary>Last open page (one of <see cref="SettingsWindow.Pages"/>); null = General.</summary>
     public string? Page { get; set; }
+
+    public const double MinZoom = 0.5, MaxZoom = 2.0, ZoomStep = 0.05;
+    double _zoom = 1.0;
+
+    /// <summary>Page zoom of the Settings window, 50-200 % in 5 % steps like a browser (Ctrl+= / Ctrl+- / Ctrl+0, Ctrl+wheel).</summary>
+    public double Zoom { get => _zoom; set => _zoom = ClampZoom(value); }
+
+    /// <summary>Snaps to the 5 % grid within <see cref="MinZoom"/>-<see cref="MaxZoom"/>; zero, negative or not a number becomes 100 %.</summary>
+    public static double ClampZoom(double value)
+    {
+        if (!double.IsFinite(value) || value <= 0) return 1.0;
+        return Math.Round(Math.Clamp(Math.Round(value / ZoomStep) * ZoomStep, MinZoom, MaxZoom), 2);
+    }
+
+    /// <summary>One zoom step: <paramref name="direction"/> &gt; 0 zooms in, &lt; 0 out, 0 resets to 100 %.</summary>
+    public static double StepZoom(double current, int direction) =>
+        direction == 0 ? 1.0 : ClampZoom(ClampZoom(current) + Math.Sign(direction) * ZoomStep);
 }
 
 /// <summary>User settings persisted to %APPDATA%\Umbra\settings.json.</summary>

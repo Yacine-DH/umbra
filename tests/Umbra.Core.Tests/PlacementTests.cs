@@ -106,6 +106,43 @@ public class PlacementTests
     }
 
     [Fact]
+    public void Settings_zoom_steps_5_percent_like_a_browser_within_50_to_200()
+    {
+        Assert.Equal(1.05, SettingsPlacement.StepZoom(1.0, 1));
+        Assert.Equal(0.95, SettingsPlacement.StepZoom(1.0, -1));
+        Assert.Equal(1.0, SettingsPlacement.StepZoom(1.35, 0));
+        Assert.Equal(2.0, SettingsPlacement.StepZoom(2.0, 1));
+        Assert.Equal(0.5, SettingsPlacement.StepZoom(0.5, -1));
+        // Twenty steps up and back land exactly on 100 % (no float drift).
+        var z = 1.0;
+        for (var i = 0; i < 20; i++) z = SettingsPlacement.StepZoom(z, 1);
+        Assert.Equal(2.0, z);
+        for (var i = 0; i < 20; i++) z = SettingsPlacement.StepZoom(z, -1);
+        Assert.Equal(1.0, z);
+    }
+
+    [Theory]
+    [InlineData(0.0, 1.0)]
+    [InlineData(-2.0, 1.0)]
+    [InlineData(double.NaN, 1.0)]
+    [InlineData(0.1, 0.5)]
+    [InlineData(9.0, 2.0)]
+    [InlineData(1.12, 1.1)]
+    [InlineData(1.13, 1.15)]
+    public void Settings_zoom_from_a_file_is_clamped_and_snapped(double stored, double expected)
+    {
+        Assert.Equal(expected, new SettingsPlacement { Zoom = stored }.Zoom);
+    }
+
+    [Fact]
+    public void Settings_zoom_survives_capture_and_a_settings_roundtrip_and_defaults_to_100()
+    {
+        var s = new Settings { SettingsPanel = Placement.Capture(new[] { Main }, new Rectangle(10, 10, 1000, 700), 1f, false, null, 1.25) };
+        Assert.Equal(1.25, Settings.FromJson(s.ToJson()).SettingsPanel.Zoom);
+        Assert.Equal(1.0, Settings.FromJson(System.Text.Json.Nodes.JsonNode.Parse("""{ "settingsPanel": { "page": "home" } }""")!).SettingsPanel.Zoom);
+    }
+
+    [Fact]
     public void A_null_settingsPanel_in_the_file_means_defaults()
     {
         var s = Settings.FromJson(System.Text.Json.Nodes.JsonNode.Parse("""{ "settingsPanel": null }""")!);

@@ -22,6 +22,7 @@ sealed class SettingsWindow : Form, ISettingsView
 
     readonly bool _background;
     string? _page; // last page the panel showed, saved on close
+    double _zoom = 1.0; // page zoom (SettingsPlacement.Zoom); background windows stay at 100 % so captures are stable
 
     /// <summary>Background windows (used for captures) are shown off-screen, outside the taskbar, without taking focus.</summary>
     protected override bool ShowWithoutActivation => _background;
@@ -37,7 +38,7 @@ sealed class SettingsWindow : Form, ISettingsView
         AutoScaleMode = AutoScaleMode.None;
         Controls.Add(_view);
         ApplyDpiSize();
-        if (!background) RestorePlacement();
+        if (!background) { RestorePlacement(); _zoom = _app.Settings.SettingsPanel.Zoom; }
         if (background)
         {
             ShowInTaskbar = false;
@@ -73,7 +74,7 @@ sealed class SettingsWindow : Form, ISettingsView
         if (_background || e.Cancel || !IsHandleCreated) return;
         // RestoreBounds is the normal rectangle even while maximized or minimized.
         var bounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
-        _app.SaveSettingsPlacement(Placement.Capture(Screens.All(), bounds, DeviceDpi / 96f, WindowState == FormWindowState.Maximized, _page));
+        _app.SaveSettingsPlacement(Placement.Capture(Screens.All(), bounds, DeviceDpi / 96f, WindowState == FormWindowState.Maximized, _page, _zoom));
     }
 
     protected override void OnHandleCreated(EventArgs e)
@@ -91,6 +92,7 @@ sealed class SettingsWindow : Form, ISettingsView
         try
         {
             await WebHost.InitAsync(_view);
+            _view.ZoomFactor = _zoom;
             _view.CoreWebView2.WebMessageReceived += OnMessage;
             _view.CoreWebView2.Navigate(WebHost.Url("settings/index.html"));
         }
@@ -110,6 +112,7 @@ sealed class SettingsWindow : Form, ISettingsView
         {
             case "load":
                 SendState();
+                PostZoom();
                 // Reopen on the last page; a page asked for explicitly (umbractl settings <page>) runs after this and wins.
                 if (!_background && _app.Settings.SettingsPanel.Page is { } last && last != "home" && Pages.Contains(last))
                     _ = _view.CoreWebView2.ExecuteScriptAsync($"show('{last}')");
@@ -118,6 +121,14 @@ sealed class SettingsWindow : Form, ISettingsView
 
             case "page":
                 if (msg["page"]?.GetValue<string>() is string pg && Pages.Contains(pg)) _page = pg;
+                break;
+
+            case "zoom": // the sidebar's - / % / + buttons, Ctrl+= / Ctrl+- / Ctrl+0 and Ctrl+wheel; -1, 1 or 0 (reset)
+                if (_background) break;
+                _zoom = SettingsPlacement.StepZoom(_zoom, msg["step"] is JsonValue sv && sv.TryGetValue<int>(out var step) ? step : 0);
+                _view.ZoomFactor = _zoom;
+                _app.SaveSettingsZoom(_zoom);
+                PostZoom();
                 break;
 
             case "close": // Esc in the page
@@ -712,6 +723,8 @@ sealed class SettingsWindow : Form, ISettingsView
         await _view.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, ms);
         return ms.ToArray();
     }
+
+    void PostZoom() => Post(new JsonObject { ["type"] = "zoom", ["percent"] = (int)Math.Round(_zoom * 100), ["min"] = _zoom <= SettingsPlacement.MinZoom, ["max"] = _zoom >= SettingsPlacement.MaxZoom });
 
     void Post(JsonNode node)
     {
