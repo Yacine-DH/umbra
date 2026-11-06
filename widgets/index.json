@@ -399,31 +399,15 @@
     {
       "id": "script-runner",
       "name": "Script Runner",
-      "description": "Run your own PowerShell, Python or Bash scripts from the desktop and see the exit code, time and output. Add your scripts in Settings (a file, or code you write there), give them a name, and press Run.",
+      "description": "Run your own PowerShell, Python or Bash scripts from the desktop: ones that finish (with exit code, time and output) and ones that keep running, like a tunnel or a server. Add them in Settings, give them a name, and press Run.",
       "author": "AmineChr54",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "manifestVersion": 1,
-      "changelog": "Add, edit and delete your own scripts in Settings (My widgets, Script Runner), with names. No more editing widget.json.",
+      "changelog": "Scripts that keep running (tunnels, servers) with Start and Stop, live output while a script runs, a Stop button, the last 10 runs per script, a Copy button, and an optional toast when a script fails. The built-in examples are gone: pick one from \"Start from an example\" when you add a script, and delete it like your own.",
       "preview": "preview.png",
       "hosts": [],
+      "notifications": true,
       "userScripts": true,
-      "commands": [
-        {
-          "id": "system-info",
-          "run": "powershell -NoProfile -NonInteractive -Command \"$o = Get-CimInstance Win32_OperatingSystem; \\\"$($o.Caption) $($o.Version)\\\"; \\\"Uptime: $([int]((Get-Date) - $o.LastBootUpTime).TotalHours) h\\\"; \\\"Free memory: $([math]::Round($o.FreePhysicalMemory/1MB,1)) GB\\\"\"",
-          "description": "Example: prints the Windows version, uptime and free memory."
-        },
-        {
-          "id": "disk-free",
-          "run": "powershell -NoProfile -NonInteractive -Command \"Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -ne $null } | ForEach-Object { \\\"{0}: {1:N1} GB free of {2:N1} GB\\\" -f $_.Name, ($_.Free/1GB), (($_.Used+$_.Free)/1GB) }\"",
-          "description": "Example: free space on each drive."
-        },
-        {
-          "id": "python-version",
-          "run": "python -c \"import sys, platform; print('Python', platform.python_version()); print(sys.executable)\"",
-          "description": "Example: needs Python on PATH."
-        }
-      ],
       "files": [
         "README.md",
         "index.html",

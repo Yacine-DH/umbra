@@ -18,16 +18,21 @@ html, body { height: 100%; overflow: hidden; }
 .dot.fail, .dot.timeout, .dot.error { background: var(--down); }
 .dot.warn { background: #ffb454; }
 .dot.run { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+.dot.live { background: var(--up); box-shadow: 0 0 6px var(--up); }
 @keyframes pulse { 50% { opacity: 0.3; } }
 .info { flex: 1; min-width: 0; }
 .name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sub { margin-top: 1px; font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sub.bad { color: #ff8a8e; }
 .sub.warn { color: #ffb454; }
+.sub.live { color: var(--up); }
+.tag { margin-left: 6px; padding: 0 5px; border-radius: 4px; font-size: 9.5px; font-weight: 600; letter-spacing: 0.02em; color: var(--text-2); background: rgba(255,255,255,0.08); vertical-align: 1px; }
 
-.run { flex: none; height: 28px; min-width: 58px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--accent-soft); color: var(--accent-strong); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 120ms; }
-.run:hover:not(:disabled) { background: rgba(139,147,255,0.26); }
-.run:disabled { color: var(--text-3); background: transparent; cursor: default; }
+.go { flex: none; height: 28px; min-width: 58px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--accent-soft); color: var(--accent-strong); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 120ms; }
+.go:hover:not(:disabled) { background: rgba(139,147,255,0.26); }
+.go.stop { border-color: rgba(255,138,142,0.35); background: rgba(255,138,142,0.12); color: #ff8a8e; }
+.go.stop:hover:not(:disabled) { background: rgba(255,138,142,0.22); }
+.go:disabled { color: var(--text-3); background: transparent; cursor: default; }
 
 .empty { padding: 18px 14px; font-size: 12px; line-height: 1.5; color: var(--text-2); }
 .empty code { font-family: Consolas, monospace; color: var(--text); }
@@ -35,7 +40,9 @@ html, body { height: 100%; overflow: hidden; }
 .out { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: 4px 14px 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-1); }
 .out-head { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; }
 .out-name { font-weight: 600; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.out-meta { color: var(--text-3); white-space: nowrap; }
+.out-meta { margin-left: auto; color: var(--text-3); white-space: nowrap; }
+.copy { flex: none; margin: -2px -4px -2px 0; padding: 0 6px; border: 0; border-radius: 5px; background: none; color: var(--text-3); font: inherit; font-size: 11px; cursor: pointer; }
+.copy:hover { background: var(--surface-3); color: var(--text); }
 .big { margin-top: 6px; font-family: var(--font-display); font-size: 32px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .log { flex: 1; min-height: 0; margin: 8px 0 0; overflow: auto; font: 11px/1.5 Consolas, "Cascadia Mono", monospace; color: var(--text); white-space: pre-wrap; word-break: break-word; user-select: text; }
 .log::-webkit-scrollbar { width: 6px; }
@@ -43,3 +50,11 @@ html, body { height: 100%; overflow: hidden; }
 .log .err { color: #ff8a8e; }
 .log .note { color: #ffb454; }
 .log .dim { color: var(--text-3); }
+
+/* Earlier runs of the selected script */
+.history { flex: none; max-height: 92px; overflow-y: auto; margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
+.hist-title { margin-bottom: 2px; font-size: 10.5px; font-weight: 600; color: var(--text-3); }
+.hist { display: flex; align-items: center; gap: 8px; height: 18px; font-size: 11px; color: var(--text-2); }
+.hist .dot { width: 6px; height: 6px; }
+.hist-when { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hist-ms { color: var(--text-3); }

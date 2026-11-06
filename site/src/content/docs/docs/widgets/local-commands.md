@@ -53,7 +53,7 @@ The first run shows an Umbra prompt with the **exact command line**. The approva
 Declaring a command makes your widget need a human review. Prefer fixed `choices` over free-text parameters, and keep descriptions honest: they're shown to the user.
 :::
 
-`widgets/script-runner` is a worked example.
+`widgets/script-runner` is a worked example of the user's own scripts (below).
 
 ## The user's own scripts
 
