@@ -140,6 +140,10 @@ New automation goes through the control protocol so the CLI, MCP and tests stay 
   (the double-click hand-off, not a control command) have no MCP tool; the MCP server strips `acceptPermissions`, and `pack_widget`'s `out`/`overwrite`.
   URL downloads: HTTPS only, no IP literals/localhost/local names (trailing dot included), no credentials or odd ports, at most 5 redirects each re-checked, a connect step that refuses private/loopback/link-local addresses (DNS rebinding included), no cookies or decompression, 5 MB, 60 s; `install-url` refuses to replace an installed or catalog id without `--overwrite` (CLI only).
 
+- `umbra.requestNotifications()` (`NotificationConsent.cs`, `ApprovalDialog.AskNotifications`) shows the host-drawn "Allow notifications?"
+  prompt only for a widget declaring `permissions.notifications` whose switch is unset, only after a physical left click on it (`ClickGate`),
+  one at a time and rate-limited. Its only effect is the user's per-widget `Notifications` switch; an explicit Off (Settings or
+  "Don't ask again") is never asked again. No control command, umbractl or MCP tool shows or answers it.
 - `umbra.setTabIcon(name)` is a suggestion only: `WidgetWindow.HandleTabIcon` accepts a name that passes `Groups.IsIconName` and exists in `shared/tabicons` (no paths, URLs, emoji or markup), ignores and logs anything else, rate limits it (`Groups.AllowSuggestion`), and stores it in `WidgetSettings.SuggestedTabIcon`, separate from the user's `TabIcon`, which always wins (`Groups.ChooseIcon`). It never adds a control command, and a widget can't read or change the user's choice.
 - Themes are data only: token names come from `Theme.Allowed`, values must match the color/length patterns (mirrored in
   `scripts/catalog.mjs` and `schemas/theme.schema.json`), and catalog tokens are re-validated before Settings draws them.

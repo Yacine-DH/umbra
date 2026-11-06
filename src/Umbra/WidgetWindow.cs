@@ -691,6 +691,10 @@ sealed class WidgetWindow : Form, IWidgetView
                 HandleNotify(msg!);
                 break;
 
+            case "requestNotifications":
+                await HandleRequestNotifications(msg!);
+                break;
+
             case "media":
                 await HandleMedia(msg!);
                 break;
@@ -948,6 +952,47 @@ sealed class WidgetWindow : Form, IWidgetView
         else if (!_app.Notify(Instance, InstanceId.Label(Manifest, Instance), title, body, url, tag, actions)) error = "Rate limit reached (5 per 10 minutes)";
         reply["ok"] = error is null;
         if (error is not null) reply["error"] = error;
+        Post(reply);
+    }
+
+    /// <summary>
+    /// umbra.requestNotifications: answers whether this widget may notify, and when the user's switch is unset shows the
+    /// host-drawn prompt, only right after a physical left click on the widget (<see cref="NotificationConsent"/>).
+    /// </summary>
+    async Task HandleRequestNotifications(JsonNode msg)
+    {
+        var reply = new JsonObject { ["type"] = "requestNotificationsResult", ["id"] = msg["id"]?.DeepClone() };
+        try
+        {
+            if (!(Alive && Ws.Enabled)) throw new NotifyConsentException("The widget is disabled");
+            var consent = _app.NotificationConsent;
+            var ask = consent.Begin(Manifest, Ws, _app.Settings.General, RecentLeftClick());
+            bool allowed;
+            if (ask == NotifyAsk.Prompt)
+            {
+                NotifyChoice? choice = null;
+                try
+                {
+                    await Task.Yield(); // let the message handler return before the modal dialog
+                    choice = ApprovalDialog.AskNotifications(Manifest.Name);
+                }
+                finally { allowed = consent.End(_app.Settings, Manifest.Id, choice); }
+                Log.Write($"[{Instance}] notification prompt: {choice?.ToString() ?? "no answer"}");
+                if (choice is NotifyChoice.Allow or NotifyChoice.Never)
+                {
+                    _app.SaveSettings();
+                    _app.SettingsChangedElsewhere();
+                }
+            }
+            else allowed = ask == NotifyAsk.Allowed;
+            reply["ok"] = true;
+            reply["data"] = allowed;
+        }
+        catch (NotifyConsentException ex)
+        {
+            reply["ok"] = false;
+            reply["error"] = ex.Message;
+        }
         Post(reply);
     }
 

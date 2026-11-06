@@ -28,7 +28,10 @@ repository deploys them; a maintainer has to.
 1. Install Hearth from **Browse**. One of you chooses **Create our hearth** and gets a code (8 characters, valid for 10
    minutes, works once).
 2. The other chooses **Join with a code** and types it.
-3. Optional: in the Overview, use the pencil to set your own name and the together-since date. Each of you edits only
+3. The first time you click Hearth after pairing, Umbra asks whether Hearth may show notifications: **Allow** to get a
+   Windows notification when your partner taps you, **Not now** to be asked after the next restart, or **Don't ask
+   again**. You can change it any time in Settings > My widgets > Hearth. Each PC asks separately.
+4. Optional: in the Overview, use the pencil to set your own name and the together-since date. Each of you edits only
    your own name; either of you can change the date.
 
 Both PCs need an internet connection. Offline, a widget shows an "Offline" chip and keeps its last data.
@@ -116,9 +119,8 @@ A new relay starts empty, so a self-hosted hearth cannot reuse a pairing made on
 
 ## Known limitations
 
-- **Needs the relay.** Until the Hearth routes are deployed, Hearth cannot sync and shows "Offline". None of the sync has
-  been tried against a live relay, and none with two real PCs yet; the widget was tested against a fake relay that follows
-  the relay README.
+- **Needs the relay.** Without it Hearth cannot sync and shows "Offline". The Hearth routes are deployed on the default
+  host and were tested end to end against it; the widget's own tests use a fake relay that follows the relay README.
 - **Pairing is shared between copies through a workaround.** `umbra.store` is per copy, so copies on one PC pass the
   pairing around over a browser `BroadcastChannel`, and the paired copy must be allowed once (the **Allow** click
   above). The channel does connect separate WebView2 windows: a new copy offers **Use this PC's pairing**. The Allow

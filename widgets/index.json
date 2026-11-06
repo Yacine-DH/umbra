@@ -233,9 +233,9 @@
       "name": "Hearth",
       "description": "A cozy shared space for two people on two PCs. Pair once with a code, then add copies of this widget as an Overview strip, a drawing Board or a Pet. Needs the Umbra relay, which stores your names, dates, drawings and pet state (deleted 7 days after unpairing or after 30 days unused) and never your location.",
       "author": "Yacine-DH",
-      "version": "1.4.1",
+      "version": "1.5.0",
       "manifestVersion": 1,
-      "changelog": "Overview strip fixes: the Tap button no longer covers the word Offline when you lose your connection, or the settings button when the widget is made narrow.",
+      "changelog": "Asks you once whether Hearth may show notifications (the first time you click it after pairing), so taps from your partner reach you as Windows notifications. Needs an Umbra with the notification prompt; older versions keep the switch in Settings.",
       "preview": "preview.png",
       "icon": "icon.png",
       "hosts": [

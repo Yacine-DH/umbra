@@ -9,6 +9,8 @@ sealed class ApprovalDialog : Form
 {
     readonly Button _allow = new() { Text = "Allow", Enabled = false, DialogResult = DialogResult.Yes, Width = 110, Height = 32 };
     readonly Button _deny = new() { Text = "Deny", DialogResult = DialogResult.No, Width = 110, Height = 32 };
+    /// <summary>A prompt with no answer before <see cref="TimeoutMs"/> closes with this result (still a refusal everywhere).</summary>
+    const DialogResult TimedOut = DialogResult.Abort;
 
     ApprovalDialog(ApprovalRequest r)
     {
@@ -88,6 +90,40 @@ sealed class ApprovalDialog : Form
         ArmButtons();
     }
 
+    /// <summary>The notification prompt for <c>umbra.requestNotifications</c>: Allow, Not now (default), Don't ask again.</summary>
+    internal ApprovalDialog(string widgetName, bool notifications)
+    {
+        _ = notifications; // only selects this overload
+        SuspendLayout();
+        Text = "Umbra: allow notifications from this widget?";
+        Icon = App.AppIcon;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = MinimizeBox = false;
+        StartPosition = FormStartPosition.CenterScreen;
+        TopMost = true;
+        ShowInTaskbar = true;
+        AutoScaleDimensions = new SizeF(96f, 96f); // sizes below are in 96-dpi units; ArmButtons' ResumeLayout applies the scaling
+        AutoScaleMode = AutoScaleMode.Dpi;
+        ClientSize = new Size(560, 176);
+        var heading = new Label
+        {
+            Text = $"The widget \"{Clean(widgetName, 40)}\" wants to show you notifications.",
+            Left = 16, Top = 14, Width = 528, Height = 40, UseMnemonic = false, Font = new Font(Font, FontStyle.Bold),
+        };
+        var note = new Label
+        {
+            Text = "They appear as Windows notifications with the widget's name, at most 5 every 10 minutes. "
+                   + "You can change this any time in Settings > My widgets.",
+            Left = 16, Top = 58, Width = 528, Height = 60,
+        };
+        _deny.Text = "Not now";
+        var never = new Button { Text = "Don't ask again", DialogResult = DialogResult.Ignore, Left = 16, Top = 128, Width = 140, Height = 32 };
+        _allow.Left = 544 - 110 - 10 - 110; _allow.Top = 128;
+        _deny.Left = 544 - 110; _deny.Top = 128;
+        Controls.AddRange(new System.Windows.Forms.Control[] { heading, note, never, _allow, _deny });
+        ArmButtons();
+    }
+
     /// <summary>Dark surfaces and a dark title bar to match the app; behaviour is untouched.</summary>
     void ApplyDark()
     {
@@ -136,7 +172,7 @@ sealed class ApprovalDialog : Form
             var inside = _allow.RectangleToScreen(_allow.ClientRectangle).Contains(Cursor.Position);
             if (!inside) sawOutside = true;
             _allow.Enabled = sawOutside && inside && System.Environment.TickCount64 - shownAt >= 900;
-            if (System.Environment.TickCount64 - shownAt >= TimeoutMs) DialogResult = DialogResult.No; // a late click can't approve
+            if (System.Environment.TickCount64 - shownAt >= TimeoutMs) DialogResult = TimedOut; // a late click can't approve
         };
         Shown += (_, _) => { shownAt = System.Environment.TickCount64; poll.Start(); };
         FormClosed += (_, _) => poll.Dispose();
@@ -157,6 +193,19 @@ sealed class ApprovalDialog : Form
     {
         using var dlg = new ApprovalDialog(widgetName);
         return dlg.ShowDialog() == DialogResult.Yes;
+    }
+
+    /// <summary>Shows the notification prompt: the user's choice, or null when it closed without an answer (timeout).</summary>
+    public static NotifyChoice? AskNotifications(string widgetName)
+    {
+        using var dlg = new ApprovalDialog(widgetName, notifications: true);
+        return dlg.ShowDialog() switch
+        {
+            DialogResult.Yes => NotifyChoice.Allow,
+            DialogResult.Ignore => NotifyChoice.Never,
+            TimedOut => null,
+            _ => NotifyChoice.NotNow, // the Not now button, Esc or the close box
+        };
     }
 
     /// <summary>Shows the prompt and returns true only when the user clicked Allow.</summary>

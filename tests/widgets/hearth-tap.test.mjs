@@ -182,6 +182,17 @@ test("a toast the host refused because notifications are off stops further tries
   assert.equal(p.decide([{ type: "peerTap", at: c.now() }], ctx(c)).toast, "tap");
 });
 
+test("allowing notifications in Umbra's prompt lifts the block at once", () => {
+  const c = clock();
+  const p = T.createPolicy({ now: c.now });
+  p.toastFailed("Notifications are off for this widget (Settings)");
+  c.advance(T.TOAST_GAP_MS + 1);
+  assert.equal(p.decide([{ type: "peerTap", at: c.now() }], ctx(c)).toast, null);
+  p.toastsAllowed();
+  c.advance(T.TOAST_GAP_MS + 1);
+  assert.equal(p.decide([{ type: "peerTap", at: c.now() }], ctx(c)).toast, "tap");
+});
+
 test("a rate-limit refusal does not block toasts", () => {
   const c = clock();
   const p = T.createPolicy({ now: c.now });
@@ -350,6 +361,8 @@ test("the toast contract: tag, action id and the exact together sentence", () =>
   assert.match(js, /actions: \[\{ id: L\.TAPBACK_ID, label: "Tap back" \}\]/);
   assert.match(js, /onNotificationAction/);
   assert.match(js, /typeof n\.notify !== "function"/); // degrades when the host has no umbra.notify
+  assert.match(js, /typeof n\.requestNotifications !== "function"/); // and on an Umbra without the notification prompt
+  assert.match(js, /addEventListener\("click", [^]*?requestNotifications\(\)/); // asked from a click: Umbra prompts only then
 });
 
 test("index.html loads the tap files after the core and before the shell, and the shell attaches and mounts", () => {

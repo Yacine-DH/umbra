@@ -97,6 +97,7 @@
       case "commandsResult":
       case "systemResult":
       case "notifyResult":
+      case "requestNotificationsResult":
       case "mediaResult":
       case "timelapseResult":
       case "storeResult": {
@@ -248,6 +249,11 @@
    * actions (up to 2 of { id, label }) become buttons; a click calls the umbra.onNotificationAction handlers.
    */
   const notify = ({ title, body, url, tag, actions }) => request({ type: "notify", title, body, url, tag, actions }, 10000);
+  /**
+   * true when this widget may notify. When the user has not decided yet, Umbra shows its own "Allow notifications?"
+   * prompt, but only when called right after a click on the widget (otherwise it rejects); waits up to 2 minutes for the answer.
+   */
+  const requestNotifications = () => request({ type: "requestNotifications" }, 130000);
   /** Windows media session. nowPlaying() needs permissions.media "read": { title, artist, album, app, status, playing, canPlay, canPause, canNext, canPrevious, art? (data URL) } or null. */
   const media = {
     nowPlaying: () => request({ type: "media", action: "get" }, 10000),
@@ -491,6 +497,7 @@
     onCommandsChange: (fn) => handlers.commands.push(fn),
     system,
     notify,
+    requestNotifications,
     media,
     timelapse,
     fetchText,

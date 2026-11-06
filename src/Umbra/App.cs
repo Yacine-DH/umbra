@@ -48,6 +48,8 @@ sealed class App : ApplicationContext, IUmbraHost
 
     /// <summary>The one-time camera approval per widget (host prompt after a click; stored with the command approvals).</summary>
     public CameraConsent CameraConsent { get; } = new(CommandApprovals.Shared, name => Task.FromResult(ApprovalDialog.AskCamera(name)));
+    /// <summary>The click-gated "Allow notifications?" prompt state (umbra.requestNotifications).</summary>
+    public NotificationConsent NotificationConsent { get; } = new();
 
     public Settings Settings { get; private set; }
     public List<WidgetManifest> Manifests { get; private set; }

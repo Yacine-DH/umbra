@@ -283,6 +283,19 @@
     card.addEventListener("pointerenter", dismissLine);
     card.addEventListener("pointerdown", dismissLine);
 
+    // Notifications: on a click, while the user has not decided yet, Umbra shows its own "Allow notifications?" prompt
+    // (Allow / Not now / Don't ask again). Umbra answers without a prompt once decided, so this asks at most once per run.
+    let notifAsk = "unknown"; // "unknown" | "busy" | "done"
+    card.addEventListener("click", () => {
+      const n = um();
+      if (notifAsk !== "unknown" || destroyed || !n || typeof n.requestNotifications !== "function" || !client.getView().paired) return;
+      notifAsk = "busy";
+      Promise.resolve().then(() => n.requestNotifications())
+        .then((allowed) => { notifAsk = "done"; if (allowed) policy.toastsAllowed(); })
+        // a prompt already open, too soon, or a click Umbra did not count (edit mode): try again on the next click
+        .catch((e) => { notifAsk = /already open|wait a moment|click the widget/i.test(String(e && e.message)) ? "unknown" : "done"; });
+    }, true);
+
     // "Tap back" on the toast sends a tap
     const n0 = um();
     if (n0 && typeof n0.onNotificationAction === "function") {

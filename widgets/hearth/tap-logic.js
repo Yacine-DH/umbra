@@ -129,7 +129,10 @@
       return out;
     }
 
-    return { canSend, sent, failed, claimTogether, decide, toastFailed, cooldownRemaining: cooldown.remaining };
+    /** The user just allowed notifications: stop holding toasts back after an earlier refusal. */
+    function toastsAllowed() { toastBlockedUntil = -Infinity; }
+
+    return { canSend, sent, failed, claimTogether, decide, toastFailed, toastsAllowed, cooldownRemaining: cooldown.remaining };
   }
 
   // ---------- what the screen says ----------
