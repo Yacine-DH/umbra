@@ -1203,6 +1203,7 @@ sealed class WidgetWindow : Form, IWidgetView
         ["user"] = c.IsUserScript,
         ["keepsRunning"] = c.KeepsRunning,
         ["running"] = c.KeepsRunning && _app.Commands.State(Manifest.Id, c.Id).Running,
+        ["runAsAdmin"] = c.RunAsAdmin,
     }).ToArray());
 
     /// <summary>The user added, changed or deleted one of this widget's scripts in Settings.</summary>

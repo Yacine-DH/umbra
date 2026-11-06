@@ -18,13 +18,24 @@ live output.
      Bash: one line, run with `bash -c`).
    - **Arguments** (optional): separated by spaces, `"quotes"` around one with spaces.
    - **Start in** (optional): the folder it runs in. Picking a file fills in its folder.
-   - For a script that finishes: a **time limit** (1-120 s, default 60). For one that keeps running: **Start
-     automatically** (whenever the widget is on, so also after you sign in) and **Restart if it stops**.
+   - For a script that finishes: a **time limit** (1-120 s, default 60) and **Run as administrator** (see below). For one
+     that keeps running: **Start automatically** (whenever the widget is on, so also after you sign in) and **Restart if it stops**.
    - **Description** (optional, shown under the name).
 3. Press **Add script**. It appears in the widget right away.
 
 Saving is your approval of exactly that command (the row shows the command line Umbra runs). If its program isn't
 installed yet (say Python isn't on `PATH`), the script is saved as *Not approved*; install the program, then press **Approve**.
+
+## Run as administrator
+
+Some scripts need admin rights (restarting a service, editing the hosts file, `winget upgrade --all`). Switch on **Run as
+administrator** for the script in Settings, then:
+
+- Each time you press **Run**, Windows shows its own administrator prompt (UAC). Say No and nothing runs.
+- It only ever starts from a click on Run: never on a timer, at widget start, or from `umbractl`/MCP.
+- It runs in a window of its own, so its output shows there, not in the widget; the widget shows the exit code and the time.
+- Umbra can't stop a program running as administrator: if it passes its time limit or you press Stop, close its window.
+- It can't also be a script that keeps running. Changing the switch is a change to the command, and saving approves it.
 
 ## Use it
 
@@ -46,6 +57,7 @@ Notes:
   1 MB (flagged); a script that keeps running keeps its last 64 KB.
 - Your scripts are stored apart from the widget (`%APPDATA%\Umbra\scripts.json`), so updating Script Runner keeps them.
 - Live output, Stop and scripts that keep running need Umbra 1.12 or later; on an older Umbra the widget works as before.
+- Run as administrator needs an Umbra that has the switch in Settings; without it the widget works as before.
 
 ## Options
 

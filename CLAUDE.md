@@ -120,6 +120,10 @@ New automation goes through the control protocol so the CLI, MCP and tests stay 
   never settable from widget.json) has no timeout and keeps only a 64 KB output tail; it runs in a kill-on-close job (dies with Umbra),
   at most one per widget + script and 8 in all, and stops on Stop (widget, Settings, tray), when the widget's last window closes,
   and when the script is edited or deleted. Auto-start and restart only ever start an approved script. Keeps-running and Start in are in the hash.
+  A user script the user marked **Run as administrator** in Settings (`CommandSpec.RunAsAdmin`, never settable from widget.json, in the hash)
+  runs through ShellExecute `runas`, so Windows' UAC prompt asks on every run; it starts only right after a physical click on the widget
+  (never a timer, auto-start or automation), is approved only in Settings (never the widget's prompt), can't keep running, and returns
+  only its exit code (its own console window; no pipes, job or scrubbed environment are possible for an elevated child).
 - Camera (`permissions.camera`, `Timelapse.cs`, `TimelapseService.cs`): only the host touches the webcam (Windows.Media.Capture),
   the page never gets the stream, a frame, a full path or a write path (it sees the video's file name and the folder's name;
   the output folder comes from the host's folder dialog). Each widget id needs a one-time host-drawn approval

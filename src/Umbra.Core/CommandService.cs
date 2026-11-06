@@ -67,6 +67,9 @@ sealed class CommandService
     public Func<CommandSpec, TimeSpan> Timeout { get; set; } = c => TimeSpan.FromSeconds(c.TimeoutSeconds);
     /// <summary>The wait before a restart; tests make it short.</summary>
     public Func<TimeSpan, CancellationToken, Task> Delay { get; set; } = Task.Delay;
+    /// <summary>Runs a script marked "Run as administrator" (exe, args, folder, create folder, timeout); tests replace the UAC launch.</summary>
+    public Func<string, IReadOnlyList<string>, string, bool, TimeSpan, CancellationToken, Task<RunResult>> RunElevated { get; set; } =
+        (exe, args, dir, create, timeout, ct) => CommandRunner.RunElevatedAsync(exe, args, dir, timeout, ct, create);
 
     /// <summary>A keeps-running script of this widget started, ended, or is waiting to restart (raised on a pool thread).</summary>
     public event Action<string>? ServicesChanged;
@@ -106,7 +109,9 @@ sealed class CommandService
             if (o["userScript"] is null) continue;
             var widget = o["widget"]!.GetValue<string>();
             var m = manifests.FirstOrDefault(x => x.Id == widget);
-            if (m is null || Find(m, o["command"]!.GetValue<string>()) is not { KeepsRunning: true } spec) continue;
+            if (m is null || Find(m, o["command"]!.GetValue<string>()) is not { } spec) continue;
+            if (spec.RunAsAdmin) o["runAsAdmin"] = true;
+            if (!spec.KeepsRunning) continue;
             o["keepsRunning"] = true;
             o["running"] = State(widget, spec.Id).Running;
         }
@@ -155,6 +160,16 @@ sealed class CommandService
         var identity = ExeIdentity.Of(spec)
                   ?? throw new WidgetCommandException($"'{spec.Exe}' was not found on this PC (PATH). Install it, or ask the widget author for the full path.");
 
+        // A script that runs as administrator (only a user script can) never starts on its own: each run is a click on the
+        // widget, then Windows' UAC prompt. Its approval is only ever given in Settings, never from the widget's prompt.
+        if (spec.RunAsAdmin)
+        {
+            if (!spec.IsUserScript || spec.KeepsRunning) throw new WidgetCommandException($"Command '{spec.Id}' can't run as administrator");
+            if (!userGesture) throw new WidgetCommandException("A script that runs as administrator only starts when you click Run on the widget");
+            if (!_approvals.IsApproved(m.Id, spec))
+                throw new WidgetCommandException("This script runs as administrator, so approve it in Settings > My widgets first");
+        }
+
         if (!_approvals.IsApproved(m.Id, spec))
         {
             var status = _approvals.Status(m.Id, spec);
@@ -185,12 +200,22 @@ sealed class CommandService
         {
             // A script's code is written again from scripts.json, so the file that runs holds what Settings showed.
             if (spec.IsUserScript) _scripts!.Materialize(m.Id, spec.Id);
-            Log.Write($"[{m.Id}] run '{spec.Id}' ({identity.Path})");
-            var r = await CommandRunner.RunAsync(identity.Path, args, spec.WorkingDir ?? WorkingDir(InstanceId.FileName(instance)), Timeout(spec),
-                MaxOutputBytes, linked.Token, run.Tail, createWorkingDir: spec.WorkingDir is null);
+            var dir = spec.WorkingDir ?? WorkingDir(InstanceId.FileName(instance));
+            RunResult r;
+            if (spec.RunAsAdmin)
+            {
+                Log.Write($"[{m.Id}] run '{spec.Id}' as administrator ({identity.Path})");
+                run.Tail.Note("asked Windows to run it as administrator; its output shows in its own window, not here");
+                r = await RunElevated(identity.Path, args, dir, spec.WorkingDir is null, Timeout(spec), linked.Token);
+            }
+            else
+            {
+                Log.Write($"[{m.Id}] run '{spec.Id}' ({identity.Path})");
+                r = await CommandRunner.RunAsync(identity.Path, args, dir, Timeout(spec), MaxOutputBytes, linked.Token, run.Tail, createWorkingDir: spec.WorkingDir is null);
+            }
             var stopped = run.Stop.IsCancellationRequested && !ct.IsCancellationRequested;
-            Log.Write($"[{m.Id}] '{spec.Id}' exit {r.ExitCode}{(r.TimedOut ? " (timed out)" : stopped ? " (stopped)" : "")} in {r.DurationMs} ms");
-            return new JsonObject
+            Log.Write($"[{m.Id}] '{spec.Id}' exit {r.ExitCode}{(r.TimedOut ? " (timed out)" : stopped ? " (stopped)" : "")}{(r.StillRunning ? " (still running elevated)" : "")} in {r.DurationMs} ms");
+            var result = new JsonObject
             {
                 ["exitCode"] = r.ExitCode,
                 ["stdout"] = r.Stdout,
@@ -200,6 +225,12 @@ sealed class CommandService
                 ["truncated"] = r.Truncated,
                 ["durationMs"] = r.DurationMs,
             };
+            if (spec.RunAsAdmin)
+            {
+                result["elevated"] = true;
+                result["stillRunning"] = r.StillRunning;
+            }
+            return result;
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException)
         {

@@ -712,7 +712,7 @@ const clockTime = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit",
 
 function editScript(w, draft) {
   scriptDrafts.set(w.id, { widget: w.widget, kind: "powershell", mode: "file", path: "", code: "", args: "", description: "", title: "", timeoutSeconds: 60,
-    keepsRunning: false, startIn: "", autoStart: false, restart: false, ...draft });
+    keepsRunning: false, startIn: "", autoStart: false, restart: false, runAsAdmin: false, ...draft });
   scriptFocus = w.id;
   try { localStorage.setItem("openCards", JSON.stringify([...openCards().add(w.id)])); } catch { /* storage unavailable */ }
   renderInstalled();
@@ -745,6 +745,7 @@ function renderScripts(root, w) {
       name.append(mk("span", `script-state${s.running ? " on" : s.restarting ? " wait" : ""}`, state));
     }
     const line = mk("div", "cmd-line", s.line || "(can't run: open it to fix)");
+    if (s.runAsAdmin) name.append(mk("span", "script-kind", "As administrator"));
     const desc = mk("div", "cmd-desc");
     desc.append(mk("span", `cmd-status ${s.status === "invalid" ? "changed" : s.status}`,
       s.status === "approved" ? "Approved" : s.status === "invalid" ? "Needs fixing" : s.status === "changed" ? "Changed, needs approval" : "Not approved"), s.description || "");
@@ -833,7 +834,7 @@ function scriptEditor(w, d) {
     pick.value = d.example ?? "";
     pick.addEventListener("change", () => {
       const x = SCRIPT_EXAMPLES[Number(pick.value)];
-      Object.assign(d, { example: pick.value, title: "", description: "", kind: "powershell", mode: "file", path: "", code: "", args: "", timeoutSeconds: 60, keepsRunning: false, autoStart: false, restart: false },
+      Object.assign(d, { example: pick.value, title: "", description: "", kind: "powershell", mode: "file", path: "", code: "", args: "", timeoutSeconds: 60, keepsRunning: false, autoStart: false, restart: false, runAsAdmin: false },
         pick.value === "" ? {} : x);
       document.activeElement?.blur();
       renderInstalled();
@@ -882,11 +883,14 @@ function scriptEditor(w, d) {
     box.setAttribute("role", "switch");
     box.setAttribute("aria-label", label);
     box.checked = !!d[key];
-    box.addEventListener("change", () => { d[key] = box.checked; });
+    box.addEventListener("change", () => { d[key] = box.checked; sync(); });
     return row(label, sw, hint);
   };
   const autoRow = toggle("autoStart", "Start automatically", "Whenever the widget is on, so also when you sign in.");
   const restartRow = toggle("restart", "Restart if it stops", "After 5 s, then longer waits; it gives up after 5 tries in a row.");
+  // Elevation: Windows asks (UAC) on every run, and only a click on Run starts one. Not for scripts that keep running.
+  const adminRow = toggle("runAsAdmin", "Run as administrator",
+    "Windows asks you each time. Only starts when you click Run on the widget; its output shows in its own window, not in the widget.");
   const desc = input("description", { maxLength: 200, placeholder: "Optional, shown under the name" });
 
   const save = mk("button", "btn small primary", d.id ? "Save" : "Add script");
@@ -898,12 +902,13 @@ function scriptEditor(w, d) {
   const saveHint = mk("span", "hint-text");
   actions.append(saveHint, cancel, save);
 
-  form.append(...[exampleRow, row("Name", title), row("Type", kind), lifeRow, modeRow, pathRow, codeRow, argsRow, dirRow, timeoutRow, autoRow, restartRow, row("Description", desc), actions].filter(Boolean));
+  form.append(...[exampleRow, row("Name", title), row("Type", kind), lifeRow, modeRow, pathRow, codeRow, argsRow, dirRow, timeoutRow, adminRow, autoRow, restartRow, row("Description", desc), actions].filter(Boolean));
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const script = Object.fromEntries(["id", "title", "description", "kind", "mode", "path", "code", "args", "startIn"].map((k) => [k, String(d[k] ?? "")]));
     post({ type: "saveScript", widget: d.widget, script: { ...script, timeoutSeconds: Math.round(Number(d.timeoutSeconds)) || 60,
-      keepsRunning: !!d.keepsRunning, autoStart: !!d.keepsRunning && !!d.autoStart, restart: !!d.keepsRunning && !!d.restart } });
+      keepsRunning: !!d.keepsRunning, autoStart: !!d.keepsRunning && !!d.autoStart, restart: !!d.keepsRunning && !!d.restart,
+      runAsAdmin: !d.keepsRunning && !!d.runAsAdmin } });
     document.activeElement?.blur(); // so the state that follows rebuilds the list
   });
   form.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); cancel.click(); } });
@@ -916,9 +921,12 @@ function scriptEditor(w, d) {
     mark(lifeBtns, !!d.keepsRunning);
     timeoutRow.hidden = !!d.keepsRunning;
     autoRow.hidden = restartRow.hidden = !d.keepsRunning;
+    adminRow.hidden = !!d.keepsRunning;
     saveHint.textContent = d.keepsRunning
       ? "Saving approves exactly this command. It runs as you, never from a shell, until you stop it or turn the widget off."
-      : "Saving approves exactly this command. It runs as you, with a time limit, never from a shell.";
+      : d.runAsAdmin
+        ? "Saving approves exactly this command. Each run asks Windows for administrator rights first, never from a shell."
+        : "Saving approves exactly this command. It runs as you, with a time limit, never from a shell.";
     pathRow.hidden = isCode;
     codeRow.hidden = !isCode;
     code.rows = bashCode ? 2 : 8;

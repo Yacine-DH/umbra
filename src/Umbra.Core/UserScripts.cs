@@ -38,6 +38,11 @@ public sealed partial class UserScript
     public bool AutoStart { get; set; }
     /// <summary>Keeps running only: start it again (after a growing delay) when it exits on its own.</summary>
     public bool Restart { get; set; }
+    /// <summary>
+    /// "Run as administrator": each run goes through Windows' own UAC prompt and only starts right after a click on the
+    /// widget. Can't keep running: Umbra can't contain or stop an elevated process.
+    /// </summary>
+    public bool RunAsAdmin { get; set; }
 
     [GeneratedRegex(@"^[A-Za-z]:[\\/]")] private static partial Regex AbsoluteWindowsPath();
 
@@ -85,6 +90,8 @@ public sealed partial class UserScript
         if (Mode is not ("file" or "code")) throw new InvalidOperationException("Pick a script file or write the code");
         if (TimeoutSeconds is < 1 or > CommandSpec.MaxTimeoutSeconds) throw new InvalidOperationException($"The time limit must be 1-{CommandSpec.MaxTimeoutSeconds} seconds");
         if (Args.Contains('\n') || Args.Contains('\r')) throw new InvalidOperationException("Arguments must be on one line");
+        if (RunAsAdmin && KeepsRunning)
+            throw new InvalidOperationException("A script that runs as administrator can't keep running: Windows doesn't let Umbra stop it. Pick Runs and finishes");
         if (StartIn.Length > 0 && (StartIn.Length > MaxPath || StartIn.Any(char.IsControl) || StartIn.Contains("..") || !AbsoluteWindowsPath().IsMatch(StartIn)))
             throw new InvalidOperationException("Start in must be the full path of a folder, like C:\\Scripts");
 
@@ -137,6 +144,7 @@ public sealed partial class UserScript
             Description = Description.Length > 0 ? Description : Title,
             Title = Title, IsUserScript = true,
             KeepsRunning = KeepsRunning, WorkingDir = StartIn.Length > 0 ? StartIn : null, AutoStart = AutoStart, Restart = Restart,
+            RunAsAdmin = RunAsAdmin,
         };
         try { spec.Validate(); }
         catch (InvalidOperationException ex)
@@ -305,5 +313,6 @@ sealed partial class UserScripts(string path, string scriptsDir)
         Id = s.Id, Title = s.Title, Description = s.Description, Kind = s.Kind, Mode = s.Mode,
         Path = s.Path, Code = s.Code, Args = s.Args, TimeoutSeconds = s.TimeoutSeconds,
         KeepsRunning = s.KeepsRunning, StartIn = s.StartIn, AutoStart = s.AutoStart, Restart = s.Restart,
+        RunAsAdmin = s.RunAsAdmin,
     };
 }

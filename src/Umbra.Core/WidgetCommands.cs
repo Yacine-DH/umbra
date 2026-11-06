@@ -45,6 +45,8 @@ public sealed partial class CommandSpec
     [System.Text.Json.Serialization.JsonIgnore] public bool AutoStart { get; set; }
     /// <summary>A keeps-running script the user wants restarted after it exits on its own (not part of <see cref="Hash"/>).</summary>
     [System.Text.Json.Serialization.JsonIgnore] public bool Restart { get; set; }
+    /// <summary>A user script marked "Run as administrator" in Settings: runs elevated through the UAC prompt. Never set for a declared command.</summary>
+    [System.Text.Json.Serialization.JsonIgnore] public bool RunAsAdmin { get; set; }
 
     internal static readonly HashSet<string> KnownKeys = new(StringComparer.Ordinal) { "id", "run", "description", "params", "timeoutSeconds" };
 
@@ -184,7 +186,7 @@ public sealed partial class CommandSpec
 
     /// <summary>
     /// SHA-256 over everything that decides what runs (id, executable, arguments, parameter limits, timeout, and for a user
-    /// script whether it keeps running and its folder), not the
+    /// script whether it keeps running, its folder and whether it runs as administrator), not the
     /// description. Approvals are stored against this, so any change to the command asks the user again.
     /// </summary>
     public string Hash()
@@ -206,6 +208,7 @@ public sealed partial class CommandSpec
         // Only present when set, so the hashes (and approvals) of every other command stay what they were.
         if (KeepsRunning) o["keepsRunning"] = true;
         if (WorkingDir is not null) o["cwd"] = WorkingDir;
+        if (RunAsAdmin) o["admin"] = true;
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(o.ToJsonString()))).ToLowerInvariant();
     }
 

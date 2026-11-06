@@ -47,6 +47,7 @@ const lastLine = (s) => (String(s || "").split(/\r?\n/).reverse().find((l) => l.
 
 const nameOf = (c) => c.title || c.id;
 const keeps = (c) => !!(c && c.keepsRunning);
+const admin = (c) => !!(c && c.runAsAdmin);
 const lastRun = (id) => (results[id] || [])[0];
 /** The script was ended by a Stop (here, in Settings or the tray), not on its own: the host's last note says "stopped". */
 const stoppedByUser = (s) => /^\[Umbra\] stopped/m.test((String(s?.text || "").trim().split("\n").reverse().find((l) => l.startsWith("[Umbra] ")) || ""));
@@ -131,6 +132,8 @@ function noticeServiceChange(c, before, now) {
 /** Turn a rejection from umbra.run into something to show. */
 function describeError(err) {
   const msg = String((err && err.message) || err || "Unknown error");
+  if (/administrator prompt/i.test(msg)) return { kind: "cancelled", note: "Cancelled at the Windows administrator prompt." };
+  if (/administrator, so approve/i.test(msg)) return { kind: "warn", note: "Not approved yet. A script that runs as administrator is approved in Settings > My widgets." };
   if (/approv/i.test(msg)) return { kind: "warn", note: "Not approved yet. Click Run and approve the prompt, or approve it in Settings > My widgets." };
   return { kind: "error", note: msg };
 }
@@ -151,9 +154,12 @@ async function runScript(id) {
     const r = await umbra.run(id);
     let kind = r.exitCode === 0 ? "ok" : "fail";
     let note = "";
-    if (r.stopped) { kind = "stopped"; note = "Stopped."; }
+    const stuck = r.stillRunning ? " Windows doesn't let Umbra end a program running as administrator, so it may still be running: close its window." : "";
+    if (r.stopped) { kind = "stopped"; note = `Stopped.${stuck}`; }
+    else if (r.timedOut && r.elevated) { kind = "timeout"; note = `Timed out.${stuck}`; }
     else if (r.timedOut) { kind = "timeout"; note = "Timed out and was stopped. Raise its time limit in Settings > My widgets > Script Runner (max 120 s), or make it a script that keeps running."; }
     else if (r.truncated) { note = "Output was larger than 1 MB and was cut."; }
+    else if (r.elevated) { note = "Ran as administrator in its own window, so its output isn't shown here."; }
     entry = { at: Date.now(), exitCode: r.exitCode, ms: r.durationMs ?? Date.now() - t0, stdout: String(r.stdout || "").slice(0, MAX_KEEP), stderr: String(r.stderr || "").slice(0, MAX_KEEP), kind, note, truncated: !!r.truncated };
   } catch (err) {
     const d = describeError(err);
@@ -163,7 +169,7 @@ async function runScript(id) {
   if (live && live.id === id) live = null;
   remember(id, entry);
   if (entry.kind === "ok") notify(c, `Finished in ${fmtMs(entry.ms)}.${lastLine(entry.stdout) ? ` ${lastLine(entry.stdout)}` : ""}`.slice(0, 200), false);
-  else if (entry.kind !== "stopped") notify(c, entry.exitCode != null ? `Failed with exit code ${entry.exitCode}.` : entry.note.slice(0, 200), true);
+  else if (entry.kind !== "stopped" && entry.kind !== "cancelled") notify(c, entry.exitCode != null ? `Failed with exit code ${entry.exitCode}.` : entry.note.slice(0, 200), true);
   render();
 }
 
@@ -213,7 +219,8 @@ function setupAuto() {
   clearInterval(autoTimer); autoTimer = null;
   const id = autoId();
   const c = commands.find((x) => x.id === id);
-  if (!c || keeps(c)) return; // a script that keeps running has its own "Start automatically" switch in Settings
+  // A script that keeps running has its own "Start automatically" switch in Settings; one that runs as administrator only runs on a click.
+  if (!c || keeps(c) || admin(c)) return;
   const mins = Math.max(1, Number(opts().everyMinutes) || 15);
   autoTimer = setInterval(() => { if (canAuto(id)) runScript(id); }, mins * 60000);
 }
@@ -225,6 +232,7 @@ function setupAuto() {
 function canAuto(id) {
   const last = lastRun(id), c = commands.find((x) => x.id === id);
   if (c && keeps(c) && services.get(id)?.running) return false;
+  if (admin(c)) return false; // Umbra refuses it without a click, and it would raise a Windows prompt out of nowhere
   if (c && c.user) return !last || last.kind !== "warn";
   return !!last && last.kind !== "warn" && last.kind !== "error";
 }
@@ -250,6 +258,7 @@ function subtitle(c) {
     case "fail": return { text: `Exit ${r.exitCode} · ${fmtMs(r.ms)} · ${when}`, cls: "bad" };
     case "timeout": return { text: `Timed out after ${fmtMs(r.ms)} · ${when}`, cls: "bad" };
     case "stopped": return { text: `Stopped after ${fmtMs(r.ms)} · ${when}`, cls: "" };
+    case "cancelled": return { text: `Cancelled · ${when}`, cls: "" };
     case "warn": return { text: "Needs your approval", cls: "warn" };
     default: return { text: `Could not run · ${when}`, cls: "bad" };
   }
@@ -264,7 +273,7 @@ function dotClass(c) {
   if (running.has(c.id)) return "run";
   const r = lastRun(c.id);
   if (!r) return "";
-  return r.kind === "ok" && r.truncated ? "warn" : r.kind === "stopped" ? "" : r.kind;
+  return r.kind === "ok" && r.truncated ? "warn" : r.kind === "stopped" || r.kind === "cancelled" ? "" : r.kind;
 }
 
 /** The button: Run, or Stop while it runs; Start/Stop for a script that keeps running. */
@@ -287,7 +296,7 @@ function renderList() {
     const s = subtitle(c), b = button(c);
     return `<div class="row${c.id === selected ? " sel" : ""}" data-id="${esc(c.id)}">
       <span class="dot ${dotClass(c)}"></span>
-      <div class="info"><div class="name">${esc(nameOf(c))}${keeps(c) ? '<span class="tag">keeps running</span>' : ""}</div><div class="sub num ${s.cls}">${esc(s.text)}</div></div>
+      <div class="info"><div class="name">${esc(nameOf(c))}${keeps(c) ? '<span class="tag">keeps running</span>' : ""}${admin(c) ? '<span class="tag">admin</span>' : ""}</div><div class="sub num ${s.cls}">${esc(s.text)}</div></div>
       <button class="go ${b.cls}" data-act="${b.act}" data-cmd="${esc(c.id)}" ${b.disabled ? "disabled" : ""}>${b.label}</button>
     </div>`;
   }).join("");
@@ -368,8 +377,8 @@ function renderHistory(c) {
   if (!runs.length) { histEl.innerHTML = ""; return; }
   histEl.innerHTML = `<div class="hist-title">Earlier runs</div>` + runs.map((r) => {
     const label = r.kind === "ok" ? "exit 0" : r.kind === "fail" ? `exit ${r.exitCode}` : r.kind === "timeout" ? "timed out"
-      : r.kind === "stopped" ? "stopped" : r.kind === "warn" ? "needs approval" : "could not run";
-    const dot = r.kind === "ok" ? "ok" : r.kind === "stopped" ? "" : r.kind === "warn" ? "warn" : "fail";
+      : r.kind === "stopped" ? "stopped" : r.kind === "cancelled" ? "cancelled" : r.kind === "warn" ? "needs approval" : "could not run";
+    const dot = r.kind === "ok" ? "ok" : r.kind === "stopped" || r.kind === "cancelled" ? "" : r.kind === "warn" ? "warn" : "fail";
     return `<div class="hist num"><span class="dot ${dot}"></span><span class="hist-when">${esc(ago(r.at))}</span><span class="hist-what">${esc(label)}</span><span class="hist-ms">${esc(fmtMs(r.ms || 0))}</span></div>`;
   }).join("");
 }

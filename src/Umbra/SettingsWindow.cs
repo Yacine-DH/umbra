@@ -283,6 +283,7 @@ sealed class SettingsWindow : Form, ISettingsView
                             Path = S("path"), Code = S("code"), Args = S("args"),
                             TimeoutSeconds = input["timeoutSeconds"] is JsonValue t && t.TryGetValue<int>(out var n) ? n : CommandSpec.DefaultTimeoutSeconds,
                             StartIn = S("startIn"), KeepsRunning = B("keepsRunning"), AutoStart = B("autoStart"), Restart = B("restart"),
+                            RunAsAdmin = B("runAsAdmin"),
                         };
                         bool B(string k) => input[k] is JsonValue v && v.TryGetValue<bool>(out var b) && b;
                         var (saved, approved) = _app.Commands.SaveUserScript(widget, script);
@@ -702,6 +703,7 @@ sealed class SettingsWindow : Form, ISettingsView
                 ["startIn"] = s.StartIn,
                 ["autoStart"] = s.AutoStart,
                 ["restart"] = s.Restart,
+                ["runAsAdmin"] = s.RunAsAdmin,
                 ["running"] = state.Running,
                 ["since"] = state.Since is { } since ? new DateTimeOffset(since).ToUnixTimeMilliseconds() : null,
                 ["restarting"] = state.Restarting,

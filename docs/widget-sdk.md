@@ -138,7 +138,7 @@ is WebView2 on Windows, and other platforms use a different one that `umbra.js` 
 | `umbra.timelapse.chooseFolder()` | Opens the host's folder dialog (after a click on the widget) and resolves `{ folder (its name only), changed }`. The page never passes a path |
 | `umbra.timelapse.onChange(fn)` | `fn(state)` on start, each still, rendering and the end (`state: "idle"` with `file` or `error`) |
 | `umbra.run(commandId, params?)` | Runs a command declared in `permissions.commands` and resolves `{ exitCode, stdout, stderr, timedOut, stopped, truncated, durationMs }`. Rejects when the command isn't declared, isn't approved yet, or `params` are invalid. A user script that keeps running resolves `{ started: true }`. See below |
-| `umbra.commands()` | Resolves what `umbra.run` can run: `[{ id, title, description, user, keepsRunning, running }]`, the declared commands, then (with `permissions.userScripts`) the scripts the user added in Settings (`user: true`). Ids and names only; programs, arguments and paths stay in the host |
+| `umbra.commands()` | Resolves what `umbra.run` can run: `[{ id, title, description, user, keepsRunning, running, runAsAdmin }]`, the declared commands, then (with `permissions.userScripts`) the scripts the user added in Settings (`user: true`). Ids and names only; programs, arguments and paths stay in the host |
 | `umbra.onCommandsChange(fn)` | `fn()` when the user adds, edits or deletes one of this widget's scripts in Settings, or one that keeps running starts or stops; call `umbra.commands()` again |
 | `umbra.stop(commandId)` | Stops this copy's run of a command, or a user script that keeps running; resolves `true` when something was stopped. See [Scripts that keep running](#scripts-that-keep-running) |
 | `umbra.commandOutput(commandId)` | What a run in progress, or a script that keeps running, printed so far (last 64 KB): `{ running, keepsRunning, since, exitCode, restarting, restarts, text }`, for live output |
@@ -390,6 +390,22 @@ umbra.onCommandsChange(async () => render(await umbra.commands()));
 - **Start in**: an optional folder the script runs in (a full local path; it must exist). Without one, it runs in the
   widget's data folder. Picking a Windows shortcut (`.lnk`) with Browse fills the file, the arguments and Start in from it;
   a typed `.lnk` path is refused.
+
+#### Scripts that run as administrator
+
+A script that runs and finishes can have **Run as administrator** switched on in the editor (only there: `widget.json`
+can't ask for it, and no control command, `umbractl` or MCP tool can set it).
+
+- Every run goes through Windows' own UAC prompt (the `runas` verb), so the user agrees each time, on the secure desktop.
+  Still no shell: the same resolved program and argv. Saying No rejects the call with "You said No to the Windows
+  administrator prompt".
+- It only starts right after a physical click on the widget: a call without one (a timer, the widget starting) is refused,
+  so a widget can't raise UAC prompts on its own. Its approval is given only in Settings (saving, or the Approve button),
+  never from the widget's prompt. The switch is part of the command's hash.
+- An elevated process can't have Umbra's pipes, environment or job object: it runs in a console window of its own with
+  the user's normal environment, and the result has `elevated: true`, empty `stdout`/`stderr` and the exit code. On a
+  timeout or `umbra.stop` Umbra tries to end it; when Windows refuses, the result has `stillRunning: true`.
+- It can't keep running (Umbra couldn't stop it or tie it to the widget). `umbra.commands()` reports `runAsAdmin: true`.
 
 #### Scripts that keep running
 
