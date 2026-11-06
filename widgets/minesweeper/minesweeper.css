@@ -1,4 +1,4 @@
-html, body { height: 100%; overflow: hidden; background: #000; }
+html, body { height: 100%; overflow: hidden; background: var(--bg); }
 [hidden] { display: none !important; }
 
 .ms { height: 100%; display: flex; flex-direction: column; padding: 10px 10px 8px; gap: 8px; }
@@ -13,7 +13,7 @@ html, body { height: 100%; overflow: hidden; background: #000; }
 .lcd {
   min-width: 62px; height: 34px; padding: 0 8px; display: grid; place-items: center;
   font-family: var(--font-display); font-size: 22px; font-weight: 600; letter-spacing: 0.04em; line-height: 1;
-  color: var(--down); background: #000; border: 1px solid var(--line-strong); border-radius: 6px;
+  color: var(--down); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 6px;
 }
 .face-wrap { padding: 0 6px; }
 .face { width: 38px; height: 38px; padding: 0; display: block; background: none; border: 0; border-radius: 50%; cursor: pointer; }
@@ -58,7 +58,7 @@ html, body { height: 100%; overflow: hidden; background: #000; }
 .c .cloth { fill: var(--down); }
 .c .bomb { fill: var(--text); }
 .c .spike { stroke: var(--text); stroke-width: 1.6; stroke-linecap: round; }
-.c .shine { fill: #000; }
+.c .shine { fill: var(--bg); }
 .c.boom .bomb { fill: #000; }
 .c.boom .spike { stroke: #000; }
 .c.boom .shine { fill: var(--down); }

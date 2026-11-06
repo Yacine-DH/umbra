@@ -4,7 +4,7 @@
   "name": "Minesweeper",
   "description": "Classic Minesweeper on your desktop: left click to reveal, right click to flag, double-click a number to chord. Three board sizes, best times and win counts per size, and the game in progress survives restarts.",
   "author": "Yacine-DH",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "manifestVersion": 1,
   "entry": "index.html",
   "preview": "preview.png",

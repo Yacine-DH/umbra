@@ -4,7 +4,7 @@
   "name": "Prayer Times",
   "description": "Daily prayer times with a live countdown to the next prayer, optional iqama times and Hijri date. Pick your city in the widget; times are calculated by coordinates with the Aladhan API (no key) and the method follows your country.",
   "author": "Yacine-DH",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "manifestVersion": 1,
   "entry": "index.html",
   "preview": "preview.png",

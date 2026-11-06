@@ -1,4 +1,4 @@
-html,body{margin:0;background:#000;height:100%;overflow:hidden}
+html,body{margin:0;background:var(--bg);height:100%;overflow:hidden}
 #app{box-sizing:border-box;height:100%;padding:14px 16px 10px;display:flex;flex-direction:column;color:var(--text)}
 header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
 .t{font-size:15px;font-weight:600;letter-spacing:.04em}

@@ -4,7 +4,7 @@
   "name": "Crypto price",
   "description": "Price, 24h change and a sparkline for any coin on CoinGecko.",
   "author": "AmineChr54",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "manifestVersion": 1,
   "entry": "index.html",
   "preview": "preview.png",

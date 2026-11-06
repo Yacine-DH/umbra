@@ -4,7 +4,7 @@
   "name": "Application Tracker",
   "description": "Track internship and job applications: company, role, status, date and follow-up. Status filters with counts, and due follow-ups highlighted. Add and edit right in the widget.",
   "author": "AmineChr54",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "manifestVersion": 1,
   "entry": "index.html",
   "preview": "preview.png",

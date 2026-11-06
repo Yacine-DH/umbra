@@ -54,8 +54,8 @@ html, body { height: 100%; overflow: hidden; }
 .grid::-webkit-scrollbar, .sheet-body::-webkit-scrollbar { width: 6px; }
 .grid::-webkit-scrollbar-button, .sheet-body::-webkit-scrollbar-button { display: none; }
 .grid::-webkit-scrollbar-track, .sheet-body::-webkit-scrollbar-track { background: transparent; }
-.grid::-webkit-scrollbar-thumb, .sheet-body::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
-.grid::-webkit-scrollbar-thumb:hover, .sheet-body::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.18); }
+.grid::-webkit-scrollbar-thumb, .sheet-body::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text) 10%, transparent); border-radius: 3px; }
+.grid::-webkit-scrollbar-thumb:hover, .sheet-body::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--text) 18%, transparent); }
 
 .tile {
   --c: var(--accent);
@@ -63,14 +63,14 @@ html, body { height: 100%; overflow: hidden; }
   min-width: 0;
   display: flex; flex-direction: column;
   padding: 11px 12px 10px;
-  background: color-mix(in srgb, var(--c) 7%, #000);
+  background: color-mix(in srgb, var(--c) 7%, var(--bg));
   border: 1px solid color-mix(in srgb, var(--c) 15%, transparent);
   border-radius: 14px;
   cursor: pointer;
   outline: none;
   transition: background 140ms, border-color 140ms;
 }
-.tile:hover { background: color-mix(in srgb, var(--c) 11%, #000); border-color: color-mix(in srgb, var(--c) 26%, transparent); }
+.tile:hover { background: color-mix(in srgb, var(--c) 11%, var(--bg)); border-color: color-mix(in srgb, var(--c) 26%, transparent); }
 .tile:focus-visible { border-color: var(--c); }
 /* Past one-off events turn grey (the color is set inline by countdowns.js). */
 .tile.past .t-main { color: var(--text-2); }
@@ -109,14 +109,14 @@ html, body { height: 100%; overflow: hidden; }
 .viz.dots svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .viz.dots circle.on { fill: var(--c); }
 .viz.dots circle.now { fill: var(--text); }
-.viz.dots circle.off { fill: rgba(255, 255, 255, 0.12); }
+.viz.dots circle.off { fill: color-mix(in srgb, var(--text) 12%, transparent); }
 
 /* bar */
 .viz.bar .track {
   position: absolute; left: 0; right: 0; top: 50%;
   height: 6px; margin-top: -3px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.09);
+  background: color-mix(in srgb, var(--text) 9%, transparent);
   overflow: hidden;
 }
 .viz.bar .fill {
@@ -132,17 +132,17 @@ html, body { height: 100%; overflow: hidden; }
   width: 26px; height: 26px; margin: -13px 0 0 -13px;
   display: grid; place-items: center;
   font-size: 14px; line-height: 1;
-  background: #000;
+  background: var(--bg);
   border: 1.5px solid var(--c);
   border-radius: 50%;
 }
-.viz.bar .knob.dot { width: 17px; height: 17px; margin: -8.5px 0 0 -8.5px; background: var(--c); border: 3px solid #000; }
+.viz.bar .knob.dot { width: 17px; height: 17px; margin: -8.5px 0 0 -8.5px; background: var(--c); border: 3px solid var(--bg); }
 
 /* ring */
 .viz.ring { display: grid; place-items: center; }
 .viz.ring svg { position: absolute; inset: 0; margin: auto; height: 100%; aspect-ratio: 1; transform: rotate(-90deg); }
 .viz.ring circle { fill: none; stroke-width: 5; }
-.viz.ring .track { stroke: rgba(255, 255, 255, 0.09); }
+.viz.ring .track { stroke: color-mix(in srgb, var(--text) 9%, transparent); }
 .viz.ring .arc {
   stroke: var(--c);
   stroke-linecap: round;
@@ -159,7 +159,7 @@ html, body { height: 100%; overflow: hidden; }
 .intro .viz.bar .knob { animation: ride 900ms var(--ease-out) both; }
 @keyframes ride { from { left: 12px; } }
 .intro .viz.dots circle.on, .intro .viz.dots circle.now { animation: fill-in 500ms var(--ease-out) both; animation-delay: calc(var(--i) / var(--n, 365) * 600ms); }
-@keyframes fill-in { from { fill: rgba(255, 255, 255, 0.12); } }
+@keyframes fill-in { from { fill: color-mix(in srgb, var(--text) 12%, transparent); } }
 
 /* ---------- empty and notes ---------- */
 
@@ -204,7 +204,7 @@ html, body { height: 100%; overflow: hidden; }
   cursor: pointer;
   transition: background 120ms, color 120ms;
 }
-.btn:hover { background: #1e1e25; }
+.btn:hover { background: color-mix(in srgb, var(--text) 4%, var(--surface-3)); }
 .btn svg { width: 12px; height: 12px; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .btn.primary { color: #000; background: var(--c, var(--accent)); }
 .btn.primary:hover { background: color-mix(in srgb, var(--c, var(--accent)) 85%, #fff); }
@@ -231,7 +231,7 @@ html, body { height: 100%; overflow: hidden; }
   position: absolute; inset: 0;
   z-index: 5;
   display: flex; flex-direction: column;
-  background: #000;
+  background: var(--bg);
   animation: sheet-in 180ms var(--ease-out);
 }
 .sheet[hidden] { display: none; }
@@ -265,7 +265,7 @@ html, body { height: 100%; overflow: hidden; }
   transition: background 120ms, color 120ms;
 }
 .seg button:hover { color: var(--text); }
-.seg button[aria-checked="true"] { color: var(--text); background: color-mix(in srgb, var(--c) 22%, #111114); }
+.seg button[aria-checked="true"] { color: var(--text); background: color-mix(in srgb, var(--c) 22%, var(--surface-2)); }
 .seg svg { width: 13px; height: 13px; fill: currentColor; }
 .seg svg .dim { opacity: 0.35; }
 .seg svg .track { fill: none; stroke: currentColor; stroke-width: 2; opacity: 0.35; }
@@ -284,7 +284,7 @@ html, body { height: 100%; overflow: hidden; }
   border-radius: 9px;
   cursor: pointer;
 }
-.emoji:hover { border-color: rgba(255, 255, 255, 0.22); }
+.emoji:hover { border-color: color-mix(in srgb, var(--text) 22%, transparent); }
 .emoji svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
 
 .field {
@@ -306,7 +306,7 @@ html, body { height: 100%; overflow: hidden; }
 .field.small { height: 30px; font-size: 12px; }
 
 /* Typed dates: the picker popup is hidden because the widget window never activates. */
-.field[type="date"], .field[type="time"] { color-scheme: dark; padding: 0 8px; }
+.field[type="date"], .field[type="time"] { padding: 0 8px; }
 .field[type="date"] { width: 128px; }
 .field[type="time"] { width: 84px; }
 .field::-webkit-calendar-picker-indicator { display: none; }
@@ -364,7 +364,7 @@ html, body { height: 100%; overflow: hidden; }
   transition: box-shadow 120ms, transform 120ms var(--ease-out);
 }
 .sw:hover { transform: scale(1.08); }
-.sw[aria-checked="true"] { box-shadow: 0 0 0 2px #000, 0 0 0 3.5px var(--sw); }
+.sw[aria-checked="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--sw); }
 
 .sheet-foot {
   display: flex; align-items: center; gap: 8px;

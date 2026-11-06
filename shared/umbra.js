@@ -44,6 +44,13 @@
     if (!el) { el = document.createElement("style"); el.id = "umbra-theme"; document.head.append(el); }
     if (el.textContent !== css) el.textContent = css;
   }
+  // umbra.css says color-scheme: dark; a light theme flips it so native controls (scrollbars, selects, date fields) match.
+  // Same test as applyTheme in settings/settings.js: keep the two in step.
+  function applyScheme() {
+    const m = /rgba?\((\d+), (\d+), (\d+)/.exec(getComputedStyle(document.documentElement).backgroundColor);
+    const light = !!m && 0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3] > 140;
+    document.documentElement.style.colorScheme = light ? "light" : "";
+  }
 
   // Appearance options from Settings (corner radius, calm motion) arrive as one more :root rule, applied after the theme.
   function applyAppearance() {
@@ -61,14 +68,14 @@
         settings = m.settings;
         applyMotion();
         applyEdit();
-        applyTheme(); applyAppearance();
+        applyTheme(); applyAppearance(); applyScheme();
         resolveReady();
         break;
       case "settings":
         settings = m.settings;
         applyMotion();
         applyEdit();
-        applyTheme(); applyAppearance();
+        applyTheme(); applyAppearance(); applyScheme();
         updateStatus(); // the stale threshold follows the refresh interval
         handlers.settings.forEach((fn) => fn(settings));
         break;

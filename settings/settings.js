@@ -1372,9 +1372,15 @@ function renderCatalog() {
 // The host sends the active theme as one generated :root rule (validated tokens only); apply it to this page too.
 function applyTheme(css) {
   let el = document.getElementById("umbra-theme");
-  if (!css) { el && el.remove(); return; }
-  if (!el) { el = document.createElement("style"); el.id = "umbra-theme"; document.head.append(el); }
-  if (el.textContent !== css) el.textContent = css;
+  if (!css) el && el.remove();
+  else {
+    if (!el) { el = document.createElement("style"); el.id = "umbra-theme"; document.head.append(el); }
+    if (el.textContent !== css) el.textContent = css;
+  }
+  // umbra.css says color-scheme: dark; a light theme flips it so scrollbars, selects and date fields match.
+  // Same test as applyScheme in shared/umbra.js: keep the two in step.
+  const m = /rgba?\((\d+), (\d+), (\d+)/.exec(getComputedStyle(document.documentElement).backgroundColor);
+  document.documentElement.style.colorScheme = m && 0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3] > 140 ? "light" : "";
 }
 
 // The accent from Appearance (a picked color, or the Windows accent) is one more :root rule, applied after the theme.

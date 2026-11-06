@@ -264,7 +264,7 @@ html, body { height: 100%; overflow: hidden; }
 .field:focus { border-color: var(--c, var(--accent)); }
 .field.invalid { border-color: var(--down); }
 .field.area { height: auto; min-height: 92px; padding: 9px 10px; resize: none; line-height: 1.45; }
-.field.date { width: 124px; color-scheme: dark; padding: 0 8px; }
+.field.date { width: 124px; padding: 0 8px; }
 .field::-webkit-calendar-picker-indicator { display: none; }
 .field::-webkit-datetime-edit-fields-wrapper { padding: 0; }
 .field::-webkit-datetime-edit-text { color: var(--text-3); padding: 0 1px; }
