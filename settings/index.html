@@ -47,18 +47,12 @@
       </nav>
 
       <div class="side-foot">
-        <div class="zoom" role="group" aria-label="Zoom">
-          <span class="zoom-label">Zoom</span>
-          <button type="button" id="zoomOut" aria-label="Zoom out" title="Zoom out (Ctrl+-)">&minus;</button>
-          <button type="button" id="zoomReset" aria-label="Reset zoom to 100%" title="Reset to 100% (Ctrl+0)">100%</button>
-          <button type="button" id="zoomIn" aria-label="Zoom in" title="Zoom in (Ctrl+=)">+</button>
-        </div>
         <button class="link" data-url="repo"><span class="ico" data-icon="github"></span>GitHub</button>
       </div>
     </aside>
 
     <main class="content" id="content">
-      <div id="safeBanner" role="status" hidden style="margin:0 0 16px;padding:10px 14px;border:1px solid #d8a13a;border-radius:10px;background:rgba(216,161,58,.12);color:#f0c674">
+      <div id="safeBanner" role="status" hidden style="padding:10px 14px;border:1px solid #d8a13a;border-radius:10px;background:rgba(216,161,58,.12);color:#f0c674">
         <strong>Safe mode is on.</strong> Community widgets are not running. Nothing was deleted or disabled; the next normal start of Umbra restores them. <button id="safeOff" type="button">Turn off safe mode</button>
       </div>
       <!-- Home -->
@@ -110,10 +104,21 @@
       <section class="page" data-page="general">
         <header class="page-head">
           <h1>General</h1>
-          <p>How Umbra starts and runs.</p>
+          <p>How Umbra looks, starts and runs.</p>
         </header>
 
         <div class="group">
+          <div class="row">
+            <div class="row-text">
+              <div class="row-title">Zoom</div>
+              <div class="row-sub">Size of this window's text and controls. Also Ctrl + mouse wheel, Ctrl + plus or minus, and Ctrl + 0.</div>
+            </div>
+            <div class="zoom" role="group" aria-label="Zoom">
+              <button type="button" id="zoomOut" aria-label="Zoom out" title="Zoom out (Ctrl+-)">&minus;</button>
+              <button type="button" id="zoomReset" aria-label="Reset zoom to 100%" title="Reset to 100% (Ctrl+0)">100%</button>
+              <button type="button" id="zoomIn" aria-label="Zoom in" title="Zoom in (Ctrl+=)">+</button>
+            </div>
+          </div>
           <div class="row">
             <div class="row-text">
               <div class="row-title">Start with Windows</div>

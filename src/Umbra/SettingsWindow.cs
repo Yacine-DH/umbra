@@ -123,7 +123,7 @@ sealed class SettingsWindow : Form, ISettingsView
                 if (msg["page"]?.GetValue<string>() is string pg && Pages.Contains(pg)) _page = pg;
                 break;
 
-            case "zoom": // the sidebar's - / % / + buttons, Ctrl+= / Ctrl+- / Ctrl+0 and Ctrl+wheel; -1, 1 or 0 (reset)
+            case "zoom": // the General page's - / % / + buttons, Ctrl+= / Ctrl+- / Ctrl+0 and Ctrl+wheel; -1, 1 or 0 (reset)
                 if (_background) break;
                 _zoom = SettingsPlacement.StepZoom(_zoom, msg["step"] is JsonValue sv && sv.TryGetValue<int>(out var step) ? step : 0);
                 _view.ZoomFactor = _zoom;

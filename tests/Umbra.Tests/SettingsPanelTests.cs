@@ -45,7 +45,7 @@ public class SettingsPanelTests
         var general = Page("general");
         var fold = general.IndexOf("<details", StringComparison.Ordinal);
         Assert.True(fold > 0);
-        Assert.True(Regex.Matches(general[..fold], "class=\"row\"").Count <= 4, "keep General short: new settings go under Advanced or Customize");
+        Assert.True(Regex.Matches(general[..fold], "class=\"row\"").Count <= 5, "keep General short (Zoom plus four): new settings go under Advanced or Customize");
         Assert.Contains("id=\"advancedRows\"", general[fold..]);
         Assert.Contains("id=\"appearanceRows\"", Page("themes"));
         Assert.DoesNotContain(" open", Regex.Match(general, "<details[^>]*>").Value);
