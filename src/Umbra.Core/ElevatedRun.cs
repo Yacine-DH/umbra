@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.Compression;
 using System.IO.Pipes;
 using System.Security.Cryptography;
 using System.Text;
@@ -32,8 +33,9 @@ static class ElevatedRun
     /// </summary>
     const string Helper = """
         $ErrorActionPreference = 'Stop'
-        $job = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('__JOB__')) | ConvertFrom-Json
         $enc = New-Object Text.UTF8Encoding $false
+        $zip = New-Object IO.Compression.DeflateStream ((New-Object IO.MemoryStream (,[Convert]::FromBase64String('__JOB__'))), ([IO.Compression.CompressionMode]::Decompress))
+        $job = (New-Object IO.StreamReader $zip, $enc).ReadToEnd() | ConvertFrom-Json
         $pipe = New-Object IO.Pipes.NamedPipeClientStream '.', $job.pipe, ([IO.Pipes.PipeDirection]::InOut), ([IO.Pipes.PipeOptions]::Asynchronous)
         $pipe.Connect(10000)
         $w = New-Object IO.StreamWriter $pipe, $enc
@@ -105,14 +107,20 @@ static class ElevatedRun
         exit $code
         """;
 
-    /// <summary>The helper with this run's job (pipe, token, program, argv, folder, environment) baked in, as -EncodedCommand text.</summary>
+    /// <summary>
+    /// The helper with this run's job (pipe, token, program, argv, folder, environment) baked in, as -EncodedCommand text.
+    /// The job is deflated first: it is base64 inside a script that is UTF-16 and base64 again, so each byte would cost
+    /// about 3.5 characters of the command line, and a long PATH alone could push a plain script past Windows' limit.
+    /// </summary>
     internal static string EncodedHelper(string pipe, string token, string exePath, IReadOnlyList<string> args, string workingDir, IReadOnlyDictionary<string, string> env)
     {
         var job = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object>
         {
             ["pipe"] = pipe, ["token"] = token, ["exe"] = exePath, ["args"] = args, ["cwd"] = workingDir, ["env"] = env,
         });
-        var script = Helper.Replace("__JOB__", Convert.ToBase64String(job));
+        using var packed = new MemoryStream();
+        using (var zip = new DeflateStream(packed, CompressionLevel.SmallestSize)) zip.Write(job);
+        var script = Helper.Replace("__JOB__", Convert.ToBase64String(packed.ToArray()));
         var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
         if (encoded.Length > MaxEncodedLength) throw new WidgetCommandException("This command is too long to run as administrator");
         return encoded;

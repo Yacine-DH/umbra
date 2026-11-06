@@ -59,8 +59,14 @@ public class ElevatedRunTests
     public async Task Stop_ends_the_program_and_what_it_started()
     {
         var marker = Path.Combine(TestEnv.DataDir, "elevated-stop-" + Guid.NewGuid().ToString("N"));
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-        var r = await Run("stop.ps1", [marker], ct: cts.Token);
+        var tail = new OutputTail();
+        using var cts = new CancellationTokenSource();
+        var run = Run("stop.ps1", [marker], ct: cts.Token, tail: tail);
+        // Stop once the script says it started its grandchild (a fixed delay raced PowerShell's startup on a busy machine).
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (!run.IsCompleted && !tail.Text().Contains("started") && DateTime.UtcNow < deadline) await Task.Delay(50);
+        cts.Cancel();
+        var r = await run;
         Assert.False(r.TimedOut); // stopped, not timed out
         Assert.False(r.StillRunning);
         Assert.Contains("started", r.Stdout);
@@ -88,7 +94,29 @@ public class ElevatedRunTests
     [Fact]
     public void A_command_too_long_for_Windows_is_refused()
     {
-        var huge = Enumerable.Repeat(new string('a', 1000), 30).ToList();
+        // Random text, so compressing the job can't shrink it under the limit.
+        var huge = Enumerable.Range(0, 30).Select(_ => Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(500))).ToList();
         Assert.Throws<WidgetCommandException>(() => ElevatedRun.EncodedHelper("p", "t", "C:\\x.exe", huge, "C:\\", new Dictionary<string, string>()));
+    }
+
+    [Fact]
+    public void A_long_PATH_still_fits_on_the_command_line()
+    {
+        // 26,192 characters on a real machine with a 3,246-character PATH before the job was compressed; this PATH is 10,000+.
+        var path = string.Join(';', Enumerable.Range(0, 200).Select(i => $"C:\\Program Files\\Vendor {i}\\Tool {i % 7}\\bin"));
+        var env = new Dictionary<string, string> { ["PATH"] = path, ["PSModulePath"] = path, ["SystemRoot"] = "C:\\Windows" };
+        var encoded = ElevatedRun.EncodedHelper("umbra-admin-" + Guid.NewGuid().ToString("N"), new string('A', 32),
+            "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", ["-NoProfile", "-File", "C:\\Users\\someone\\AppData\\Roaming\\Umbra\\scripts\\x\\y.ps1"],
+            "C:\\Users\\someone\\AppData\\Roaming\\Umbra\\data\\script-runner", env);
+        Assert.True(encoded.Length < 16000, $"{encoded.Length} characters");
+    }
+
+    [WindowsFact]
+    public async Task A_long_environment_reaches_the_program_intact()
+    {
+        // Through the compressed job and back out in the helper: the program sees the exact PATH Umbra gave it.
+        var r = await Run("path.ps1");
+        Assert.Equal(0, r.ExitCode);
+        Assert.Equal(CommandRunner.ScrubbedEnvironment()["PATH"], r.Stdout.TrimEnd('\n'));
     }
 }
