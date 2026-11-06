@@ -43,9 +43,25 @@ if (Test-Path (Split-Path $stage)) { Remove-Item (Split-Path $stage) -Recurse -F
 Copy-Item $publish $stage -Recurse
 New-Item (Join-Path $stage 'portable.txt') -ItemType File | Out-Null
 if (Test-Path $zip) { Remove-Item $zip -Force }
-Compress-Archive -Path $stage -DestinationPath $zip
+# Not Compress-Archive: in Windows PowerShell 5.1 it stores "Umbra\x.dll" with backslashes, which unzip, macOS and
+# Linux tools extract as flat files named "Umbra\x.dll". Write the entries with "/" (the zip separator) in any PowerShell.
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+$base = (Split-Path $stage) + '\'
+$archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Create)
+try {
+  foreach ($f in Get-ChildItem $stage -Recurse -File) {
+    $entry = $f.FullName.Substring($base.Length).Replace('\', '/')
+    [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $f.FullName, $entry, [System.IO.Compression.CompressionLevel]::Optimal)
+  }
+} finally { $archive.Dispose() }
+$check = [System.IO.Compression.ZipFile]::OpenRead($zip)
+try {
+  $bad = @($check.Entries | Where-Object { $_.FullName.Contains('\') -or -not $_.FullName.StartsWith('Umbra/') })
+  if ($bad.Count) { throw "portable zip has $($bad.Count) bad entry path(s), e.g. $($bad[0].FullName)" }
+  $count = $check.Entries.Count
+} finally { $check.Dispose() }
 Remove-Item (Split-Path $stage) -Recurse -Force
-Write-Host "Built $zip ($([math]::Round((Get-Item $zip).Length / 1MB, 1)) MB)" -ForegroundColor Green
+Write-Host "Built $zip ($([math]::Round((Get-Item $zip).Length / 1MB, 1)) MB, $count files)" -ForegroundColor Green
 
 $setup = Join-Path $root "dist\UmbraSetup-$version.exe"
 Write-Host "Built $setup ($([math]::Round((Get-Item $setup).Length / 1MB, 1)) MB)" -ForegroundColor Green
