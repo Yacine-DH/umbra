@@ -136,9 +136,11 @@ is WebView2 on Windows, and other platforms use a different one that `umbra.js` 
 | `umbra.timelapse.stop()` / `.cancel()` / `.status()` | `stop` ends recording and renders what was captured; `cancel` deletes the stills without a video; `status` resolves the current or last state `{ state: "idle"\|"recording"\|"rendering", framesCaptured, framesPlanned, startedAt, endsBy, plan, file, error, capReached, cancelled, folder }` |
 | `umbra.timelapse.chooseFolder()` | Opens the host's folder dialog (after a click on the widget) and resolves `{ folder (its name only), changed }`. The page never passes a path |
 | `umbra.timelapse.onChange(fn)` | `fn(state)` on start, each still, rendering and the end (`state: "idle"` with `file` or `error`) |
-| `umbra.run(commandId, params?)` | Runs a command declared in `permissions.commands` and resolves `{ exitCode, stdout, stderr, timedOut, truncated, durationMs }`. Rejects when the command isn't declared, isn't approved yet, or `params` are invalid. See below |
-| `umbra.commands()` | Resolves what `umbra.run` can run: `[{ id, title, description, user }]`, the declared commands, then (with `permissions.userScripts`) the scripts the user added in Settings (`user: true`). Ids and names only; programs, arguments and paths stay in the host |
-| `umbra.onCommandsChange(fn)` | `fn()` when the user adds, edits or deletes one of this widget's scripts in Settings; call `umbra.commands()` again |
+| `umbra.run(commandId, params?)` | Runs a command declared in `permissions.commands` and resolves `{ exitCode, stdout, stderr, timedOut, stopped, truncated, durationMs }`. Rejects when the command isn't declared, isn't approved yet, or `params` are invalid. A user script that keeps running resolves `{ started: true }`. See below |
+| `umbra.commands()` | Resolves what `umbra.run` can run: `[{ id, title, description, user, keepsRunning, running }]`, the declared commands, then (with `permissions.userScripts`) the scripts the user added in Settings (`user: true`). Ids and names only; programs, arguments and paths stay in the host |
+| `umbra.onCommandsChange(fn)` | `fn()` when the user adds, edits or deletes one of this widget's scripts in Settings, or one that keeps running starts or stops; call `umbra.commands()` again |
+| `umbra.stop(commandId)` | Stops this copy's run of a command, or a user script that keeps running; resolves `true` when something was stopped. See [Scripts that keep running](#scripts-that-keep-running) |
+| `umbra.commandOutput(commandId)` | What a run in progress, or a script that keeps running, printed so far (last 64 KB): `{ running, keepsRunning, since, exitCode, restarting, restarts, text }`, for live output |
 | `umbra.fetchText(url)` | Like `fetchJson`, but resolves with the response body as a string (up to 2 MB), for Markdown, CSV or HTML |
 | `umbra.status` | Data freshness, tracked from every `fetchJson`/`fetchText`: `state` (`"none"`, `"live"`, `"stale"`, `"offline"`), `lastOk` (Date or `null`), `failures`, `ok(at?)`, `failed(err)`, `onChange(fn)`. See [Freshness and offline](#freshness-and-offline) |
 | `umbra.store.get(key, fallback?)` | Promise of this widget's saved value for `key` (any JSON), or `fallback` when it was never set |
@@ -384,6 +386,39 @@ umbra.onCommandsChange(async () => render(await umbra.commands()));
   page of the widget only ever sees ids and names. A declared command id always wins over a script with the same id.
 - Scripts are stored per widget id outside the widget folder, so updating the widget keeps them. An update that newly
   declares `userScripts` is listed in the update review box.
+- **Start in**: an optional folder the script runs in (a full local path; it must exist). Without one, it runs in the
+  widget's data folder. Picking a Windows shortcut (`.lnk`) with Browse fills the file, the arguments and Start in from it;
+  a typed `.lnk` path is refused.
+
+#### Scripts that keep running
+
+The editor asks up front **how it runs**: *Runs and finishes* (a report, a backup: everything above applies) or *Keeps
+running* (an SSH tunnel, a local server, a file watcher). Only a script the user adds can keep running; a command declared
+in `widget.json` never can.
+
+```js
+await umbra.run("tunnel");               // resolves { started: true } as soon as it is up
+const o = await umbra.commandOutput("tunnel");
+// { keepsRunning: true, running: true, since: 1767225600000, exitCode: null, restarting: false, restarts: 0, text: "..." }
+await umbra.stop("tunnel");              // true when something was stopped
+```
+
+- No time limit. Only the last 64 KB of its output (stdout and stderr as they came) is kept; Umbra adds `[Umbra] started`,
+  `stopped` and `exited with code N` lines. One copy per widget and script, and at most 8 at once in all of Umbra.
+- It stops when the user presses Stop (in the widget, on its row in Settings, or from the tray menu's "N scripts running"),
+  when the widget's last copy closes (turned off, removed, a layout without it, Umbra exits), and when the script is edited
+  or deleted. It sits in a kill-on-close job object, so it and everything it started also end if Umbra crashes.
+- Keeping running and Start in are part of the command's hash, so changing either needs a new approval (saving gives it).
+- Two optional switches: **Start automatically** (whenever a copy of the widget opens, so also after sign-in) and **Restart
+  if it stops** (after 5 s, 15 s, 45 s, 2 min, 5 min; it gives up after 5 failed restarts in a row, and a run of 5 minutes
+  resets the count). Neither starts a script that isn't approved.
+- There is no console: a script that waits for input (a password prompt) waits forever. Use key-based logins for tunnels.
+- `umbra.commands()` reports `keepsRunning` and `running` per entry, and `umbra.onCommandsChange` also fires when such a
+  script starts or stops.
+
+`umbra.stop(id)` also stops this copy's run of a script that finishes (the result then has `stopped: true`), and
+`umbra.commandOutput(id)` returns what that run printed so far, for live output. Neither starts anything, so neither needs
+a click or an approval.
 
 ## Webcam timelapse
 

@@ -62,3 +62,6 @@ A widget that runs whatever the user wants sets `"userScripts": true` in `permis
 - Umbra builds the command (`powershell ... -File <script>`, `python <script>`, `bash <script>`, `<program>`), never a shell line, and the row in Settings shows it.
 - Saving in Settings is the approval. Only Settings can add, change, delete or approve a script; no `umbractl` or MCP tool can, and the widget's page only sees ids and names.
 - Scripts are kept outside the widget folder, so updating the widget keeps them. The same timeout, output cap and environment rules apply.
+- An optional **Start in** folder sets where the script runs. Picking a Windows shortcut (`.lnk`) with Browse fills the file, arguments and Start in from it.
+- **Keeps running** (a tunnel, a server, a watcher) is a choice in the editor: no time limit, only the last 64 KB of output kept, and it stops when the user presses Stop (widget, Settings or tray), when the widget closes, when the script is edited or deleted, and with Umbra. Optional: start automatically while the widget is on, and restart if it stops (5 tries with growing waits). Only the user's own scripts can keep running, never a command declared in `widget.json`.
+- `umbra.stop(id)` stops a run or a script that keeps running; `umbra.commandOutput(id)` returns what it printed so far, for live output.

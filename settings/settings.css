@@ -540,6 +540,14 @@ select:not(.select):focus, input:is([type=number], [type=text], [type=time]):not
 .cmd.script .script-actions { grid-column: 2; grid-row: 1 / span 3; display: flex; gap: 6px; }
 .cmd.script .script-actions .btn { grid-column: auto; grid-row: auto; }
 .cmd.script .btn.icon { width: 30px; }
+/* A script that keeps running (a tunnel, a server): a tag, and whether it is up */
+.script-kind, .script-state { margin-left: 8px; padding: 1px 7px; border-radius: 6px; font-size: 10.5px; font-weight: 650; vertical-align: 1px;
+  color: var(--text-2); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.script-state { background: none; padding: 0; font-weight: 600; color: var(--text-3); }
+.script-state.on { color: #6fe0b0; }
+.script-state.on::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; vertical-align: 1px; }
+.script-state.wait { color: #f0b86e; }
+.script-edit .switch { justify-self: start; }
 .script-edit { padding: 14px; border-radius: 10px; background: color-mix(in srgb, var(--text) 4%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
 .script-edit [hidden] { display: none !important; }
 .script-edit .field { grid-template-columns: 140px 1fr; }

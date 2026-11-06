@@ -116,7 +116,7 @@
       case "storeChanged":
         handlers.store.forEach((fn) => fn(m.key ?? null));
         break;
-      case "commandsChanged": // the user added, changed or deleted one of this widget's scripts in Settings
+      case "commandsChanged": // a script was added, changed or deleted in Settings, or one that keeps running started or stopped
         handlers.commands.forEach((fn) => fn());
         break;
     }
@@ -224,14 +224,22 @@
   /**
    * Run one of the commands declared in widget.json permissions.commands. Only the id and string params are sent;
    * the host owns the program and arguments, asks the user to approve the first run, and caps time and output.
-   * Resolves { exitCode, stdout, stderr, timedOut, truncated, durationMs }; rejects when not declared, not approved, or invalid.
+   * Resolves { exitCode, stdout, stderr, timedOut, stopped, truncated, durationMs }; rejects when not declared, not approved, or invalid.
+   * A user script marked "Keeps running" in Settings resolves { started: true } as soon as it is up.
    */
   const run = (command, params) => request({ type: "run", command, params: params ?? undefined }, 300000);
   /**
    * What umbra.run can run: the commands in widget.json, then (with permissions.userScripts) the scripts the user added
-   * in Settings. Resolves [{ id, title, description, user }]; programs, arguments and paths stay in the host.
+   * in Settings. Resolves [{ id, title, description, user, keepsRunning, running }]; programs, arguments and paths stay in the host.
    */
   const commands = () => request({ type: "commands" }, 10000);
+  /** Stop this widget's run of a command, or a user script that keeps running. Resolves true when something was stopped. */
+  const stop = (command) => request({ type: "stop", command }, 10000);
+  /**
+   * What a command printed so far (the last 64 KB, stdout and stderr as they came): this copy's run in progress, or a
+   * user script that keeps running. Resolves { running, keepsRunning, since, exitCode, restarting, restarts, text }.
+   */
+  const commandOutput = (command) => request({ type: "commandOutput", command }, 10000);
   /** Machine totals declared in widget.json permissions.system: { cpu:{percent}, memory:{totalBytes,usedBytes,percent}, network:{downBytesPerSec,upBytesPerSec} }. */
   const system = () => request({ type: "system" }, 10000);
   /**
@@ -477,7 +485,9 @@
     fetchJson,
     run,
     commands,
-    /** fn() when the user adds, changes or deletes one of this widget's scripts in Settings; call umbra.commands() again. */
+    stop,
+    commandOutput,
+    /** fn() when the user adds, changes or deletes one of this widget's scripts in Settings, or one that keeps running starts or stops; call umbra.commands() again. */
     onCommandsChange: (fn) => handlers.commands.push(fn),
     system,
     notify,

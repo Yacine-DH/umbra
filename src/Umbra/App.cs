@@ -20,6 +20,23 @@ sealed class App : ApplicationContext, IUmbraHost
     /// <summary>Runs widget-declared local commands and the user's own scripts (Settings) behind the approval gate.</summary>
     public CommandService Commands { get; } = new(CommandApprovals.Shared, req => Task.FromResult(ApprovalDialog.Ask(req)), scripts: UserScripts.Shared);
 
+    /// <summary>A script that keeps running started, ended or waits to restart: the widget, Settings and the tray show it.</summary>
+    void OnServicesChanged(string widgetId)
+    {
+        CommandsChanged(widgetId);
+        if (_settingsWindow is { IsDisposed: false }) _settingsWindow.ScriptsChanged();
+        UpdateTrayStatus();
+    }
+
+    /// <summary>Whether some copy of the widget has a window (it is on, and not held back by safe mode).</summary>
+    public bool HasOpenWindow(string widgetId) => _windows.Values.Any(w => w.Manifest.Id == widgetId && !w.IsDisposed);
+
+    /// <summary>A window of the widget closed: when it was the last one, the scripts it keeps running stop with it.</summary>
+    void WidgetWindowGone(string widgetId)
+    {
+        if (!_windows.Values.Any(w => w.Manifest.Id == widgetId && !w.IsDisposed)) Commands.StopWidget(widgetId);
+    }
+
     /// <summary>The user saved or deleted a script: tell every open copy of that widget (umbra.onCommandsChange).</summary>
     public void CommandsChanged(string widgetId)
     {
@@ -413,6 +430,7 @@ sealed class App : ApplicationContext, IUmbraHost
         _ = Task.Run(Timelapse.PurgeLeftovers);
         DropStaleCameraApprovals();
         Timelapse.Changed += (inst, state) => _ui.Post(_ => OnTimelapseChanged(inst, state), null);
+        Commands.ServicesChanged += widgetId => _ui.Post(_ => OnServicesChanged(widgetId), null);
         _tray = new NotifyIcon { Icon = AppIcon, Text = "Umbra", Visible = true };
         // One left click, like OneDrive and PowerToys. ShowSettings only focuses an open window, so a double-click never opens two.
         _tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ShowSettings(); };
@@ -594,7 +612,7 @@ sealed class App : ApplicationContext, IUmbraHost
     /// </summary>
     void UpdateTrayStatus()
     {
-        _tray.Text = Tray.Tooltip(_windows.Count, EditMode, SafeMode, Updater.Available is not null, Timelapse.TrayLabel);
+        _tray.Text = Tray.Tooltip(_windows.Count, EditMode, SafeMode, Updater.Available is not null, Timelapse.TrayLabel, Commands.RunningServices().Count);
         Color? badge = Timelapse.Recording ? Tray.RecordingColor : Updater.Available is not null ? Tray.UpdateColor : null;
         if (badge == _badge) return;
         _badge = badge;
@@ -689,6 +707,19 @@ sealed class App : ApplicationContext, IUmbraHost
             if (Timelapse.TrayLabel != "Making timelapse video")
                 menu.Items.Add($"Stop timelapse ({label})", null, (_, _) => Timelapse.Stop(recorder)).Font = _trayBold ??= new Font(menu.Font, FontStyle.Bold);
             menu.Items.Add($"Cancel timelapse ({label})", null, (_, _) => Timelapse.Cancel(recorder));
+            menu.Items.Add(new ToolStripSeparator());
+        }
+        var scripts = Commands.RunningServices();
+        if (scripts.Count > 0)
+        {
+            // Scripts that keep running (a tunnel, a server) die with their widget; this stops one without opening it.
+            var sub = new ToolStripMenuItem(scripts.Count == 1 ? "1 script running" : $"{scripts.Count} scripts running");
+            foreach (var (widgetId, scriptId, title) in scripts)
+            {
+                var owner = Manifests.FirstOrDefault(x => x.Id == widgetId)?.Name ?? widgetId;
+                sub.DropDownItems.Add($"Stop {Tray.MenuText(title)} ({Tray.MenuText(owner)})", null, (_, _) => Commands.Stop(widgetId, widgetId, scriptId));
+            }
+            menu.Items.Add(sub);
             menu.Items.Add(new ToolStripSeparator());
         }
         if (UndoRemoveLabel is { } undo)
@@ -801,9 +832,10 @@ sealed class App : ApplicationContext, IUmbraHost
                 if (enabled && !open)
                 {
                     win = new WidgetWindow(this, m, inst);
-                    win.FormClosed += (_, _) => _windows.Remove(inst);
+                    win.FormClosed += (_, _) => { _windows.Remove(inst); WidgetWindowGone(m.Id); };
                     _windows[inst] = win;
                     if (WantVisible(inst)) win.Show();
+                    Commands.AutoStart(m); // scripts the user set to start whenever the widget is on
                 }
                 else if (!enabled && open)
                 {
@@ -826,6 +858,7 @@ sealed class App : ApplicationContext, IUmbraHost
             if (EditSelection == key) EditSelection = null;
             _windows[key].Close();
             _windows.Remove(key);
+            WidgetWindowGone(InstanceId.WidgetOf(key));
         }
     }
 

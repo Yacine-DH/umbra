@@ -37,6 +37,14 @@ public sealed partial class CommandSpec
     [System.Text.Json.Serialization.JsonIgnore] public string? Title { get; set; }
     /// <summary>True for a script the user added in Settings, false for one declared in widget.json.</summary>
     [System.Text.Json.Serialization.JsonIgnore] public bool IsUserScript { get; set; }
+    /// <summary>A user script marked "Keeps running" in Settings (a tunnel, a server): no time limit, stopped by the user or with the widget. Never set for a declared command.</summary>
+    [System.Text.Json.Serialization.JsonIgnore] public bool KeepsRunning { get; set; }
+    /// <summary>The folder a user script runs in ("Start in"); null = the widget's data folder. Never set for a declared command.</summary>
+    [System.Text.Json.Serialization.JsonIgnore] public string? WorkingDir { get; set; }
+    /// <summary>A keeps-running script the user wants started whenever the widget is on (not part of <see cref="Hash"/>: it changes when, not what, runs).</summary>
+    [System.Text.Json.Serialization.JsonIgnore] public bool AutoStart { get; set; }
+    /// <summary>A keeps-running script the user wants restarted after it exits on its own (not part of <see cref="Hash"/>).</summary>
+    [System.Text.Json.Serialization.JsonIgnore] public bool Restart { get; set; }
 
     internal static readonly HashSet<string> KnownKeys = new(StringComparer.Ordinal) { "id", "run", "description", "params", "timeoutSeconds" };
 
@@ -175,7 +183,8 @@ public sealed partial class CommandSpec
     }
 
     /// <summary>
-    /// SHA-256 over everything that decides what runs (id, executable, arguments, parameter limits, timeout), not the
+    /// SHA-256 over everything that decides what runs (id, executable, arguments, parameter limits, timeout, and for a user
+    /// script whether it keeps running and its folder), not the
     /// description. Approvals are stored against this, so any change to the command asks the user again.
     /// </summary>
     public string Hash()
@@ -194,6 +203,9 @@ public sealed partial class CommandSpec
                 ["choices"] = spec.Choices is null ? null : new JsonArray(spec.Choices.Select(c => (JsonNode?)c).ToArray()),
             };
         o["params"] = ps;
+        // Only present when set, so the hashes (and approvals) of every other command stay what they were.
+        if (KeepsRunning) o["keepsRunning"] = true;
+        if (WorkingDir is not null) o["cwd"] = WorkingDir;
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(o.ToJsonString()))).ToLowerInvariant();
     }
 

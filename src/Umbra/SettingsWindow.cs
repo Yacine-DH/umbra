@@ -282,7 +282,9 @@ sealed class SettingsWindow : Form, ISettingsView
                             Id = S("id"), Title = S("title"), Description = S("description"), Kind = S("kind"), Mode = S("mode"),
                             Path = S("path"), Code = S("code"), Args = S("args"),
                             TimeoutSeconds = input["timeoutSeconds"] is JsonValue t && t.TryGetValue<int>(out var n) ? n : CommandSpec.DefaultTimeoutSeconds,
+                            StartIn = S("startIn"), KeepsRunning = B("keepsRunning"), AutoStart = B("autoStart"), Restart = B("restart"),
                         };
+                        bool B(string k) => input[k] is JsonValue v && v.TryGetValue<bool>(out var b) && b;
                         var (saved, approved) = _app.Commands.SaveUserScript(widget, script);
                         Post(new JsonObject { ["type"] = "scriptSaved", ["widget"] = widget.Id, ["script"] = saved.Id });
                         Post(approved
@@ -296,6 +298,34 @@ sealed class SettingsWindow : Form, ISettingsView
                 break;
             }
 
+            case "startScript":
+            case "stopScript":
+            {
+                // Start or stop a script that keeps running. Starting needs the widget on and the script approved; this page is
+                // the user's own (no control command, umbractl or MCP tool starts a script).
+                var widget = _app.Manifests.FirstOrDefault(w => w.Id == (msg["widget"]?.GetValue<string>() ?? ""));
+                var sid = msg["script"]?.GetValue<string>() ?? "";
+                try
+                {
+                    if (widget is null) throw new WidgetCommandException("Unknown widget");
+                    if (msg["type"]!.GetValue<string>() == "stopScript") _app.Commands.Stop(widget.Id, widget.Id, sid);
+                    else if (!_app.HasOpenWindow(widget.Id)) throw new WidgetCommandException($"Turn {widget.Name} on first: a script that keeps running stops when its widget is off");
+                    else _app.Commands.StartFromSettings(widget, sid);
+                }
+                catch (WidgetCommandException ex) { Post(new JsonObject { ["type"] = "commandError", ["error"] = ex.Message }); }
+                SendState();
+                break;
+            }
+
+            case "pickScriptFolder":
+            {
+                using var dlg = new FolderBrowserDialog { Description = "Pick the folder the script starts in", UseDescriptionForTitle = true };
+                if (msg["path"]?.GetValue<string>() is { Length: > 0 } current && Directory.Exists(current)) dlg.InitialDirectory = current;
+                if (dlg.ShowDialog(this) != DialogResult.OK) break;
+                Post(new JsonObject { ["type"] = "scriptFolder", ["ref"] = msg["ref"]?.DeepClone(), ["path"] = dlg.SelectedPath });
+                break;
+            }
+
             case "pickScriptFile":
             {
                 // A host file dialog, so the path comes from the user's pick (the page could also take a typed path).
@@ -305,14 +335,30 @@ sealed class SettingsWindow : Form, ISettingsView
                     Title = kind == "program" ? "Pick the program to run" : "Pick the script to run",
                     Filter = kind switch
                     {
-                        "powershell" => "PowerShell script (*.ps1)|*.ps1|All files (*.*)|*.*",
-                        "python" => "Python script (*.py;*.pyw)|*.py;*.pyw|All files (*.*)|*.*",
-                        "bash" => "Shell script (*.sh)|*.sh|All files (*.*)|*.*",
-                        _ => "Programs (*.exe;*.bat;*.cmd)|*.exe;*.bat;*.cmd|All files (*.*)|*.*",
+                        "powershell" => "PowerShell script (*.ps1)|*.ps1|Shortcut (*.lnk)|*.lnk|All files (*.*)|*.*",
+                        "python" => "Python script (*.py;*.pyw)|*.py;*.pyw|Shortcut (*.lnk)|*.lnk|All files (*.*)|*.*",
+                        "bash" => "Shell script (*.sh)|*.sh|Shortcut (*.lnk)|*.lnk|All files (*.*)|*.*",
+                        _ => "Programs (*.exe;*.bat;*.cmd)|*.exe;*.bat;*.cmd|Shortcut (*.lnk)|*.lnk|All files (*.*)|*.*",
                     },
+                    DereferenceLinks = false, // a shortcut is read below, so its arguments and Start in come along
                 };
                 if (dlg.ShowDialog(this) != DialogResult.OK) break;
-                Post(new JsonObject { ["type"] = "scriptFile", ["ref"] = msg["ref"]?.DeepClone(), ["path"] = dlg.FileName });
+                var reply = new JsonObject { ["type"] = "scriptFile", ["ref"] = msg["ref"]?.DeepClone(), ["path"] = dlg.FileName };
+                if (dlg.FileName.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+                {
+                    // The host reads the shortcut; the page only gets the fields to show, and Save checks them like typed ones.
+                    if (ShellLink.Read(dlg.FileName) is not { } link)
+                    {
+                        Post(new JsonObject { ["type"] = "commandError", ["error"] = "That shortcut couldn't be read. Pick the script or program it opens instead." });
+                        break;
+                    }
+                    var (k, file, args) = ShellLink.AsScript(link);
+                    reply["path"] = file;
+                    reply["kind"] = k;
+                    reply["args"] = args;
+                    reply["startIn"] = link.WorkingDirectory;
+                }
+                Post(reply);
                 break;
             }
             case "addInstance":
@@ -640,6 +686,7 @@ sealed class SettingsWindow : Form, ISettingsView
         return new JsonArray(_app.Commands.UserScriptsOf(m).Select(s =>
         {
             var spec = specs.GetValueOrDefault(s.Id);
+            var state = _app.Commands.State(m.Id, s.Id);
             return (JsonNode?)new JsonObject
             {
                 ["id"] = s.Id,
@@ -651,6 +698,14 @@ sealed class SettingsWindow : Form, ISettingsView
                 ["code"] = s.Code,
                 ["args"] = s.Args,
                 ["timeoutSeconds"] = s.TimeoutSeconds,
+                ["keepsRunning"] = s.KeepsRunning,
+                ["startIn"] = s.StartIn,
+                ["autoStart"] = s.AutoStart,
+                ["restart"] = s.Restart,
+                ["running"] = state.Running,
+                ["since"] = state.Since is { } since ? new DateTimeOffset(since).ToUnixTimeMilliseconds() : null,
+                ["restarting"] = state.Restarting,
+                ["lastExit"] = state.LastExit,
                 ["line"] = spec?.DisplayLine() ?? "",
                 ["hash"] = spec?.Hash() ?? "",
                 ["status"] = spec is null ? "invalid" : _app.Commands.Approvals.Status(m.Id, spec),
@@ -761,6 +816,12 @@ sealed class SettingsWindow : Form, ISettingsView
         if (error is null) _app.NoteCatalog(_catalog);
         Post(new JsonObject { ["type"] = "catalog", ["error"] = error, ["widgets"] = list });
         _catalogSent.TrySetResult();
+    }
+
+    /// <summary>A script that keeps running started or stopped: re-send the state so its row shows it.</summary>
+    public void ScriptsChanged()
+    {
+        if (_loaded.Task.IsCompleted) SendState();
     }
 
     /// <summary>Re-sends the state after something changed outside this window (tray menu, umbractl).</summary>

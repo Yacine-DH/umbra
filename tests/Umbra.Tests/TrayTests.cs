@@ -11,6 +11,21 @@ public class TrayTests
     }
 
     [Fact]
+    public void Tooltip_counts_running_scripts()
+    {
+        Assert.Equal("Umbra · 2 widgets · 1 script running", Tray.Tooltip(2, false, false, false, scripts: 1));
+        Assert.Equal("Umbra · 2 widgets · 3 scripts running · Edit mode", Tray.Tooltip(2, true, false, false, scripts: 3));
+    }
+
+    [Fact]
+    public void Menu_text_is_one_short_line_without_access_keys()
+    {
+        Assert.Equal("Tom && Jerry", Tray.MenuText("Tom & Jerry"));
+        Assert.Equal("a b", Tray.MenuText("a\nb"));
+        Assert.Equal(60, Tray.MenuText(new string('x', 100)).Length);
+    }
+
+    [Fact]
     public void Tooltip_lists_modes_and_update_in_order()
     {
         Assert.Equal("Umbra · 3 widgets · Edit mode", Tray.Tooltip(3, true, false, false));

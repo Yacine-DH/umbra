@@ -703,6 +703,11 @@ sealed class WidgetWindow : Form, IWidgetView
                 Post(new JsonObject { ["type"] = "commandsResult", ["id"] = msg!["id"]?.DeepClone(), ["ok"] = true, ["data"] = DescribeCommands() });
                 break;
 
+            case "stop":
+            case "commandOutput":
+                HandleScriptControl(type!, msg!);
+                break;
+
             case "timelapse":
                 await HandleTimelapse(msg!);
                 break;
@@ -1120,6 +1125,28 @@ sealed class WidgetWindow : Form, IWidgetView
     }
 
     /// <summary>
+    /// umbra.stop(id) and umbra.commandOutput(id): stop a run or a script that keeps running, or read what it printed so far.
+    /// Neither starts anything, so neither needs a click or an approval; both only reach this widget's own commands.
+    /// </summary>
+    void HandleScriptControl(string type, JsonNode msg)
+    {
+        var reply = new JsonObject { ["type"] = "runResult", ["id"] = msg["id"]?.DeepClone() };
+        if (msg["command"] is JsonValue c && c.GetValueKind() == JsonValueKind.String && c.GetValue<string>() is { Length: > 0 and <= 64 } command)
+        {
+            reply["ok"] = true;
+            reply["data"] = type == "stop"
+                ? JsonValue.Create(_app.Commands.Stop(Manifest.Id, Instance, command))
+                : _app.Commands.Output(Manifest.Id, Instance, command);
+        }
+        else
+        {
+            reply["ok"] = false;
+            reply["error"] = "A command id is required";
+        }
+        Post(reply);
+    }
+
+    /// <summary>
     /// umbra.commands(): what this widget can run, as ids and names only. The program, arguments and paths stay in the host,
     /// so the page learns nothing it could not already do with umbra.run.
     /// </summary>
@@ -1129,6 +1156,8 @@ sealed class WidgetWindow : Form, IWidgetView
         ["title"] = c.Title ?? c.Id,
         ["description"] = c.IsUserScript && c.Description == c.Title ? "" : c.Description, // a script without one borrows its name
         ["user"] = c.IsUserScript,
+        ["keepsRunning"] = c.KeepsRunning,
+        ["running"] = c.KeepsRunning && _app.Commands.State(Manifest.Id, c.Id).Running,
     }).ToArray());
 
     /// <summary>The user added, changed or deleted one of this widget's scripts in Settings.</summary>

@@ -697,9 +697,22 @@ const scriptDrafts = new Map(); // widget copy id -> the script being added or e
 let scriptFocus = null;         // widget copy whose editor should take focus after the next render
 const SCRIPT_KINDS = [["powershell", "PowerShell"], ["python", "Python"], ["bash", "Bash"], ["program", "Program"]];
 const mk = (tag, className, text) => Object.assign(document.createElement(tag), className ? { className } : {}, text != null ? { textContent: text } : {});
+// Starting points for a new script. Picking one only fills the form: it becomes the user's own script when they save it.
+const SCRIPT_EXAMPLES = [
+  { title: "System info", description: "Windows version, uptime and free memory", kind: "powershell", mode: "code", timeoutSeconds: 30,
+    code: '$o = Get-CimInstance Win32_OperatingSystem\n"$($o.Caption) $($o.Version)"\n"Uptime: $([int]((Get-Date) - $o.LastBootUpTime).TotalHours) h"\n"Free memory: $([math]::Round($o.FreePhysicalMemory / 1MB, 1)) GB"' },
+  { title: "Free disk space", description: "Free space on each drive", kind: "powershell", mode: "code", timeoutSeconds: 30,
+    code: 'Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -ne $null } | ForEach-Object {\n    "{0}: {1:N1} GB free of {2:N1} GB" -f $_.Name, ($_.Free / 1GB), (($_.Used + $_.Free) / 1GB)\n}' },
+  { title: "Python version", description: "Needs Python on PATH", kind: "python", mode: "code", timeoutSeconds: 20,
+    code: "import sys, platform\nprint('Python', platform.python_version())\nprint(sys.executable)" },
+  { title: "Ping every 5 seconds", description: "Keeps running until you stop it", kind: "powershell", mode: "code", keepsRunning: true,
+    code: 'while ($true) {\n    $r = Test-Connection 1.1.1.1 -Count 1 -ErrorAction SilentlyContinue\n    if ($r) { "$(Get-Date -Format T)  $($r.ResponseTime) ms" } else { "$(Get-Date -Format T)  no answer" }\n    Start-Sleep -Seconds 5\n}' },
+];
+const clockTime = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 function editScript(w, draft) {
-  scriptDrafts.set(w.id, { widget: w.widget, kind: "powershell", mode: "file", path: "", code: "", args: "", description: "", title: "", timeoutSeconds: 60, ...draft });
+  scriptDrafts.set(w.id, { widget: w.widget, kind: "powershell", mode: "file", path: "", code: "", args: "", description: "", title: "", timeoutSeconds: 60,
+    keepsRunning: false, startIn: "", autoStart: false, restart: false, ...draft });
   scriptFocus = w.id;
   try { localStorage.setItem("openCards", JSON.stringify([...openCards().add(w.id)])); } catch { /* storage unavailable */ }
   renderInstalled();
@@ -725,6 +738,12 @@ function renderScripts(root, w) {
     if (draft && draft.id === s.id) { root.append(scriptEditor(w, draft)); continue; }
     const row = mk("div", "cmd script");
     const name = mk("div", "script-name", s.title);
+    if (s.keepsRunning) {
+      // A tunnel or server: say so up front, and whether it is up right now.
+      name.append(mk("span", "script-kind", "Keeps running"));
+      const state = s.running ? `Running since ${clockTime(s.since)}` : s.restarting ? "Restarting" : s.lastExit != null ? `Stopped (exit ${s.lastExit})` : "Not running";
+      name.append(mk("span", `script-state${s.running ? " on" : s.restarting ? " wait" : ""}`, state));
+    }
     const line = mk("div", "cmd-line", s.line || "(can't run: open it to fix)");
     const desc = mk("div", "cmd-desc");
     desc.append(mk("span", `cmd-status ${s.status === "invalid" ? "changed" : s.status}`,
@@ -735,6 +754,12 @@ function renderScripts(root, w) {
       ok.setAttribute("aria-label", `Approve ${s.title}: ${s.line}`);
       ok.addEventListener("click", () => post({ type: "approveCommand", widget: w.widget, command: s.id, hash: s.hash }));
       actions.append(ok);
+    } else if (s.keepsRunning && s.status === "approved") {
+      const on = s.running || s.restarting;
+      const go = mk("button", `btn small${on ? " danger" : " primary"}`, on ? "Stop" : "Start");
+      go.setAttribute("aria-label", `${on ? "Stop" : "Start"} ${s.title}`);
+      go.addEventListener("click", () => { post({ type: on ? "stopScript" : "startScript", widget: w.widget, script: s.id }); go.blur(); });
+      actions.append(go);
     }
     const edit = mk("button", "btn small", "Edit");
     edit.setAttribute("aria-label", `Edit ${s.title}`);
@@ -774,19 +799,47 @@ function scriptEditor(w, d) {
   kind.value = d.kind;
   kind.addEventListener("change", () => { d.kind = kind.value; sync(); });
 
+  /** A segmented radio group; onPick(value) sets the draft. Returns [element, buttons]. */
+  const segmented = (choices, onPick) => {
+    const box = mk("div", "segmented");
+    box.setAttribute("role", "radiogroup");
+    const btns = choices.map(([v, label]) => {
+      const b = mk("button", "", label);
+      b.type = "button";
+      b.setAttribute("role", "radio");
+      b.dataset.v = String(v);
+      b.addEventListener("click", () => { onPick(v); sync(); });
+      box.append(b);
+      return b;
+    });
+    return [box, btns];
+  };
+  const mark = (btns, value) => { for (const b of btns) { const on = b.dataset.v === String(value); b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on)); } };
+
+  // Runs and finishes (a report, a backup) or keeps running (a tunnel, a server): asked up front, since it changes how it runs.
+  const [life, lifeBtns] = segmented([[false, "Runs and finishes"], [true, "Keeps running"]], (v) => { d.keepsRunning = v; });
+  const lifeRow = row("How it runs", life);
+
   // Script file or code you write here (Program always runs a file).
-  const mode = mk("div", "segmented");
-  mode.setAttribute("role", "radiogroup");
-  const modeBtns = [["file", "Script file"], ["code", "Write code"]].map(([v, label]) => {
-    const b = mk("button", "", label);
-    b.type = "button";
-    b.setAttribute("role", "radio");
-    b.addEventListener("click", () => { d.mode = v; sync(); });
-    b.dataset.v = v;
-    mode.append(b);
-    return b;
-  });
+  const [mode, modeBtns] = segmented([["file", "Script file"], ["code", "Write code"]], (v) => { d.mode = v; });
   const modeRow = row("Run", mode);
+
+  // Only when adding: start from an example (it fills the form; saving makes it the user's own script).
+  let exampleRow = null;
+  if (!d.id) {
+    const pick = mk("select", "select");
+    pick.append(new Option("Start from scratch", ""));
+    SCRIPT_EXAMPLES.forEach((x, i) => pick.append(new Option(`${x.title}${x.keepsRunning ? " (keeps running)" : ""}`, String(i))));
+    pick.value = d.example ?? "";
+    pick.addEventListener("change", () => {
+      const x = SCRIPT_EXAMPLES[Number(pick.value)];
+      Object.assign(d, { example: pick.value, title: "", description: "", kind: "powershell", mode: "file", path: "", code: "", args: "", timeoutSeconds: 60, keepsRunning: false, autoStart: false, restart: false },
+        pick.value === "" ? {} : x);
+      document.activeElement?.blur();
+      renderInstalled();
+    });
+    exampleRow = row("Example", pick);
+  }
 
   const path = input("path", { placeholder: "C:\\Scripts\\backup.ps1", spellcheck: false });
   const browse = mk("button", "btn small", "Browse...");
@@ -810,8 +863,30 @@ function scriptEditor(w, d) {
 
   const args = input("args", { placeholder: "--quiet \"D:\\My Photos\"", spellcheck: false });
   const argsRow = row("Arguments", args, 'Optional. Separate them with spaces; put one with spaces in "quotes".');
+  // The folder it runs in, like a shortcut's "Start in" (empty: the widget's own data folder).
+  const startIn = input("startIn", { placeholder: "Optional, e.g. C:\\Scripts", spellcheck: false });
+  const pickDir = mk("button", "btn small", "Browse...");
+  pickDir.type = "button";
+  pickDir.addEventListener("click", () => post({ type: "pickScriptFolder", path: d.startIn || "", ref: w.id }));
+  const dirBox = mk("div", "script-path");
+  dirBox.append(startIn, pickDir);
+  const dirRow = row("Start in", dirBox);
+
   const timeout = input("timeoutSeconds", { type: "number", min: 1, max: 120, step: 1 });
   timeout.classList.add("num");
+  const timeoutRow = row("Time limit (seconds)", timeout);
+  const toggle = (key, label, hint) => {
+    const sw = mk("label", "switch");
+    sw.innerHTML = '<input type="checkbox"><span></span>';
+    const box = $("input", sw);
+    box.setAttribute("role", "switch");
+    box.setAttribute("aria-label", label);
+    box.checked = !!d[key];
+    box.addEventListener("change", () => { d[key] = box.checked; });
+    return row(label, sw, hint);
+  };
+  const autoRow = toggle("autoStart", "Start automatically", "Whenever the widget is on, so also when you sign in.");
+  const restartRow = toggle("restart", "Restart if it stops", "After 5 s, then longer waits; it gives up after 5 tries in a row.");
   const desc = input("description", { maxLength: 200, placeholder: "Optional, shown under the name" });
 
   const save = mk("button", "btn small primary", d.id ? "Save" : "Add script");
@@ -820,13 +895,15 @@ function scriptEditor(w, d) {
   cancel.type = "button";
   cancel.addEventListener("click", () => { scriptDrafts.delete(w.id); document.activeElement?.blur(); renderInstalled(); });
   const actions = mk("div", "script-edit-actions");
-  actions.append(mk("span", "hint-text", "Saving approves exactly this command. It runs as you, with a time limit, never from a shell."), cancel, save);
+  const saveHint = mk("span", "hint-text");
+  actions.append(saveHint, cancel, save);
 
-  form.append(row("Name", title), row("Type", kind), modeRow, pathRow, codeRow, argsRow, row("Time limit (seconds)", timeout), row("Description", desc), actions);
+  form.append(...[exampleRow, row("Name", title), row("Type", kind), lifeRow, modeRow, pathRow, codeRow, argsRow, dirRow, timeoutRow, autoRow, restartRow, row("Description", desc), actions].filter(Boolean));
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    const script = Object.fromEntries(["id", "title", "description", "kind", "mode", "path", "code", "args"].map((k) => [k, String(d[k] ?? "")]));
-    post({ type: "saveScript", widget: d.widget, script: { ...script, timeoutSeconds: Math.round(Number(d.timeoutSeconds)) || 60 } });
+    const script = Object.fromEntries(["id", "title", "description", "kind", "mode", "path", "code", "args", "startIn"].map((k) => [k, String(d[k] ?? "")]));
+    post({ type: "saveScript", widget: d.widget, script: { ...script, timeoutSeconds: Math.round(Number(d.timeoutSeconds)) || 60,
+      keepsRunning: !!d.keepsRunning, autoStart: !!d.keepsRunning && !!d.autoStart, restart: !!d.keepsRunning && !!d.restart } });
     document.activeElement?.blur(); // so the state that follows rebuilds the list
   });
   form.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); cancel.click(); } });
@@ -835,7 +912,13 @@ function scriptEditor(w, d) {
     const program = d.kind === "program", bashCode = d.kind === "bash" && d.mode === "code";
     const isCode = !program && d.mode === "code";
     modeRow.hidden = program;
-    for (const b of modeBtns) { const on = b.dataset.v === (program ? "file" : d.mode); b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on)); }
+    mark(modeBtns, program ? "file" : d.mode);
+    mark(lifeBtns, !!d.keepsRunning);
+    timeoutRow.hidden = !!d.keepsRunning;
+    autoRow.hidden = restartRow.hidden = !d.keepsRunning;
+    saveHint.textContent = d.keepsRunning
+      ? "Saving approves exactly this command. It runs as you, never from a shell, until you stop it or turn the widget off."
+      : "Saving approves exactly this command. It runs as you, with a time limit, never from a shell.";
     pathRow.hidden = isCode;
     codeRow.hidden = !isCode;
     code.rows = bashCode ? 2 : 8;
@@ -1265,6 +1348,7 @@ function permissionChips(chips, w) {
   for (const k of w.media || []) chip(k === "control" ? "Controls media playback" : "Reads now playing");
   if (w.notifications) chip("Can show notifications");
   if (w.camera) chip("Uses your camera (timelapses)");
+  if (w.userScripts) chip("Runs scripts you add (Settings)");
   for (const s of w.system || []) chip(`Reads ${s} usage`);
 }
 
@@ -1504,7 +1588,22 @@ bridge && bridge.listen((m) => {
       break;
     case "scriptFile": { // the host's file picker answered for this copy's editor
       const d = scriptDrafts.get(m.ref);
-      if (d && typeof m.path === "string") { d.path = m.path; document.activeElement?.blur(); renderInstalled(); }
+      if (d && typeof m.path === "string") {
+        d.path = m.path;
+        // A shortcut (.lnk) comes back as what it opens: its kind, arguments and Start in folder.
+        if (typeof m.kind === "string" && SCRIPT_KINDS.some(([k]) => k === m.kind)) { d.kind = m.kind; d.mode = "file"; }
+        if (typeof m.args === "string") d.args = m.args;
+        if (typeof m.startIn === "string" && m.startIn) d.startIn = m.startIn;
+        // A picked script usually expects to start in its own folder, like a double-click does.
+        else if (!d.startIn && /^[A-Za-z]:\\/.test(m.path) && m.path.includes("\\", 3)) d.startIn = m.path.slice(0, m.path.lastIndexOf("\\"));
+        document.activeElement?.blur();
+        renderInstalled();
+      }
+      break;
+    }
+    case "scriptFolder": { // the host's folder picker answered for an editor's Start in
+      const d = scriptDrafts.get(m.ref);
+      if (d && typeof m.path === "string") { d.startIn = m.path; document.activeElement?.blur(); renderInstalled(); }
       break;
     }
     case "layoutDeleted":
@@ -1679,7 +1778,7 @@ function renderHome() {
   const loading = !widgets.length && catalogLoading;
   const picks = !catalog || widgets.length >= 3 ? [] : HOME_PICKS
     .map((id) => catalog.find((w) => w.id === id))
-    .filter((w) => w && !w.installed && !w.incompatible && !w.camera && !(w.commands || []).length)
+    .filter((w) => w && !w.installed && !w.incompatible && !w.camera && !w.userScripts && !(w.commands || []).length)
     .filter((w) => !widgets.some((x) => x.widget === w.id)) // the state after an install arrives before the updated catalog
     .slice(0, 3);
   const picksKey = loading ? "loading" : JSON.stringify(picks.map((w) => [w.id, w.version, w.description, w.hosts, w.media, w.notifications, w.system, busy.has(w.id)]));

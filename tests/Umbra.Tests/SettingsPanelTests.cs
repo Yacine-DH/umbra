@@ -60,7 +60,7 @@ public class SettingsPanelTests
     public void Home_suggestions_stay_low_risk()
     {
         var js = Read("settings.js");
-        Assert.Contains("!w.camera && !(w.commands || []).length", js);
+        Assert.Contains("!w.camera && !w.userScripts && !(w.commands || []).length", js);
         var card = Regex.Match(js, @"function homePickCard\(w\) \{.*?\n\}", RegexOptions.Singleline).Value;
         Assert.Contains("permissionChips(", card);
         Assert.Contains("job(w.id, \"install\", btn)", card);

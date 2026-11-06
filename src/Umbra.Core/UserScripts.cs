@@ -30,6 +30,14 @@ public sealed partial class UserScript
     /// <summary>Extra arguments, written like a command line ("a b" stays one argument). Never passed through a shell.</summary>
     public string Args { get; set; } = "";
     public int TimeoutSeconds { get; set; } = CommandSpec.DefaultTimeoutSeconds;
+    /// <summary>"Keeps running" (a tunnel, a server, a watcher): no time limit; it runs until stopped or the widget closes.</summary>
+    public bool KeepsRunning { get; set; }
+    /// <summary>The folder it runs in ("Start in"); empty = the widget's data folder.</summary>
+    public string StartIn { get; set; } = "";
+    /// <summary>Keeps running only: start it whenever the widget is on.</summary>
+    public bool AutoStart { get; set; }
+    /// <summary>Keeps running only: start it again (after a growing delay) when it exits on its own.</summary>
+    public bool Restart { get; set; }
 
     [GeneratedRegex(@"^[A-Za-z]:[\\/]")] private static partial Regex AbsoluteWindowsPath();
 
@@ -64,6 +72,9 @@ public sealed partial class UserScript
         Description = (Description ?? "").Trim();
         Path = (Path ?? "").Trim().Trim('"');
         Args = (Args ?? "").Trim();
+        StartIn = (StartIn ?? "").Trim().Trim('"');
+        if (StartIn.Length > 3) StartIn = StartIn.TrimEnd('\\', '/'); // keep "C:\" as it is
+        if (!KeepsRunning) AutoStart = Restart = false;
         Code = (Code ?? "").Replace("\r\n", "\n");
         Kind = (Kind ?? "").Trim().ToLowerInvariant();
         Mode = Kind == "program" ? "file" : (Mode ?? "").Trim().ToLowerInvariant();
@@ -74,6 +85,8 @@ public sealed partial class UserScript
         if (Mode is not ("file" or "code")) throw new InvalidOperationException("Pick a script file or write the code");
         if (TimeoutSeconds is < 1 or > CommandSpec.MaxTimeoutSeconds) throw new InvalidOperationException($"The time limit must be 1-{CommandSpec.MaxTimeoutSeconds} seconds");
         if (Args.Contains('\n') || Args.Contains('\r')) throw new InvalidOperationException("Arguments must be on one line");
+        if (StartIn.Length > 0 && (StartIn.Length > MaxPath || StartIn.Any(char.IsControl) || StartIn.Contains("..") || !AbsoluteWindowsPath().IsMatch(StartIn)))
+            throw new InvalidOperationException("Start in must be the full path of a folder, like C:\\Scripts");
 
         if (IsCode)
         {
@@ -91,6 +104,9 @@ public sealed partial class UserScript
             // PowerShell and Python get a Windows path; Bash gets the path as bash sees it (~/bin/sync.sh, /mnt/c/...).
             if (Kind is "powershell" or "python" && !AbsoluteWindowsPath().IsMatch(Path))
                 throw new InvalidOperationException("Use the full path of the script, like C:\\Scripts\\backup.ps1");
+            // A shortcut isn't a program: Settings' Browse button reads where it points (target, arguments, Start in).
+            if (Path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Pick the shortcut with Browse so Umbra can read where it points");
         }
     }
 
@@ -120,6 +136,7 @@ public sealed partial class UserScript
             Id = Id, Run = run, TimeoutSeconds = TimeoutSeconds,
             Description = Description.Length > 0 ? Description : Title,
             Title = Title, IsUserScript = true,
+            KeepsRunning = KeepsRunning, WorkingDir = StartIn.Length > 0 ? StartIn : null, AutoStart = AutoStart, Restart = Restart,
         };
         try { spec.Validate(); }
         catch (InvalidOperationException ex)
@@ -287,5 +304,6 @@ sealed partial class UserScripts(string path, string scriptsDir)
     {
         Id = s.Id, Title = s.Title, Description = s.Description, Kind = s.Kind, Mode = s.Mode,
         Path = s.Path, Code = s.Code, Args = s.Args, TimeoutSeconds = s.TimeoutSeconds,
+        KeepsRunning = s.KeepsRunning, StartIn = s.StartIn, AutoStart = s.AutoStart, Restart = s.Restart,
     };
 }

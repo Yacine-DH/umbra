@@ -43,7 +43,7 @@ community widgets in `widgets\`). `UMBRA_DATA_DIR` overrides the data folder (te
 | `src/Umbra/ToastService.cs`, `src/Umbra.Core/Notifier.cs` | `umbra.notify`: real toasts via `ToastNotificationManager` (installer shortcut AUMID `AmineChr54.Umbra`; portable/source runs register their own under HKCU; balloon fallback), plus the rate limit and text/action/XML helpers |
 | `src/Umbra.Core/WidgetStore.cs` | `umbra.store`: per-widget JSON data in `%APPDATA%\Umbra\data\<id>.json` (1 MB cap, deleted on `umbractl remove`; Settings > Remove moves it to the trash) |
 | `src/Umbra.Core/WidgetTrash.cs` | Settings > Remove moves the widget folder, data and settings of every copy to `%APPDATA%\Umbra\trash\<id>-<timestamp>` for Undo; purged after 7 days at startup; never part of backups |
-| `src/Umbra.Core/UserScripts.cs` | The user's own scripts for widgets with `permissions.userScripts` (Script Runner): `UserScript` (validation, the argv it becomes) and the store in `%APPDATA%\Umbra\scripts.json` (+ code files in `scripts\<id>\`). Edited only in Settings (`saveScript`/`deleteScript`); `CommandService.All` merges them with declared commands; widgets list them with `umbra.commands()` |
+| `src/Umbra.Core/UserScripts.cs` | The user's own scripts for widgets with `permissions.userScripts` (Script Runner): `UserScript` (validation, the argv it becomes) and the store in `%APPDATA%\Umbra\scripts.json` (+ code files in `scripts\<id>\`). Edited only in Settings (`saveScript`/`deleteScript`); `CommandService.All` merges them with declared commands; widgets list them with `umbra.commands()`. Scripts that keep running (tunnels, servers) are owned by `CommandService` (start/stop/restart, `OutputTail`, `CommandRunner.Start`); the tray lists them; `ShellLink.cs` reads a picked `.lnk` |
 | `src/Umbra.Core/WidgetManifest.cs`, `Settings.cs` | `widget.json` model and discovery; `settings.json` model |
 | `src/Umbra.Core/Protocol.cs` | Control protocol (shared source, linked into umbractl). Command list lives here |
 | `src/Umbra.Core/Control.cs` | Executes control commands against `IUmbraHost`: the single place that defines what automation can do |
@@ -115,7 +115,11 @@ New automation goes through the control protocol so the CLI, MCP and tests stay 
   adds, edits, deletes or approves one (saving there is the approval, the row shows the exact command line), the page
   sees ids and names only (`umbra.commands()`), the host builds a fixed argv (no shell, no parameters) that passes
   `CommandSpec.Validate`, and code typed in Settings runs from a file named after its hash, rewritten from `scripts.json` before each run.
-  No control command, umbractl or MCP tool may add, change or approve a script (tested). A declared command id always wins.
+  No control command, umbractl or MCP tool may add, change, approve, start or stop a script (tested). A declared command id always wins.
+  The one exception to the 120 s timeout (#322): a user script the user marked **Keeps running** in Settings (`CommandSpec.KeepsRunning`,
+  never settable from widget.json) has no timeout and keeps only a 64 KB output tail; it runs in a kill-on-close job (dies with Umbra),
+  at most one per widget + script and 8 in all, and stops on Stop (widget, Settings, tray), when the widget's last window closes,
+  and when the script is edited or deleted. Auto-start and restart only ever start an approved script. Keeps-running and Start in are in the hash.
 - Camera (`permissions.camera`, `Timelapse.cs`, `TimelapseService.cs`): only the host touches the webcam (Windows.Media.Capture),
   the page never gets the stream, a frame, a full path or a write path (it sees the video's file name and the folder's name;
   the output folder comes from the host's folder dialog). Each widget id needs a one-time host-drawn approval

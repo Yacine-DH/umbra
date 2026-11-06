@@ -10,13 +10,22 @@ static partial class Tray
     public const int MaxTooltip = 127;
 
     /// <summary>"Umbra · 6 widgets" plus " · Edit mode", " · Safe mode" and " · Update ready" when they apply; a timelapse label ("Recording timelapse") comes first so it is never cut.</summary>
-    public static string Tooltip(int widgets, bool editMode, bool safeMode, bool updateReady, string? timelapse = null)
+    public static string Tooltip(int widgets, bool editMode, bool safeMode, bool updateReady, string? timelapse = null, int scripts = 0)
     {
         var s = (timelapse is null ? "Umbra · " : $"Umbra · {timelapse} · ") + $"{widgets} widget{(widgets == 1 ? "" : "s")}";
+        if (scripts > 0) s += $" · {scripts} script{(scripts == 1 ? "" : "s")} running";
         if (editMode) s += " · Edit mode";
         if (safeMode) s += " · Safe mode";
         if (updateReady) s += " · Update ready";
         return s.Length <= MaxTooltip ? s : s[..MaxTooltip];
+    }
+
+    /// <summary>Text for a menu item: one line, at most 60 characters, and "&amp;" shown as itself (not an access key).</summary>
+    public static string MenuText(string s)
+    {
+        s = new string(s.Select(c => char.IsControl(c) ? ' ' : c).ToArray()).Trim();
+        if (s.Length > 60) s = s[..59] + "…";
+        return s.Replace("&", "&&");
     }
 
     /// <summary>Command-line flag of the replacement process started by "Restart Umbra"; it waits for the old instance to exit.</summary>
