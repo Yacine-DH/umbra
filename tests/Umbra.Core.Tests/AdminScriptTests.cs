@@ -24,7 +24,7 @@ public class AdminScriptTests
         var svc = new CommandService(approvals, _ => { prompts++; return Task.FromResult(true); }, scripts: scripts)
         {
             WorkingDir = id => Path.Combine(dir, "run", id),
-            RunElevated = (exe, args, wd, create, timeout, _) =>
+            RunElevated = (exe, args, wd, create, timeout, _, _) =>
             {
                 launches.Add(new(exe, args, wd, create, timeout));
                 return Task.FromResult(result ?? new RunResult(0, "", "", false, false, 5));

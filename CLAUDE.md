@@ -122,8 +122,11 @@ New automation goes through the control protocol so the CLI, MCP and tests stay 
   and when the script is edited or deleted. Auto-start and restart only ever start an approved script. Keeps-running and Start in are in the hash.
   A user script the user marked **Run as administrator** in Settings (`CommandSpec.RunAsAdmin`, never settable from widget.json, in the hash)
   runs through ShellExecute `runas`, so Windows' UAC prompt asks on every run; it starts only right after a physical click on the widget
-  (never a timer, auto-start or automation), is approved only in Settings (never the widget's prompt), can't keep running, and returns
-  only its exit code (its own console window; no pipes, job or scrubbed environment are possible for an elevated child).
+  (never a timer, auto-start or automation), is approved only in Settings (never the widget's prompt), and can't keep running.
+  What UAC elevates is System32 Windows PowerShell running the fixed helper in `ElevatedRun.cs` (what runs comes only from its
+  -EncodedCommand line): it starts the approved program with the same argv, folder and scrubbed environment, no window, and sends its
+  output back over a one-instance pipe Umbra created (token-checked; Umbra only reads). Umbra closing the pipe (Stop, timeout, exit)
+  makes the helper kill the program's tree. No job object (an elevated child can't join Umbra's).
 - Camera (`permissions.camera`, `Timelapse.cs`, `TimelapseService.cs`): only the host touches the webcam (Windows.Media.Capture),
   the page never gets the stream, a frame, a full path or a write path (it sees the video's file name and the folder's name;
   the output folder comes from the host's folder dialog). Each widget id needs a one-time host-drawn approval

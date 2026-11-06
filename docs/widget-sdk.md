@@ -402,9 +402,12 @@ can't ask for it, and no control command, `umbractl` or MCP tool can set it).
 - It only starts right after a physical click on the widget: a call without one (a timer, the widget starting) is refused,
   so a widget can't raise UAC prompts on its own. Its approval is given only in Settings (saving, or the Approve button),
   never from the widget's prompt. The switch is part of the command's hash.
-- An elevated process can't have Umbra's pipes, environment or job object: it runs in a console window of its own with
-  the user's normal environment, and the result has `elevated: true`, empty `stdout`/`stderr` and the exit code. On a
-  timeout or `umbra.stop` Umbra tries to end it; when Windows refuses, the result has `stillRunning: true`.
+- Umbra can't read an elevated program's output directly, so what Windows elevates is Windows PowerShell from System32
+  running a fixed helper (`ElevatedRun.cs`): it starts the same program and argv with the same folder and scrubbed
+  environment, without a window, and sends stdout and stderr back over a private one-instance pipe. The result is the
+  usual one plus `elevated: true`, live output works with `umbra.commandOutput`, and the 1 MB cap applies. On a timeout or
+  `umbra.stop` Umbra closes the pipe and the helper ends the program and everything it started; if it hasn't ended 5 s
+  later, the result has `stillRunning: true`. The UAC prompt names Windows PowerShell for every kind of script.
 - It can't keep running (Umbra couldn't stop it or tie it to the widget). `umbra.commands()` reports `runAsAdmin: true`.
 
 #### Scripts that keep running

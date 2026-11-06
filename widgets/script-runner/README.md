@@ -33,8 +33,9 @@ administrator** for the script in Settings, then:
 
 - Each time you press **Run**, Windows shows its own administrator prompt (UAC). Say No and nothing runs.
 - It only ever starts from a click on Run: never on a timer, at widget start, or from `umbractl`/MCP.
-- It runs in a window of its own, so its output shows there, not in the widget; the widget shows the exit code and the time.
-- Umbra can't stop a program running as administrator: if it passes its time limit or you press Stop, close its window.
+- Its output shows in the widget, live, like any other script. The Windows prompt names *Windows PowerShell* for every
+  kind of script: Umbra runs a small fixed PowerShell helper as administrator, which runs your script and sends its output back.
+- Stop and the time limit work as usual: they end the script and anything it started.
 - It can't also be a script that keeps running. Changing the switch is a change to the command, and saving approves it.
 
 ## Use it

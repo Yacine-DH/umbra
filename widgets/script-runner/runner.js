@@ -154,12 +154,11 @@ async function runScript(id) {
     const r = await umbra.run(id);
     let kind = r.exitCode === 0 ? "ok" : "fail";
     let note = "";
-    const stuck = r.stillRunning ? " Windows doesn't let Umbra end a program running as administrator, so it may still be running: close its window." : "";
+    const stuck = r.stillRunning ? " It runs as administrator and didn't end when asked, so it may still be running (see Task Manager)." : "";
     if (r.stopped) { kind = "stopped"; note = `Stopped.${stuck}`; }
     else if (r.timedOut && r.elevated) { kind = "timeout"; note = `Timed out.${stuck}`; }
     else if (r.timedOut) { kind = "timeout"; note = "Timed out and was stopped. Raise its time limit in Settings > My widgets > Script Runner (max 120 s), or make it a script that keeps running."; }
     else if (r.truncated) { note = "Output was larger than 1 MB and was cut."; }
-    else if (r.elevated) { note = "Ran as administrator in its own window, so its output isn't shown here."; }
     entry = { at: Date.now(), exitCode: r.exitCode, ms: r.durationMs ?? Date.now() - t0, stdout: String(r.stdout || "").slice(0, MAX_KEEP), stderr: String(r.stderr || "").slice(0, MAX_KEEP), kind, note, truncated: !!r.truncated };
   } catch (err) {
     const d = describeError(err);

@@ -20,6 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Scripts the "Run as administrator" helper runs in ElevatedRunTests (kept out of the test DLL). -->
+    <None Include="elevated\*.ps1" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="System.Drawing" />
   </ItemGroup>

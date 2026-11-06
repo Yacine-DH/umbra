@@ -890,7 +890,7 @@ function scriptEditor(w, d) {
   const restartRow = toggle("restart", "Restart if it stops", "After 5 s, then longer waits; it gives up after 5 tries in a row.");
   // Elevation: Windows asks (UAC) on every run, and only a click on Run starts one. Not for scripts that keep running.
   const adminRow = toggle("runAsAdmin", "Run as administrator",
-    "Windows asks you each time. Only starts when you click Run on the widget; its output shows in its own window, not in the widget.");
+    "Windows asks you each time. Only starts when you click Run on the widget.");
   const desc = input("description", { maxLength: 200, placeholder: "Optional, shown under the name" });
 
   const save = mk("button", "btn small primary", d.id ? "Save" : "Add script");

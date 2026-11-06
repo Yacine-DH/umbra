@@ -4,7 +4,7 @@ using System.Text;
 namespace Umbra;
 
 /// <summary>What a finished (or killed) command produced.</summary>
-/// <param name="StillRunning">An elevated run that timed out or was stopped, but that Windows didn't let Umbra end.</param>
+/// <param name="StillRunning">A run as administrator that timed out or was stopped, but whose helper hadn't ended it 5 s later.</param>
 public sealed record RunResult(int ExitCode, string Stdout, string Stderr, bool TimedOut, bool Truncated, long DurationMs, bool StillRunning = false);
 
 /// <summary>
@@ -177,57 +177,6 @@ static class CommandRunner
         sw.Stop();
         var exit = proc.HasExited ? proc.ExitCode : -1;
         return new RunResult(timedOut ? -1 : exit, stdout.Text(), stderr.Text(), timedOut, stdout.Truncated || stderr.Truncated, sw.ElapsedMilliseconds);
-    }
-
-    /// <summary>Win32 ERROR_CANCELLED: the user said No to the UAC prompt.</summary>
-    const int ErrorCancelled = 1223;
-
-    /// <summary>
-    /// Runs a user script marked "Run as administrator": through ShellExecute's "runas" verb, so Windows shows its own UAC
-    /// prompt (on the secure desktop, out of any widget's reach) before every run. Still no shell: <paramref name="exePath"/>
-    /// is the resolved .exe/.com/.cmd/.bat and each argument stays one argv element. An elevated process can't have
-    /// redirected pipes, Umbra's environment or Umbra's job, so it runs in a window of its own, gets the user's normal
-    /// environment from Windows, and only its exit code comes back. On timeout or <paramref name="ct"/> Umbra tries to end
-    /// it; when Windows refuses, the result says it is still running.
-    /// </summary>
-    public static async Task<RunResult> RunElevatedAsync(string exePath, IReadOnlyList<string> args, string workingDir,
-        TimeSpan timeout, CancellationToken ct = default, bool createWorkingDir = true)
-    {
-        if (!OperatingSystem.IsWindows()) throw new WidgetCommandException("Running as administrator is only supported on Windows");
-        if (createWorkingDir) Directory.CreateDirectory(workingDir);
-        else if (!Directory.Exists(workingDir)) throw new WidgetCommandException($"The Start in folder {workingDir} doesn't exist");
-        var psi = new ProcessStartInfo(exePath)
-        {
-            UseShellExecute = true,
-            Verb = "runas",
-            WorkingDirectory = workingDir,
-            WindowStyle = ProcessWindowStyle.Normal,
-        };
-        foreach (var a in args) psi.ArgumentList.Add(a);
-        var sw = Stopwatch.StartNew();
-        Process? started;
-        try { started = Process.Start(psi); }
-        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == ErrorCancelled)
-        {
-            throw new WidgetCommandException("You said No to the Windows administrator prompt, so it didn't run");
-        }
-        using var proc = started ?? throw new WidgetCommandException("Windows started the program but gave Umbra no handle to it");
-
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(timeout);
-        var timedOut = false;
-        var stillRunning = false;
-        try { await proc.WaitForExitAsync(cts.Token); }
-        catch (OperationCanceledException)
-        {
-            timedOut = !ct.IsCancellationRequested;
-            try { proc.Kill(entireProcessTree: true); } catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { }
-            try { await proc.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5)); } catch (TimeoutException) { }
-            stillRunning = !proc.HasExited;
-        }
-        sw.Stop();
-        var exit = !timedOut && proc.HasExited ? proc.ExitCode : -1;
-        return new RunResult(exit, "", "", timedOut, false, sw.ElapsedMilliseconds, stillRunning);
     }
 
     /// <summary>

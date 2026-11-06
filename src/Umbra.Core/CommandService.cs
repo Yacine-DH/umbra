@@ -67,9 +67,11 @@ sealed class CommandService
     public Func<CommandSpec, TimeSpan> Timeout { get; set; } = c => TimeSpan.FromSeconds(c.TimeoutSeconds);
     /// <summary>The wait before a restart; tests make it short.</summary>
     public Func<TimeSpan, CancellationToken, Task> Delay { get; set; } = Task.Delay;
-    /// <summary>Runs a script marked "Run as administrator" (exe, args, folder, create folder, timeout); tests replace the UAC launch.</summary>
-    public Func<string, IReadOnlyList<string>, string, bool, TimeSpan, CancellationToken, Task<RunResult>> RunElevated { get; set; } =
-        (exe, args, dir, create, timeout, ct) => CommandRunner.RunElevatedAsync(exe, args, dir, timeout, ct, create);
+    /// <summary>Runs a script marked "Run as administrator" (exe, args, folder, create folder, timeout, live output); tests replace the UAC launch.</summary>
+    public Func<string, IReadOnlyList<string>, string, bool, TimeSpan, CancellationToken, OutputTail, Task<RunResult>> RunElevated { get; set; }
+
+    Task<RunResult> DefaultRunElevated(string exe, IReadOnlyList<string> args, string dir, bool create, TimeSpan timeout, CancellationToken ct, OutputTail tail) =>
+        ElevatedRun.RunAsync(exe, args, dir, timeout, ct, create, tail, MaxOutputBytes);
 
     /// <summary>A keeps-running script of this widget started, ended, or is waiting to restart (raised on a pool thread).</summary>
     public event Action<string>? ServicesChanged;
@@ -83,6 +85,7 @@ sealed class CommandService
         _prompt = prompt;
         _now = now ?? (() => DateTime.UtcNow);
         _scripts = scripts;
+        RunElevated = DefaultRunElevated;
     }
 
     public CommandApprovals Approvals => _approvals;
@@ -205,8 +208,8 @@ sealed class CommandService
             if (spec.RunAsAdmin)
             {
                 Log.Write($"[{m.Id}] run '{spec.Id}' as administrator ({identity.Path})");
-                run.Tail.Note("asked Windows to run it as administrator; its output shows in its own window, not here");
-                r = await RunElevated(identity.Path, args, dir, spec.WorkingDir is null, Timeout(spec), linked.Token);
+                run.Tail.Note("waiting for the Windows administrator prompt");
+                r = await RunElevated(identity.Path, args, dir, spec.WorkingDir is null, Timeout(spec), linked.Token, run.Tail);
             }
             else
             {
