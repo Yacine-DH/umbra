@@ -859,7 +859,7 @@ test("events reach every copy of the PC", async () => {
 
 test("manifest: id, one declared host, notifications, the view option, a preview", () => {
   assert.equal(manifest.id, "hearth");
-  assert.equal(manifest.version, "1.4.1");
+  assert.match(manifest.version, /^\d+\.\d+\.\d+$/); // bumped on every change, so no exact pin (a pin broke CI at 1.5.0)
   assert.equal(manifest.author, "Yacine-DH");
   assert.deepEqual(manifest.permissions.hosts, [HOST]);
   assert.equal(manifest.permissions.notifications, true);
