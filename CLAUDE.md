@@ -14,7 +14,8 @@ dotnet test Umbra.Linux.slnf
 node --test tests/relay/*.test.mjs        # relay (Buddy + Hearth) Worker logic, no Cloudflare needed
 node scripts/catalog.mjs                  # validate widgets/ + themes/ and regenerate both index.json files (commit them)
 powershell -File build.ps1                # publish both exes + installer -> dist/UmbraSetup-<ver>.exe
-node scripts/release.mjs minor            # start a release (patch|minor|major|X.Y.Z): bump, checks, release PR; merging it publishes
+powershell -File scripts/ci-local.ps1 -Pr 123 -Status   # CI: every ci.yml + widgets.yml job on this PC (Docker + host, portable smoke), posts the required local-ci check
+node scripts/release.mjs minor            # start a release (patch|minor|major|X.Y.Z): bump, checks, release PR
 dotnet run --project src/Umbra            # run from source (exit the installed Umbra first: one instance per user)
 ```
 
@@ -178,13 +179,15 @@ Use `umbractl capture <widget-id|settings:<page>> out.png`, then look at the PNG
   New issues are added automatically and labelled `status: triage`.
 - Labels: `type: bug|feature|docs|widget|chore`, `area: host|widgets|settings|sdk|ai|installer|ci|docs`,
   `priority: p0|p1|p2`, plus `good first issue` and `help wanted`.
-- One issue per PR when possible, with `Closes #N` in the body. CI (`.github/workflows/ci.yml`) must pass.
+- One issue per PR when possible, with `Closes #N` in the body. CI must pass: it runs on the maintainer's PC, not GitHub Actions
+  (`scripts/ci-local.ps1 -Pr <N> -Status`: the jobs of `ci.yml` and `widgets.yml` in Docker and on the host). It posts the `local-ci`
+  commit status, the check branch protection on `main` requires. The `pr-reviewer` agent runs it, captures what changed, and merges.
 - Before starting an issue, skip it if it has an assignee; otherwise comment "I'm taking this" so work isn't duplicated.
 - Contributors without write access work from a fork (`gh repo fork AmineChr54/umbra --clone`, then
   `gh pr create --repo AmineChr54/umbra`). They can't set labels, assignees or the board, and never merge; the
-  maintainer does that. A first-time contributor's CI waits for the maintainer to approve the run.
+  maintainer does that, and runs CI for their PR on the maintainer's PC only after reading the diff (`-TrustFork`: CI runs their code).
 - Releases: `node scripts/release.mjs <patch|minor|major>` bumps `Directory.Build.props` and `installer/Umbra.iss`, runs the
-  checks and opens the `Release vX.Y.Z` PR with draft notes as its body. Merging it makes `release.yml` build the installer,
-  create the tag and the GitHub release with the PR body as notes. No manual tag (see `.claude/skills/release`).
+  checks and opens the `Release vX.Y.Z` PR with draft notes as its body. After it merges, `build.ps1` runs on the maintainer's PC and
+  `gh release create` publishes the installer and portable zip with the PR body as notes (GitHub Actions, and so `release.yml`, is off; see `.claude/skills/release`).
 
 Project agents live in `.claude/agents/` and repeatable procedures in `.claude/skills/`.

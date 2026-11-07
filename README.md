@@ -7,7 +7,6 @@
 Crisp, true-black widgets pinned under your apps on Windows. Sandboxed, scriptable, and open to anyone who wants to build one.
 
 [![Latest release](https://img.shields.io/github/v/release/AmineChr54/umbra?label=release&color=8b8cff)](https://github.com/AmineChr54/umbra/releases/latest)
-[![CI](https://github.com/AmineChr54/umbra/actions/workflows/ci.yml/badge.svg)](https://github.com/AmineChr54/umbra/actions/workflows/ci.yml)
 [![Downloads](https://img.shields.io/github/downloads/AmineChr54/umbra/total?color=8b8cff)](https://github.com/AmineChr54/umbra/releases)
 ![Windows 10 1809+ / 11](https://img.shields.io/badge/Windows-10%201809%2B%20%7C%2011-0078d4)
 [![MIT license](https://img.shields.io/github/license/AmineChr54/umbra?color=lightgrey)](LICENSE)

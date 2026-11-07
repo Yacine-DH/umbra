@@ -133,7 +133,7 @@ themes/ember/
 
 ## Working on the app itself
 
-Pick an issue from the [roadmap board](https://github.com/users/AmineChr54/projects/5) (labels `good first issue` and `help wanted` are a good start), comment that you're on it, and open a PR that says `Closes #N`. Build and test with `dotnet build Umbra.slnx` and `dotnet test Umbra.slnx`; CI runs the same on Windows, plus an Ubuntu job for the platform-neutral part (`Umbra.Linux.slnf`). [CLAUDE.md](CLAUDE.md) explains the architecture and the security rules, and AI coding agents read it too.
+Pick an issue from the [roadmap board](https://github.com/users/AmineChr54/projects/5) (labels `good first issue` and `help wanted` are a good start), comment that you're on it, and open a PR that says `Closes #N`. Build and test with `dotnet build Umbra.slnx` and `dotnet test Umbra.slnx`; CI runs the same on Windows, plus an Ubuntu job for the platform-neutral part (`Umbra.Linux.slnf`). CI runs on the maintainer's PC, not GitHub Actions: `powershell -File scripts/ci-local.ps1` runs every job (the Linux and Node ones in Docker), and you can run it yourself before opening the PR. [CLAUDE.md](CLAUDE.md) explains the architecture and the security rules, and AI coding agents read it too.
 
 ## Working on the Linux port
 
@@ -191,7 +191,7 @@ Reviewers will check that the widget only uses the hosts it declares and looks a
 
 ## Releasing: signing and winget (maintainers)
 
-`release.yml` builds `UmbraSetup-<version>.exe`, signs it with `signtool` **only if** the repo secrets `SIGN_CERT_BASE64` (a code-signing `.pfx`, base64) and `SIGN_CERT_PASSWORD` exist, and otherwise publishes it unsigned. It also fills the manifests in [`winget/`](winget) with the version and SHA256 (`scripts/winget.ps1`) and attaches them to the workflow run as `winget-manifests-<version>`.
+Releases are built on the maintainer's PC (`build.ps1`, then `gh release create`; see `.claude/skills/release`) while GitHub Actions is off. When it's on, `release.yml` builds `UmbraSetup-<version>.exe`, signs it with `signtool` **only if** the repo secrets `SIGN_CERT_BASE64` (a code-signing `.pfx`, base64) and `SIGN_CERT_PASSWORD` exist, and otherwise publishes it unsigned. It also fills the manifests in [`winget/`](winget) with the version and SHA256 (`scripts/winget.ps1`) and attaches them to the workflow run as `winget-manifests-<version>`.
 
 One-time setup (needs a person, not CI):
 

@@ -11,7 +11,9 @@ reviews or merges your own PR.
 Without write access (`gh repo view AmineChr54/umbra --json viewerPermission`), you are a contributor: work from a fork as
 `CLAUDE.md` describes, stop once CI is green and report the PR URL. The maintainer reviews and merges.
 
- "Ship" means all the way, with no "say go" or "run this ! command" hand-backs. If the change only reaches the user in a new app version, finish with the release skill too. If GitHub Actions is locked, run the CI jobs locally (Docker for the Linux and Node jobs, this PC for the Windows build and smoke test) and merge with --admin. Ask only when a tool call is actually denied.
+"Ship" means all the way, with no "say go" or "run this `!` command" hand-backs. If the change only reaches the user in a new
+app version (host code, not just a catalog widget), finish with the `release` skill too. Ask only when a tool call is actually
+denied, and then say which one in one line. CI runs on this PC (`scripts/ci-local.ps1`), not on GitHub Actions.
 
 ## 1. Commit and push
 
@@ -19,7 +21,7 @@ Without write access (`gh repo view AmineChr54/umbra --json viewerPermission`), 
    them unstaged and mention them in the final report. If there's nothing to ship, say so and stop.
 2. On `main`, create a branch first (`fix/<topic>`, `feat/<topic>`, `chore/<topic>`, `docs/<topic>`).
 3. If `widgets/` or `themes/` changed: bump the widget's `version` and run `node scripts/catalog.mjs`, because CI fails on stale
-   index files. Run the local checks that apply to the change (`dotnet build Umbra.slnx -warnaserror`, `dotnet test Umbra.slnx`).
+   index files. Run the quick checks that apply while you work (`dotnet build Umbra.slnx -warnaserror`, `dotnet test Umbra.slnx`).
 4. Commit with the attribution line from the session reminder and push with `git push -u origin HEAD`.
 
 ## 2. Open the PR
@@ -31,17 +33,18 @@ If the branch already has an open PR, push to it and go to step 3. Otherwise run
 - One line starting `Needs human check:` for each thing a person must try (drag, real hardware). The `release-checklist` skill collects these lines.
 - The PR attribution line from the session reminder at the end.
 
-## 3. Wait for CI
+## 3. Run CI on this PC
 
-CI takes about 2 minutes. Start the wait with the Bash tool and `run_in_background`, then end your turn until it notifies you.
-The delay is there because checks don't exist until a moment after the push:
+CI is `scripts/ci-local.ps1`: every job of `ci.yml` and `widgets.yml` (Linux and Node in Docker, the Windows build, tests and
+smoke test on this PC) in a throwaway worktree, about 70 s. It posts the `local-ci` status that branch protection requires.
+Docker Desktop must be running. Run it with the Bash tool and `run_in_background`, then end your turn until it notifies you:
 
 ```bash
-sleep 30; gh pr checks <N> --watch --interval 20
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ci-local.ps1 -Pr <N> -Status
 ```
 
-If a check failed, read it with `gh run view <run-id> --log-failed`, fix the cause, push and wait again. Don't start the
-reviewer on a red PR. After 3 failed attempts, stop and report the failure to the user.
+If a job failed, read `dist/ci/<sha7>/<job>.log`, fix the cause, push and run it again. Don't start the reviewer on a red PR
+(the reviewer runs it once more on the SHA it reviews). After 3 failed attempts, stop and report the failure to the user.
 
 ## 4. Hand off to a fresh reviewer
 

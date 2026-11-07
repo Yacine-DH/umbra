@@ -65,7 +65,7 @@ append [`linux.md`](linux.md) to the file you wrote, after "Ship": it holds the 
 
 ### Ship
 - [ ] `node scripts/release.mjs <bump>` opened the `Release vX.Y.Z` PR; CI green; PR merged (no manual tag)
-- [ ] Watch `release.yml`; assets listed by `gh release view vX.Y.Z --json assets -q ".assets[].name"` (installer and portable zip)
+- [ ] `build.ps1` + `gh release create` on this PC (release skill step 6); assets listed by `gh release view vX.Y.Z --json assets -q ".assets[].name"` (installer and portable zip)
 - [ ] Release notes on GitHub match the PR body
 - [ ] winget submission (`scripts/winget.ps1`)
 - [ ] Note in the release text: installer is unsigned, SmartScreen will warn until #9 is done

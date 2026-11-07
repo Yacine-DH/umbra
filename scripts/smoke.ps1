@@ -3,10 +3,11 @@
   End-to-end smoke test: starts a real Umbra with a throwaway data folder and drives it with umbractl.
 
 .DESCRIPTION
-  status, list, new + capture, configure, data, logs, remove, quit. Used by CI (.github/workflows/ci.yml)
+  status, list, new + capture, configure, data, logs, remove, quit. Used by CI (scripts/ci-local.ps1, the smoke job of .github/workflows/ci.yml)
   and runnable locally after `dotnet build Umbra.slnx -c Release`.
 
-  It refuses to run while another Umbra is running (one instance per user, and it would quit it).
+  It refuses to run while another Umbra is running (one instance per user, and it would quit it), unless -Umbra is a
+  portable copy (portable.txt next to Umbra.exe): that has its own pipe, so scripts/ci-local.ps1 runs it beside your Umbra.
   The data folder (UMBRA_DATA_DIR) is a fresh temp folder, so your settings and widgets are never touched.
   If the WebView2 runtime is missing or cannot start, the capture step is reported as SKIPPED (a warning),
   not a failure; every other step still has to pass.
@@ -29,7 +30,8 @@ if (-not $Umbra) { $Umbra = Join-Path $root "src\Umbra\bin\$Configuration\net10.
 if (-not $Ctl) { $Ctl = Join-Path $root "src\Umbra.Cli\bin\$Configuration\net10.0\umbractl.exe" }
 if (-not $OutDir) { $OutDir = Join-Path $root 'dist\smoke' }
 foreach ($p in $Umbra, $Ctl) { if (-not (Test-Path $p)) { throw "Not found: $p (build first: dotnet build Umbra.slnx -c $Configuration)" } }
-if (Get-Process -Name Umbra -ErrorAction SilentlyContinue) {
+# A portable copy (portable.txt next to Umbra.exe) has its own pipe and single-instance name, so it runs beside an installed Umbra.
+if (-not (Test-Path (Join-Path (Split-Path $Umbra) 'portable.txt')) -and (Get-Process -Name Umbra -ErrorAction SilentlyContinue)) {
     throw 'Umbra is already running. Exit it first (this test starts its own instance and quits it at the end).'
 }
 New-Item -ItemType Directory -Force $OutDir | Out-Null

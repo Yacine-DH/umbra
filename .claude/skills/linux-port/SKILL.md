@@ -34,7 +34,9 @@ If the `linux/phase-0` PR is not merged yet, base work on `upstream/linux/phase-
 2. **Harvest finished agents** (their completion notifications arrive on their own; never poll their transcripts):
    - The agent reports a PR → run the `host-reviewer` agent on that PR's diff for anything touching `src/`, `settings/`,
      `shared/` or `linux/`. Send the findings back to the **same** implementing agent with SendMessage to fix. Don't start a new agent.
-   - CI red on one of your PRs → send the failing log lines (`gh pr checks N`, `gh run view --log-failed`) to the agent that owns it.
+   - CI red on one of your PRs (the `local-ci` status in `gh pr checks N`, which the maintainer's `scripts/ci-local.ps1` posts; GitHub
+     Actions is off) → run `powershell -File scripts/ci-local.ps1` on that branch yourself (needs Docker) and send the failing job's log
+     (`dist/ci/<sha7>/<job>.log`) to the agent that owns it.
    - The maintainer asked for changes in a review → same: route them to that PR's agent (or a fresh agent if that one is gone,
      with the PR number and the review comments).
    - You never merge; the maintainer does.
