@@ -209,10 +209,17 @@ function renderUpdate() {
   $("#navUpdate").hidden = bs === "none";
   // A disabled #updateInstall ignores click(), so the nav button must be disabled for the same window.
   $("#navUpdate").disabled = bs === "downloading" || !!u.installing;
-  $("#navUpdateText").textContent = bs === "downloading" ? (u.progress != null ? `Downloading... ${u.progress} %` : "Downloading...") : bs === "ready" ? (u.installing ? "Restarting..." : "Restart to update") : u.portable ? "Download update" : "Update now";
-  // Says what is being updated (widgets have their own Update all in Browse), to what, and what the click will do.
-  $("#navUpdateSub").textContent = a ? `Umbra v${state.version} → v${a.version}` : "";
+  $("#navUpdateText").textContent = bs === "downloading" ? "Downloading..." : bs === "ready" ? (u.installing ? "Restarting..." : "Restart to update") : u.portable ? "Download update" : "Update now";
+  // Says what is being updated (widgets have their own Update all in Browse) and the version it brings.
+  $("#navUpdateSub").textContent = a ? `Umbra v${a.version}` : "";
+  // A loading line instead of a percentage: it fills with the download, and slides while the size isn't known yet.
+  const bar = $("#navUpdateBar"), pct = u.progress != null ? Math.max(0, Math.min(100, u.progress)) : null;
+  bar.hidden = bs !== "downloading";
+  bar.classList.toggle("indeterminate", pct == null);
+  $("#navUpdateFill").style.width = pct == null ? "" : `${pct}%`;
+  if (pct == null) bar.removeAttribute("aria-valuenow"); else bar.setAttribute("aria-valuenow", String(pct));
   $("#navUpdate").title = u.installing ? ""
+    : bs === "downloading" ? (pct == null ? `Downloading Umbra v${a ? a.version : ""}` : `Downloading Umbra v${a ? a.version : ""}: ${pct} %`)
     : bs === "ready" ? "Restarts Umbra to install the new version"
     : bs !== "available" ? ""
     : u.portable ? "Opens the release page to download the new version"
@@ -1070,20 +1077,25 @@ function openGroupMenu(anchor, w, here) {
 }
 
 // A small keyboard-accessible menu under (or, with `up`, above) a button: arrows move, Enter picks, Esc and outside clicks close.
+// It sits on <body> at the button's screen position, so a card's rounded clipping can't cut it off, and it flips to the
+// other side when there's no room. Scrolling or resizing closes it rather than leaving it behind.
 function popupMenu(anchor, items, { up = false } = {}) {
   document.querySelector(".gmenu")?.remove();
   const menu = document.createElement("div");
   menu.className = "gmenu" + (up ? " up" : "");
   menu.setAttribute("role", "menu");
-  if (up) menu.style.left = anchor.offsetLeft + "px";
   anchor.setAttribute("aria-expanded", "true");
   const close = (refocus) => {
     menu.remove();
     document.removeEventListener("mousedown", away, true);
+    document.removeEventListener("scroll", onScroll, true);
+    window.removeEventListener("resize", onResize);
     anchor.setAttribute("aria-expanded", "false");
     if (refocus) anchor.focus();
   };
   const away = (e) => { if (!menu.contains(e.target) && !anchor.contains(e.target)) close(false); };
+  const onScroll = (e) => { if (!menu.contains(e.target)) close(false); };
+  const onResize = () => close(false);
   for (const { text, run, on } of items) {
     const b = Object.assign(document.createElement("button"), { type: "button", textContent: text });
     b.setAttribute("role", "menuitem");
@@ -1098,8 +1110,16 @@ function popupMenu(anchor, items, { up = false } = {}) {
     else if (e.key === "ArrowDown") { e.preventDefault(); list[(i + 1) % list.length].focus(); }
     else if (e.key === "ArrowUp") { e.preventDefault(); list[(i - 1 + list.length) % list.length].focus(); }
   });
-  anchor.after(menu);
+  document.body.append(menu);
+  const r = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect(), gap = 4, pad = 8;
+  const below = r.bottom + gap, above = r.top - gap - m.height;
+  const fitsBelow = below + m.height <= innerHeight - pad, fitsAbove = above >= pad;
+  const top = up ? (fitsAbove || !fitsBelow ? above : below) : (fitsBelow || !fitsAbove ? below : above);
+  menu.style.top = `${Math.max(pad, Math.min(top, innerHeight - m.height - pad))}px`;
+  menu.style.left = `${Math.max(pad, Math.min(r.left, innerWidth - m.width - pad))}px`;
   document.addEventListener("mousedown", away, true);
+  document.addEventListener("scroll", onScroll, true);
+  window.addEventListener("resize", onResize);
   menu.querySelector("button")?.focus();
 }
 
