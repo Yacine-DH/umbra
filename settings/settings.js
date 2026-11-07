@@ -1076,11 +1076,17 @@ function openGroupMenu(anchor, w, here) {
   popupMenu(anchor, items);
 }
 
+// Closes the open popup menu, if any, through its own close() so its document listeners go too.
+function closePopupMenu() {
+  const open = document.querySelector(".gmenu");
+  if (open) open.closeMenu ? open.closeMenu(false) : open.remove();
+}
+
 // A small keyboard-accessible menu under (or, with `up`, above) a button: arrows move, Enter picks, Esc and outside clicks close.
 // It sits on <body> at the button's screen position, so a card's rounded clipping can't cut it off, and it flips to the
 // other side when there's no room. Scrolling or resizing closes it rather than leaving it behind.
 function popupMenu(anchor, items, { up = false } = {}) {
-  document.querySelector(".gmenu")?.remove();
+  closePopupMenu();
   const menu = document.createElement("div");
   menu.className = "gmenu" + (up ? " up" : "");
   menu.setAttribute("role", "menu");
@@ -1096,6 +1102,7 @@ function popupMenu(anchor, items, { up = false } = {}) {
   const away = (e) => { if (!menu.contains(e.target) && !anchor.contains(e.target)) close(false); };
   const onScroll = (e) => { if (!menu.contains(e.target)) close(false); };
   const onResize = () => close(false);
+  menu.closeMenu = close;
   for (const { text, run, on } of items) {
     const b = Object.assign(document.createElement("button"), { type: "button", textContent: text });
     b.setAttribute("role", "menuitem");
@@ -1726,7 +1733,7 @@ $("#importBackup").addEventListener("click", () => post({ type: "importBackup" }
 // The host shows the picker and the access prompt; the page never passes a path.
 $("#installMenu").addEventListener("click", (e) => {
   const btn = e.currentTarget;
-  if (btn.getAttribute("aria-expanded") === "true") { document.querySelector(".gmenu")?.remove(); btn.setAttribute("aria-expanded", "false"); return; }
+  if (btn.getAttribute("aria-expanded") === "true") { closePopupMenu(); btn.setAttribute("aria-expanded", "false"); return; }
   popupMenu(btn, [
     { text: "File (.zip or .umbrawidget)…", run: () => post({ type: "installLocal", kind: "file" }) },
     { text: "Folder…", run: () => post({ type: "installLocal", kind: "folder" }) },

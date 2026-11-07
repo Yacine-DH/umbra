@@ -623,6 +623,8 @@ select:not(.select):focus, input:is([type=number], [type=text], [type=time]):not
   .nav button.active { outline: 2px solid Highlight; outline-offset: -2px; background: Canvas; }
   .nav button.active::before { background: Highlight; box-shadow: none; }
   .nav button.dot::after { background: Highlight; }
+  .update-bar { forced-color-adjust: none; background: Canvas; outline: 1px solid CanvasText; }
+  .update-bar > span { background: Highlight; }
   .content::-webkit-scrollbar-thumb { background: CanvasText; border-color: Canvas; }
 
   .group, .wcard, .ccard, .search, .hint, .empty, .thumb, .cmd, .toast, .size-val, .hero, .home-task, .home-chip { outline: 1px solid CanvasText; outline-offset: -1px; }
