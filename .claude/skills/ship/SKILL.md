@@ -11,6 +11,8 @@ reviews or merges your own PR.
 Without write access (`gh repo view AmineChr54/umbra --json viewerPermission`), you are a contributor: work from a fork as
 `CLAUDE.md` describes, stop once CI is green and report the PR URL. The maintainer reviews and merges.
 
+ "Ship" means all the way, with no "say go" or "run this ! command" hand-backs. If the change only reaches the user in a new app version, finish with the release skill too. If GitHub Actions is locked, run the CI jobs locally (Docker for the Linux and Node jobs, this PC for the Windows build and smoke test) and merge with --admin. Ask only when a tool call is actually denied.
+
 ## 1. Commit and push
 
 1. Run `git status` and `git diff`. Stage only the files of this task, by name. If unrelated changes are in the tree, leave
