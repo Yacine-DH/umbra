@@ -1,7 +1,7 @@
 <Project>
   <!-- One version for Umbra.exe, umbractl.exe and the installer (build.ps1 reads it from here). -->
   <PropertyGroup>
-    <Version>1.14.0</Version>
+    <Version>1.15.0</Version>
     <Product>Umbra</Product>
     <Company>AmineChr54</Company>
     <Nullable>enable</Nullable>
