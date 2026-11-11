@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>System Monitor</title>
+  <link rel="stylesheet" href="https://umbra.local/shared/umbra.css">
+  <style>
+    html, body { height: 100%; overflow: hidden; background: var(--bg); }
+    :root { --warn: #f2b14c; --bad: var(--down, #ff5a5f); }
+    main { height: 100%; display: flex; flex-direction: column; padding: 12px 14px 12px; gap: 2px; }
+    header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+    h1 { margin: 0; font: 600 11px/1 var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+    #stamp { font-size: 11px; color: var(--text-3); }
+
+    .rows { flex: 1; display: flex; flex-direction: column; justify-content: space-evenly; min-height: 0; }
+    .row { position: relative; display: grid; grid-template-columns: 52px 1fr auto; grid-template-rows: auto auto; column-gap: 10px; row-gap: 5px; align-items: center; }
+    .row[hidden] { display: none; }
+    .label { grid-row: 1 / 3; font-size: 12px; font-weight: 600; color: var(--text-2); }
+    .detail { grid-column: 2; grid-row: 1; font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .value { grid-row: 1 / 3; grid-column: 3; min-width: 56px; text-align: right; font-family: var(--font-display); font-size: 20px; font-weight: 600; line-height: 1; color: var(--text); }
+    .value small { font-size: 12px; font-weight: 500; color: var(--text-3); margin-left: 1px; }
+    .value.na { color: var(--text-3); font-size: 14px; }
+    .row > .meter { grid-column: 2; grid-row: 2; }
+    .meter { position: relative; height: 6px; border-radius: 3px; background: var(--surface-2, #1c1c1c); overflow: hidden; }
+    .meter i { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 3px; background: var(--accent); transition: width calc(400ms * var(--motion-scale, 1)) var(--ease-out, ease-out), background-color .3s; }
+    .meter i.warn { background: var(--warn); }
+    .meter i.bad { background: var(--bad); }
+    svg.spark { grid-column: 2; grid-row: 1; justify-self: end; width: 64px; height: 16px; pointer-events: none; opacity: .7; }
+    .row:has(svg.spark) .detail { padding-right: 70px; }
+    svg.spark path { fill: none; stroke: var(--accent); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+    svg.spark path.fill { stroke: none; fill: var(--accent-soft, rgba(255,255,255,.06)); }
+    .net-line { grid-column: 2; grid-row: 1; display: flex; gap: 12px; font-size: 11px; color: var(--text-3); }
+    .net-line b { color: var(--text-2); font-weight: 600; }
+
+    .drives { border-top: 1px solid var(--line, rgba(255,255,255,.08)); margin-top: 6px; padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+    .drives[hidden] { display: none; }
+    .drive { display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; align-items: center; font-size: 11px; color: var(--text-3); }
+    .drive b { color: var(--text-2); font-weight: 600; }
+    .drive .meter { height: 4px; }
+    .more { font-size: 11px; color: var(--text-3); }
+    .empty { margin: auto; text-align: center; color: var(--text-3); font-size: 12px; }
+    .empty b { display: block; color: var(--text-2); font-size: 14px; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header><h1 id="title">System</h1><span id="stamp" class="num"></span></header>
+    <div class="rows" id="rows">
+      <div class="row" id="cpu">
+        <span class="label">CPU</span><span class="detail num" id="cpu-d">&nbsp;</span>
+        <span class="value num" id="cpu-v">–</span><div class="meter"><i id="cpu-m"></i></div>
+        <svg class="spark" id="cpu-s" viewBox="0 0 60 100" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="row" id="ram">
+        <span class="label">RAM</span><span class="detail num" id="ram-d">&nbsp;</span>
+        <span class="value num" id="ram-v">–</span><div class="meter"><i id="ram-m"></i></div>
+      </div>
+      <div class="row" id="gpu">
+        <span class="label">GPU</span><span class="detail num" id="gpu-d">&nbsp;</span>
+        <span class="value num" id="gpu-v">–</span><div class="meter"><i id="gpu-m"></i></div>
+        <svg class="spark" id="gpu-s" viewBox="0 0 60 100" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="row" id="disk">
+        <span class="label">Disk</span><span class="detail num" id="disk-d">&nbsp;</span>
+        <span class="value num" id="disk-v">–</span><div class="meter"><i id="disk-m"></i></div>
+      </div>
+      <div class="row" id="net">
+        <span class="label">Network</span>
+        <span class="net-line num"><span>↓ <b id="net-down">–</b></span><span>↑ <b id="net-up">–</b></span></span>
+        <span class="value num" id="net-v"></span><div class="meter"><i id="net-m"></i></div>
+      </div>
+    </div>
+    <div class="drives" id="drives"></div>
+    <div class="empty" id="empty" hidden><b>Can't read this PC's usage</b><span id="why"></span></div>
+  </main>
+
+  <script src="https://umbra.local/shared/umbra.js"></script>
+  <script src="monitor.js"></script>
+</body>
+</html>

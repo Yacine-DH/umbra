@@ -69,7 +69,7 @@ The **Browse** page installs, updates and removes these in one click. You can al
 | **Get things done** | To Do · Habits · Quick Notes · Application Tracker · Internships |
 | **Around you** | Weather · Transit departures (Berlin) · Now Playing · GitHub Activity · Quote or word of the day · Hearth (for two people on two PCs) |
 | **Games** | Solitaire · Spider · FreeCell · Minesweeper |
-| **Power tools** | Script Runner (your own scripts, approved once) · Claude waker |
+| **Power tools** | Script Runner (your own scripts, approved once) · System Monitor (CPU, RAM, GPU, disk, network) · Network Monitor (speed, ping, IP) · Claude waker |
 
 Missing one? [Build it](CONTRIBUTING.md) in an afternoon, or let an agent [write it for you](#ai-agents-mcp).
 

@@ -47,7 +47,7 @@ public sealed partial class WidgetManifest
     public sealed class PermissionSpec
     {
         public List<string> Hosts { get; set; } = new();
-        /// <summary>Read-only machine totals the widget may read with <c>umbra.system()</c>: any of cpu, memory, network.</summary>
+        /// <summary>Read-only machine totals the widget may read with <c>umbra.system()</c>: any of cpu, memory, network, gpu, disk.</summary>
         public List<string> System { get; set; } = new();
         /// <summary>Allows <c>umbra.notify</c>; the user must also switch notifications on for the widget.</summary>
         public bool Notifications { get; set; }

@@ -63,8 +63,8 @@
         },
         "system": {
           "type": "array",
-          "description": "Read-only machine totals the widget may read with umbra.system(): cpu (load percent), memory (total/used bytes), network (total down/up bytes per second). Numbers only, no process or adapter names. Browse shows these.",
-          "items": { "enum": ["cpu", "memory", "network"] },
+          "description": "Read-only machine totals the widget may read with umbra.system(): cpu (load percent), memory (total/used bytes), network (total down/up bytes per second), gpu (load percent, dedicated memory in use), disk (activity, read/write bytes per second, size and free space per fixed drive letter). Numbers only, no process, adapter or volume names. Browse shows these.",
+          "items": { "enum": ["cpu", "memory", "network", "gpu", "disk"] },
           "uniqueItems": true
         },
         "notifications": {

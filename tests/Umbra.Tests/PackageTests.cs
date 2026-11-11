@@ -343,9 +343,9 @@ public class PackageTests : IDisposable
     {
         var cam = WidgetLint.Run(Folder("cam-w", Manifest("cam-w", ", \"description\": \"d\", \"author\": \"a\", \"permissions\": { \"camera\": true }")));
         Assert.DoesNotContain(cam.Errors, e => e.Contains("unknown permission"));
-        var bad = WidgetLint.Run(Folder("enum-w", Manifest("enum-w", ", \"icon\": \"../x.png\", \"permissions\": { \"system\": [\"gpu\"], \"media\": [\"record\"] }")));
+        var bad = WidgetLint.Run(Folder("enum-w", Manifest("enum-w", ", \"icon\": \"../x.png\", \"permissions\": { \"system\": [\"processes\"], \"media\": [\"record\"] }")));
         Assert.False(bad.Ok);
-        Assert.Contains(bad.Errors, e => e.Contains("gpu"));
+        Assert.Contains(bad.Errors, e => e.Contains("processes")); // gpu and disk are valid kinds now; process lists never will be
         var bad2 = WidgetLint.Run(Folder("enum-x", Manifest("enum-x", ", \"permissions\": { \"media\": [\"record\"] }")));
         Assert.Contains(bad2.Errors, e => e.Contains("record"));
         var icon = WidgetLint.Run(Folder("icon-w", Manifest("icon-w", ", \"icon\": \"a b.png\"")));

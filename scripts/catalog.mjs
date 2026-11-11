@@ -136,7 +136,7 @@ for (const id of readdirSync(widgetsDir).sort()) {
 
   const system = m.permissions?.system ?? [];
   if (!Array.isArray(system)) fail(id, `"permissions.system" must be an array`);
-  else for (const s of system) if (!["cpu", "memory", "network"].includes(s)) fail(id, `unknown system metric "${s}" (cpu, memory, network)`);
+  else for (const s of system) if (!["cpu", "memory", "network", "gpu", "disk"].includes(s)) fail(id, `unknown system metric "${s}" (cpu, memory, network, gpu, disk)`);
 
   const media = m.permissions?.media ?? [];
   if (!Array.isArray(media)) fail(id, `"permissions.media" must be an array`);

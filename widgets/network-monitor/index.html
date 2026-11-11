@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Network Monitor</title>
+  <link rel="stylesheet" href="https://umbra.local/shared/umbra.css">
+  <style>
+    html, body { height: 100%; overflow: hidden; background: var(--bg); }
+    :root { --warn: #f2b14c; --bad: var(--down, #ff5a5f); --up-line: var(--text-3); }
+    main { height: 100%; display: flex; flex-direction: column; padding: 12px 14px; gap: 8px; }
+    header { display: flex; align-items: center; justify-content: space-between; }
+    h1 { margin: 0; font: 600 11px/1 var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+    .state { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-3); }
+    .state i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+    .state.on i { background: var(--up, #3ddc84); }
+    .state.off i { background: var(--bad); }
+
+    .speeds { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .speed .k { font-size: 11px; color: var(--text-3); display: flex; align-items: center; gap: 5px; }
+    .speed .k svg { width: 11px; height: 11px; }
+    .speed.down .k svg { color: var(--accent); }
+    .speed.up .k svg { color: var(--up-line); }
+    .speed .v { font-family: var(--font-display); font-size: 24px; font-weight: 600; line-height: 1.15; color: var(--text); white-space: nowrap; }
+    .speed .v small { font-size: 12px; font-weight: 500; color: var(--text-3); margin-left: 3px; }
+    .speed .p { font-size: 11px; color: var(--text-3); }
+
+    svg.chart { width: 100%; height: 44px; display: block; flex: 1; min-height: 30px; }
+    svg.chart .down { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+    svg.chart .down-fill { fill: var(--accent-soft, rgba(255,255,255,.06)); stroke: none; }
+    svg.chart .up { fill: none; stroke: var(--up-line); stroke-width: 1.2; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; }
+
+    /* Ping and country keep their size; the IP takes the rest (a long IPv6 address ends in "…", full in its tooltip). */
+    .facts { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; border-top: 1px solid var(--line, rgba(255,255,255,.08)); padding-top: 8px; }
+    .fact { min-width: 0; padding-right: 8px; }
+    .fact + .fact { padding-left: 10px; border-left: 1px solid var(--line, rgba(255,255,255,.08)); }
+    .fact .k { font-size: 11px; color: var(--text-3); }
+    #loc { max-width: 110px; }
+    .fact .v { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fact .v small { font-size: 11px; font-weight: 500; margin-left: 4px; }
+    .good { color: var(--up, #3ddc84) !important; }
+    .warn { color: var(--warn) !important; }
+    .bad { color: var(--bad) !important; }
+    button.fact { all: unset; cursor: pointer; min-width: 0; padding-right: 8px; border-radius: 4px; }
+    button.fact:focus-visible { outline: 1px solid var(--accent); }
+    button.fact:hover .v { color: var(--accent); }
+    .dim { color: var(--text-3) !important; font-weight: 500 !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <header><h1 id="title">Network</h1><span class="state" id="state"><i></i><span id="state-t">Checking…</span></span></header>
+
+    <div class="speeds">
+      <div class="speed down">
+        <div class="k"><svg viewBox="0 0 12 12"><path d="M6 1v8M2.5 5.5 6 9l3.5-3.5" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>Download</div>
+        <div class="v num" id="down">–</div><div class="p num" id="down-p">&nbsp;</div>
+      </div>
+      <div class="speed up">
+        <div class="k"><svg viewBox="0 0 12 12"><path d="M6 11V3M2.5 6.5 6 3l3.5 3.5" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>Upload</div>
+        <div class="v num" id="up">–</div><div class="p num" id="up-p">&nbsp;</div>
+      </div>
+    </div>
+
+    <svg class="chart" id="chart" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
+
+    <div class="facts">
+      <button class="fact" id="ping-btn" data-no-drag title="Click to measure again" aria-label="Ping, click to measure again">
+        <div class="k">Ping</div><div class="v num" id="ping">–</div>
+      </button>
+      <button class="fact" id="ip-btn" data-no-drag title="Click to copy" aria-label="Public IP address, click to copy">
+        <div class="k" id="ip-k">Public IP</div><div class="v num" id="ip">–</div>
+      </button>
+      <div class="fact"><div class="k">Country</div><div class="v" id="loc">–</div></div>
+    </div>
+  </main>
+
+  <script src="https://umbra.local/shared/umbra.js"></script>
+  <script src="network.js"></script>
+</body>
+</html>

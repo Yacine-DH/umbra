@@ -1,0 +1,27 @@
+{
+  "$schema": "https://raw.githubusercontent.com/AmineChr54/umbra/main/schemas/widget.schema.json",
+  "id": "system-monitor",
+  "name": "System Monitor",
+  "description": "CPU, RAM, GPU, disk and network usage at a glance, with a history line for CPU and GPU and the free space on each drive. Bars turn amber, then red, when something is busy.",
+  "author": "tahabenissa",
+  "version": "1.0.0",
+  "manifestVersion": 1,
+  "entry": "index.html",
+  "preview": "preview.png",
+  "width": 340,
+  "height": 330,
+  "defaultPosition": { "x": 24, "y": 520 },
+  "permissions": { "hosts": [], "system": ["cpu", "memory", "network", "gpu", "disk"] },
+  "options": {
+    "title": { "label": "Title", "type": "text", "default": "System" },
+    "interval": { "label": "Update every", "type": "select", "default": "2",
+                  "choices": [ { "value": "1", "label": "1 second" }, { "value": "2", "label": "2 seconds" }, { "value": "5", "label": "5 seconds" } ] },
+    "units": { "label": "Network speed in", "type": "select", "default": "bits",
+               "choices": [ { "value": "bits", "label": "Bits (Mb/s, like internet plans)" }, { "value": "bytes", "label": "Bytes (MB/s, like file copies)" } ] },
+    "graphs": { "label": "History lines for CPU and GPU", "type": "toggle", "default": true },
+    "showGpu": { "label": "Show GPU", "type": "toggle", "default": true },
+    "showDisk": { "label": "Show disk", "type": "toggle", "default": true },
+    "showDrives": { "label": "Show free space per drive", "type": "toggle", "default": true },
+    "showNetwork": { "label": "Show network", "type": "toggle", "default": true }
+  }
+}

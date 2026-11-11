@@ -71,7 +71,7 @@ Every option has a `label` and a `default`. Read values in the page from `umbra.
 | `hosts` | Every HTTPS hostname the widget may reach. **All other requests are blocked** (fetch, XHR, images, scripts, fonts). Use `[]` for offline widgets. |
 | `notifications` | `true` to use `umbra.notify`. The user must also switch "Allow notifications" on for the widget in Settings (off by default). |
 | `media` | `"read"` (`umbra.media.nowPlaying`) and/or `"control"` (`umbra.media.control`). |
-| `system` | Any of `"cpu"`, `"memory"`, `"network"`, for `umbra.system()`. |
+| `system` | Any of `"cpu"`, `"memory"`, `"network"`, `"gpu"`, `"disk"`, for `umbra.system()` (`gpu` and `disk` need an Umbra newer than 1.14.0). |
 | `commands` | Local programs the widget may start with `umbra.run`. Every command needs your approval. See [Running local commands](/umbra/docs/widgets/local-commands/). |
 
 Browse shows every permission on the widget's card, and an update that adds any of them needs the user's approval. See [Sandbox and permissions](/umbra/docs/widgets/sandbox/).

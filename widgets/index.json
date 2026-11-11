@@ -310,6 +310,28 @@
       ]
     },
     {
+      "id": "network-monitor",
+      "name": "Network Monitor",
+      "description": "Live download and upload speed with a graph, plus ping, your public IP address and country. The speeds show what your PC is using right now; nothing is downloaded to measure them.",
+      "author": "tahabenissa",
+      "version": "1.0.0",
+      "manifestVersion": 1,
+      "preview": "preview.png",
+      "hosts": [
+        "www.cloudflare.com",
+        "ipv4.icanhazip.com"
+      ],
+      "system": [
+        "network"
+      ],
+      "files": [
+        "index.html",
+        "network.js",
+        "preview.png",
+        "widget.json"
+      ]
+    },
+    {
       "id": "now-playing",
       "name": "Now Playing",
       "description": "Shows what is playing in any media app (Spotify, browsers, VLC...) with album art and play, pause, next and previous controls.",
@@ -475,6 +497,29 @@
         "spider-rules.js",
         "spider.css",
         "spider.js",
+        "widget.json"
+      ]
+    },
+    {
+      "id": "system-monitor",
+      "name": "System Monitor",
+      "description": "CPU, RAM, GPU, disk and network usage at a glance, with a history line for CPU and GPU and the free space on each drive. Bars turn amber, then red, when something is busy.",
+      "author": "tahabenissa",
+      "version": "1.0.0",
+      "manifestVersion": 1,
+      "preview": "preview.png",
+      "hosts": [],
+      "system": [
+        "cpu",
+        "memory",
+        "network",
+        "gpu",
+        "disk"
+      ],
+      "files": [
+        "index.html",
+        "monitor.js",
+        "preview.png",
         "widget.json"
       ]
     },

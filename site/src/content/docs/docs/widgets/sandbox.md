@@ -30,7 +30,7 @@ Every widget runs in a WebView2 window with the host app watching its requests. 
 | `hosts` | Reach specific HTTPS hostnames |
 | `notifications` | Show Windows toasts (and only if you switch notifications on for it) |
 | `media` | Read (`"read"`) and/or control (`"control"`) the current media session |
-| `system` | Read CPU, memory or network totals |
+| `system` | Read CPU, memory, network, GPU or disk totals |
 | `commands` | Start specific local programs, each approved by you |
 
 Browse shows every permission on each widget's card, and **Data & privacy** shows what each installed widget can reach and which requests were blocked.

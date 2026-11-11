@@ -54,7 +54,7 @@ Use options for what the user picks, and `umbra.store` for what the widget creat
 | `umbra.onNotificationAction(fn)` | | `fn({ id, tag })` when a toast button is clicked, while the widget is open. |
 | `umbra.media.nowPlaying()` | `media: "read"` | The current Windows media session (`title`, `artist`, `album`, `app`, `status`, `playing`, `art?`…) or `null`. |
 | `umbra.media.control(cmd)` | `media: "control"` | `play`, `pause`, `toggle`, `next`, `previous`. Needs a physical click on the widget in the last 2 s. |
-| `umbra.system()` | `permissions.system` | `cpu.percent`, `memory.{totalBytes,usedBytes,percent}`, `network.{downBytesPerSec,upBytesPerSec}`. Call from `umbra.every`. |
+| `umbra.system()` | `permissions.system` | `cpu.percent`, `memory.{totalBytes,usedBytes,percent}`, `network.{downBytesPerSec,upBytesPerSec}`, `gpu.{percent,memoryUsedBytes}`, `disk.{activePercent,readBytesPerSec,writeBytesPerSec,drives}`. Call from `umbra.every` or a short timer of your own. |
 | `umbra.run(id, params?)` | `permissions.commands` | Runs a declared, user-approved command. See [Running local commands](/umbra/docs/widgets/local-commands/). |
 
 ## Format for the user's locale

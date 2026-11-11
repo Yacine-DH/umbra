@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 
 namespace Umbra;
 
-/// <summary>Reads the <see cref="SystemMetrics"/> kinds on Windows (kernel32 times and memory, NIC counters).</summary>
+/// <summary>Reads the <see cref="SystemMetrics"/> kinds on Windows (kernel32 times and memory, NIC counters, <see cref="PerfCounters"/> for gpu and disk).</summary>
 static class WindowsMetrics
 {
     [StructLayout(LayoutKind.Sequential)] struct FileTime { public uint Lo, Hi; public readonly ulong Value => ((ulong)Hi << 32) | Lo; }
@@ -21,6 +21,10 @@ static class WindowsMetrics
     static ulong _idle, _total;
     static long _cpuAt, _netAt, _bytesIn, _bytesOut;
     static double _cpu, _down, _up;
+    static PerfCounters? _perf;
+    static bool _perfTried;
+    static long _perfAt, _drivesAt;
+    static JsonArray _drives = new();
 
     /// <summary>Samples at most twice a second, shared by all widgets, so rates stay meaningful whoever asks.</summary>
     public static JsonObject Read(IReadOnlyCollection<string> allowed)
@@ -45,8 +49,74 @@ static class WindowsMetrics
                 Net();
                 o["network"] = new JsonObject { ["downBytesPerSec"] = (long)_down, ["upBytesPerSec"] = (long)_up };
             }
+            if (allowed.Contains("gpu") || allowed.Contains("disk"))
+            {
+                var perf = Perf();
+                if (allowed.Contains("gpu"))
+                    o["gpu"] = new JsonObject
+                    {
+                        ["percent"] = Round(perf?.GpuPercent()),
+                        ["memoryUsedBytes"] = perf?.GpuMemoryUsed() is { } mem ? (long)mem : null,
+                    };
+                if (allowed.Contains("disk"))
+                    o["disk"] = new JsonObject
+                    {
+                        ["activePercent"] = Round(perf?.DiskActivePercent()),
+                        ["readBytesPerSec"] = perf?.DiskReadBytesPerSec() is { } r ? (long)r : null,
+                        ["writeBytesPerSec"] = perf?.DiskWriteBytesPerSec() is { } w ? (long)w : null,
+                        ["drives"] = Drives().DeepClone(),
+                    };
+            }
         }
         return o;
+    }
+
+    static double? Round(double? v) => v is { } d ? Math.Round(d, 1) : null;
+
+    /// <summary>The performance counters, opened on the first gpu or disk read and sampled like the rest (at most twice a second).</summary>
+    static PerfCounters? Perf()
+    {
+        if (!_perfTried)
+        {
+            _perfTried = true;
+            _perf = PerfCounters.Open();
+            if (_perf is null) Log.Write("system metrics: performance counters unavailable, gpu and disk read as empty");
+        }
+        var now = Environment.TickCount64;
+        if (_perf is not null && (_perfAt == 0 || now - _perfAt >= 500))
+        {
+            _perf.Collect();
+            _perfAt = now;
+        }
+        return _perf;
+    }
+
+    /// <summary>Fixed drives that are ready, by drive letter only (no volume labels), refreshed every 5 s.</summary>
+    static JsonArray Drives()
+    {
+        var now = Environment.TickCount64;
+        if (_drivesAt != 0 && now - _drivesAt < 5000) return _drives;
+        var list = new JsonArray();
+        try
+        {
+            foreach (var d in DriveInfo.GetDrives())
+            {
+                if (d.DriveType != DriveType.Fixed || !d.IsReady) continue;
+                long total = d.TotalSize, free = d.TotalFreeSpace;
+                if (total <= 0) continue;
+                list.Add(new JsonObject
+                {
+                    ["name"] = d.Name.TrimEnd('\\'),
+                    ["totalBytes"] = total,
+                    ["freeBytes"] = free,
+                    ["usedPercent"] = Math.Round(100.0 * (total - free) / total, 1),
+                });
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Write($"system metrics: drive read failed: {ex.Message}"); }
+        _drives = list;
+        _drivesAt = now;
+        return _drives;
     }
 
     static double Cpu()

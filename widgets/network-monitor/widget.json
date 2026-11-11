@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/AmineChr54/umbra/main/schemas/widget.schema.json",
+  "id": "network-monitor",
+  "name": "Network Monitor",
+  "description": "Live download and upload speed with a graph, plus ping, your public IP address and country. The speeds show what your PC is using right now; nothing is downloaded to measure them.",
+  "author": "tahabenissa",
+  "version": "1.0.0",
+  "manifestVersion": 1,
+  "entry": "index.html",
+  "preview": "preview.png",
+  "width": 320,
+  "height": 220,
+  "defaultPosition": { "x": 24, "y": 280 },
+  "permissions": { "hosts": ["www.cloudflare.com", "ipv4.icanhazip.com"], "system": ["network"] },
+  "options": {
+    "title": { "label": "Title", "type": "text", "default": "Network" },
+    "interval": { "label": "Update speeds every", "type": "select", "default": "2",
+                  "choices": [ { "value": "1", "label": "1 second" }, { "value": "2", "label": "2 seconds" }, { "value": "5", "label": "5 seconds" } ] },
+    "units": { "label": "Speed in", "type": "select", "default": "bits",
+               "choices": [ { "value": "bits", "label": "Bits (Mb/s, like internet plans)" }, { "value": "bytes", "label": "Bytes (MB/s, like file copies)" } ] },
+    "showUpload": { "label": "Draw upload in the graph", "type": "toggle", "default": true },
+    "showIp": { "label": "Show public IP", "type": "toggle", "default": true,
+                "hint": "Turn off before sharing your screen. Ping, IP and country come from Cloudflare (www.cloudflare.com, ipv4.icanhazip.com) on your refresh interval; click Ping to measure again." }
+  }
+}

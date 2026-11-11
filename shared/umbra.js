@@ -242,7 +242,11 @@
    * user script that keeps running. Resolves { running, keepsRunning, since, exitCode, restarting, restarts, text }.
    */
   const commandOutput = (command) => request({ type: "commandOutput", command }, 10000);
-  /** Machine totals declared in widget.json permissions.system: { cpu:{percent}, memory:{totalBytes,usedBytes,percent}, network:{downBytesPerSec,upBytesPerSec} }. */
+  /**
+   * Machine totals declared in widget.json permissions.system: { cpu:{percent}, memory:{totalBytes,usedBytes,percent},
+   * network:{downBytesPerSec,upBytesPerSec}, gpu:{percent,memoryUsedBytes}, disk:{activePercent,readBytesPerSec,writeBytesPerSec,
+   * drives:[{name,totalBytes,freeBytes,usedPercent}]} }. gpu.percent is null on a PC without GPU counters.
+   */
   const system = () => request({ type: "system" }, 10000);
   /**
    * Windows toast from this widget. Needs permissions.notifications and the user's per-widget switch; 5 per 10 minutes.

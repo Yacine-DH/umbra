@@ -48,7 +48,7 @@ community widgets in `widgets\`). `UMBRA_DATA_DIR` overrides the data folder (te
 | `src/Umbra.Core/WidgetManifest.cs`, `Settings.cs` | `widget.json` model and discovery; `settings.json` model |
 | `src/Umbra.Core/Protocol.cs` | Control protocol (shared source, linked into umbractl). Command list lives here |
 | `src/Umbra.Core/Control.cs` | Executes control commands against `IUmbraHost`: the single place that defines what automation can do |
-| `src/Umbra/Screens.cs`, `WindowsMedia.cs`, `WindowsMetrics.cs` | Windows halves of pure Core rules: live monitors + fullscreen test (`Placement`), media session (`MediaService`), CPU/memory/network (`SystemMetrics`) |
+| `src/Umbra/Screens.cs`, `WindowsMedia.cs`, `WindowsMetrics.cs`, `PerfCounters.cs` | Windows halves of pure Core rules: live monitors + fullscreen test (`Placement`), media session (`MediaService`), CPU/memory/network/GPU/disk (`SystemMetrics`; GPU and disk from English-named PDH counters, totals only) |
 | `src/Umbra.Cli/` | `umbractl.exe`: CLI (`Program.cs`, argument mapping in `CommandLine.cs`), MCP stdio server (`McpServer.cs`), scaffold (`Scaffold.cs`) |
 | `shared/umbra.js`, `umbra.css` | Widget SDK and design tokens, served to every widget |
 | `shared/tabicons/` | Bundled tab-strip icons (PNG + `index.json`); the only icons the user picker, `umbractl groups icon` and a widget's `umbra.setTabIcon` suggestion may name (`Groups.CleanSuggestion`) |
