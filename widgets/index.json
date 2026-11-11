@@ -314,7 +314,7 @@
       "name": "Network Monitor",
       "description": "Live download and upload speed with a graph, plus ping, your public IP address and country. The speeds show what your PC is using right now; nothing is downloaded to measure them.",
       "author": "tahabenissa",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "manifestVersion": 1,
       "preview": "preview.png",
       "hosts": [
@@ -505,7 +505,7 @@
       "name": "System Monitor",
       "description": "CPU, RAM, GPU, disk and network usage at a glance, with a history line for CPU and GPU and the free space on each drive. Bars turn amber, then red, when something is busy.",
       "author": "tahabenissa",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "manifestVersion": 1,
       "preview": "preview.png",
       "hosts": [],

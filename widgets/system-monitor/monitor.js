@@ -117,7 +117,13 @@ function showError(err) {
 
 async function sample() {
   try {
-    const s = await umbra.system();
+    let s = await umbra.system();
+    // The host's GPU and disk counters need two samples, so the very first read has no percent yet: read again
+    // shortly instead of showing "n/a" until the next tick.
+    if (first && ((s.gpu && s.gpu.percent == null) || (s.disk && s.disk.activePercent == null))) {
+      await new Promise((r) => setTimeout(r, 700));
+      s = await umbra.system();
+    }
     failures = 0;
     $("rows").hidden = false; $("empty").hidden = true;
     render(s);

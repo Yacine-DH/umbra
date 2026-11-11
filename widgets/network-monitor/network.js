@@ -124,7 +124,7 @@ async function checkNetwork() {
 function renderIp() {
   const el = $("ip");
   el.classList.remove("dim");
-  if (!opts().showIp) { el.textContent = "Hidden"; el.classList.add("dim"); $("ip-btn").title = "Turn on Show public IP in the options"; return; }
+  if (!opts().showIp) { el.textContent = "Hidden"; el.title = ""; el.style.fontSize = ""; el.classList.add("dim"); $("ip-btn").title = "Turn on Show public IP in the options"; return; }
   el.textContent = ip || "–";
   el.style.fontSize = ip.length > 15 ? "11px" : ""; // an IPv6 address only fits smaller
   el.title = ipv6 ? `${ip}\nIPv6: ${ipv6}` : ip;
