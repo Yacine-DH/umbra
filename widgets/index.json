@@ -233,15 +233,16 @@
       "name": "Hearth",
       "description": "A cozy shared space for two people on two PCs. Pair once with a code, then add copies of this widget as an Overview strip, a drawing Board or a Pet. Needs the Umbra relay, which stores your names, dates, drawings and pet state (deleted 7 days after unpairing or after 30 days unused) and never your location.",
       "author": "Yacine-DH",
-      "version": "1.5.0",
+      "version": "1.6.0",
       "manifestVersion": 1,
-      "changelog": "Asks you once whether Hearth may show notifications (the first time you click it after pairing), so taps from your partner reach you as Windows notifications. Needs an Umbra with the notification prompt; older versions keep the switch in Settings.",
+      "changelog": "Board pictures no longer disappear when the gallery is full: choose a folder once and the oldest picture is saved there as a PNG instead of being removed (needs an Umbra with umbra.images; older versions still drop the oldest). The update asks you to accept the new folder access.",
       "preview": "preview.png",
       "icon": "icon.png",
       "hosts": [
         "umbra-buddy-relay.umbra-server.workers.dev"
       ],
       "notifications": true,
+      "saveImages": true,
       "files": [
         "OFL.txt",
         "README.md",

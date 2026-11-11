@@ -17,7 +17,7 @@ public static partial class WidgetLint
         "icon", "width", "height", "themeable", "private", "defaultPosition", "permissions", "options",
     };
 
-    static readonly HashSet<string> PermissionKeys = new(StringComparer.Ordinal) { "hosts", "system", "notifications", "media", "commands", "camera", "userScripts" };
+    static readonly HashSet<string> PermissionKeys = new(StringComparer.Ordinal) { "hosts", "system", "notifications", "media", "commands", "camera", "userScripts", "saveImages" };
     static readonly HashSet<string> OptionTypes = new(StringComparer.Ordinal) { "text", "number", "select", "toggle" };
 
     [GeneratedRegex(@"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$", RegexOptions.IgnoreCase)]
@@ -126,7 +126,7 @@ public static partial class WidgetLint
         if (m.Permissions.Hosts.Count != m.Permissions.Hosts.Distinct(StringComparer.OrdinalIgnoreCase).Count()) warnings.Add("permissions.hosts lists a host twice");
         if (root.TryGetProperty("permissions", out var perms) && perms.ValueKind == JsonValueKind.Object)
             foreach (var p in perms.EnumerateObject())
-                if (!PermissionKeys.Contains(p.Name)) errors.Add($"unknown permission \"{p.Name}\" (hosts, system, notifications, media, commands, camera, userScripts)");
+                if (!PermissionKeys.Contains(p.Name)) errors.Add($"unknown permission \"{p.Name}\" (hosts, system, notifications, media, commands, camera, userScripts, saveImages)");
 
         foreach (var (key, spec) in m.Options)
         {

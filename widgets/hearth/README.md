@@ -131,7 +131,10 @@ A new relay starts empty, so a self-hosted hearth cannot reuse a pairing made on
 - **Board and Pet need resizing** by hand (see above), and the Board cannot draw at the default strip size.
 - **Board details.** The relay has no eraser, so the eraser paints in the paper colour and uses up strokes like any other
   drawing. The relay's palette is 16 colours and 8 brush sizes. Strokes not yet acknowledged when you close the widget
-  are lost. There is no download of a saved picture, because widgets have no file access; pictures stay in the gallery.
+  are lost. The gallery keeps your newest 6 pictures. When it is
+  full, Hearth offers "Keep it in a folder": pick a folder once (a normal Windows folder dialog, opened from your click) and from
+  then on the oldest picture is saved there as a PNG instead of being removed. Archived pictures are files in that folder, not
+  in the gallery, and Hearth can't read them back. If the save fails, nothing is removed. Needs an Umbra with `umbra.images`.
 - **Tap cooldown is per copy** (10 seconds), and the Windows toast is limited to a few per 10 minutes.
 - **Font coverage.** The bundled Nunito covers most Latin alphabets. Names in other scripts use a font your PC has, and
   Vietnamese names can mix the two.

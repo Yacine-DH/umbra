@@ -75,6 +75,10 @@
           "type": "boolean",
           "description": "Lets the widget use umbra.timelapse: the host takes webcam stills at an interval and renders them to an MP4 (no frame ever reaches the page). Recording starts only from a click on the widget, shows a red dot on the widget and in the tray, and stops after 12 h."
         },
+        "saveImages": {
+          "type": "boolean",
+          "description": "Lets the widget call umbra.images: the host writes PNGs the widget hands it into a folder the user picked in the host's folder dialog (opened only after a click on the widget). The widget never gives a path or a file name and can't read files back."
+        },
         "userScripts": {
           "type": "boolean",
           "description": "Lets the user add their own scripts for this widget in Settings > My widgets (PowerShell, Python, Bash or a program; a file or code typed there). The widget lists them with umbra.commands() and runs them by id with umbra.run, like declared commands. Grants nothing by itself: the user writes each script, and saving it is the approval."

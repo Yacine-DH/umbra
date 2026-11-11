@@ -715,6 +715,9 @@ sealed class WidgetWindow : Form, IWidgetView
             case "timelapse":
                 await HandleTimelapse(msg!);
                 break;
+            case "images":
+                await HandleImages(msg!);
+                break;
             case "tabIcon":
                 HandleTabIcon(msg!);
                 break;
@@ -1089,6 +1092,66 @@ sealed class WidgetWindow : Form, IWidgetView
             Log.Write($"[{Instance}] timelapse {msg["op"]} failed: {ex.Message}");
         }
         Post(reply);
+    }
+
+    /// <summary>
+    /// umbra.images (needs permissions.saveImages): folder (the chosen folder's name, or ""), chooseFolder (host folder dialog,
+    /// only after a physical left click) and save (a small PNG, written by the host into the chosen folder under a name the
+    /// host picks). The page never gives a path or a name and never reads a file back.
+    /// </summary>
+    async Task HandleImages(JsonNode msg)
+    {
+        var reply = new JsonObject { ["type"] = "imagesResult", ["id"] = msg["id"]?.DeepClone() };
+        try
+        {
+            if (!Manifest.Permissions.SaveImages) throw new ImageArchiveException("This widget has no permissions.saveImages");
+            if (!(Alive && Ws.Enabled)) throw new ImageArchiveException("The widget is disabled");
+            var op = msg["op"] is JsonValue o && o.GetValueKind() == JsonValueKind.String ? o.GetValue<string>() : null;
+            switch (op)
+            {
+                case "folder":
+                    reply["data"] = new JsonObject { ["folder"] = ImageArchive.Label(ImageFolders.Shared.Get(Manifest.Id)) };
+                    break;
+                case "chooseFolder":
+                    if (!RecentLeftClick()) throw new ImageArchiveException("Click the widget first: the folder dialog opens only from a physical click");
+                    reply["data"] = await ChooseImageFolder();
+                    break;
+                case "save":
+                    var png = msg["png"] is JsonValue p && p.GetValueKind() == JsonValueKind.String ? p.GetValue<string>() : null;
+                    var file = await Task.Run(() => ImageFolders.Shared.Save(Manifest.Id, Manifest.Name, png));
+                    reply["data"] = new JsonObject { ["file"] = file, ["folder"] = ImageArchive.Label(ImageFolders.Shared.Get(Manifest.Id)) };
+                    break;
+                default:
+                    throw new ImageArchiveException("Unknown images operation");
+            }
+            reply["ok"] = true;
+        }
+        catch (Exception ex)
+        {
+            reply["ok"] = false;
+            reply["error"] = ex is ImageArchiveException ? ex.Message : "Saving pictures is not available";
+            Log.Write($"[{Instance}] images {msg["op"]} failed: {ex.Message}");
+        }
+        Post(reply);
+    }
+
+    async Task<JsonObject> ChooseImageFolder()
+    {
+        await Task.Yield(); // let the message handler return before the modal dialog
+        var current = ImageFolders.Shared.Get(Manifest.Id);
+        using var dlg = new FolderBrowserDialog
+        {
+            Description = $"Where should \"{ApprovalDialog.Clean(Manifest.Name, 40)}\" save pictures?",
+            UseDescriptionForTitle = true,
+            InitialDirectory = current ?? System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyPictures),
+            ShowNewFolderButton = true,
+        };
+        if (dlg.ShowDialog() == DialogResult.OK && Path.IsPathFullyQualified(dlg.SelectedPath))
+        {
+            ImageFolders.Shared.Set(Manifest.Id, dlg.SelectedPath);
+            return new JsonObject { ["folder"] = ImageArchive.Label(dlg.SelectedPath), ["changed"] = true };
+        }
+        return new JsonObject { ["folder"] = ImageArchive.Label(current), ["changed"] = false };
     }
 
     static double Number(JsonNode msg, string key) =>

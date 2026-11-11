@@ -57,7 +57,7 @@
     let tool = { c: 0, z: 2 }, lastColor = 0;
     let pen = null, penId = -1, flushTimer = 0, inside = false, hovering = false;
     let outbox = [], sending = false, failures = 0, busyOp = false;
-    let gallery = [], galleryLoaded = false;
+    let gallery = [], galleryLoaded = false, archiveFolder = "";
     const ui = { gallery: false, preview: null, confirmSave: null };
     let noteTimer = 0, tickTimer = 0, dismissedClearAt = 0;
     let hintShown = "", topShown = "";
@@ -311,11 +311,37 @@
       try { await umbra.store.set(L.GALLERY.key, next); gallery = next; return true; }
       catch (e) { note("Could not save: this widget's storage is full.", true); return false; }
     }
+    // Pictures that no longer fit go to the user's folder (umbra.images, needs an Umbra that has it) instead of being lost.
+    const canArchive = () => !!(umbra.images && umbra.images.save);
+    async function loadArchiveFolder() {
+      if (!canArchive()) return;
+      try { archiveFolder = await umbra.images.folder(); } catch (e) { archiveFolder = ""; }
+      chrome();
+    }
     async function saveNow(item) {
       const plan = L.planGallery(gallery, item);
-      if (await writeGallery(plan.list)) note(plan.dropped.length ? "Saved. The oldest picture was removed." : "Saved to your pictures.");
+      let kept = 0;
+      if (plan.dropped.length && archiveFolder) {
+        try { for (const d of plan.dropped) { await umbra.images.save(d.png); kept++; } }
+        catch (e) {
+          // nothing is removed unless it is safely in the folder
+          note("Could not save to your folder: " + (e && e.message ? e.message : "try again") + ". Nothing was removed.", true);
+          ui.confirmSave = null; chrome(); return;
+        }
+      }
+      if (await writeGallery(plan.list)) {
+        note(kept ? `Saved. ${kept === 1 ? "The oldest picture was" : kept + " older pictures were"} moved to ${archiveFolder}.`
+          : plan.dropped.length ? "Saved. The oldest picture was removed." : "Saved to your pictures.");
+      }
       ui.confirmSave = null;
       chrome(); renderGallery();
+    }
+    async function chooseArchiveFolder(thenSave) {
+      try {
+        const r = await umbra.images.chooseFolder();
+        if (r && r.folder) archiveFolder = r.folder;
+      } catch (e) { note("Could not open the folder dialog. Click the widget and try again.", true); }
+      if (thenSave && archiveFolder && ui.confirmSave) saveNow(ui.confirmSave); else chrome();
     }
     function startSave() {
       if (!recs.length) { note("Draw something first, then save it."); return; }
@@ -324,8 +350,8 @@
       if (!png) { note("Could not make a small enough picture.", true); return; }
       const item = { id: String(Date.now()), at: Date.now(), png };
       const plan = L.planGallery(gallery, item);
-      if (plan.dropped.length) { ui.confirmSave = item; chrome(); return; }
-      saveNow(item);
+      if (plan.dropped.length && !archiveFolder) { ui.confirmSave = item; chrome(); return; }
+      saveNow(item); // with a folder chosen, the oldest picture moves there instead of being removed
     }
     function renderGallery() {
       el.gallery.hidden = !ui.gallery;
@@ -341,7 +367,7 @@
       ui.preview = null;
       el.gallery.innerHTML = head("Saved pictures") +
         (gallery.length
-          ? `<p class="bd-gal-sub num">${gallery.length} of ${L.GALLERY.maxItems}. The oldest goes first when it is full.</p><div class="bd-thumbs">` +
+          ? `<p class="bd-gal-sub num">${gallery.length} of ${L.GALLERY.maxItems}. ${archiveFolder ? "The oldest moves to " + esc(archiveFolder) + " when it is full." : "The oldest goes first when it is full."}</p><div class="bd-thumbs">` +
             gallery.slice().reverse().map((g) => `<button type="button" class="thumb" data-a="gal-open" data-id="${esc(g.id)}" title="${esc(fmt(g.at))}"><img alt="Saved picture from ${esc(fmt(g.at))}" src="${g.png}"></button>`).join("") + "</div>"
           : '<p class="bd-gal-sub">Nothing saved yet. Press Save to keep a small copy of the board.</p>');
     }
@@ -376,7 +402,9 @@
 
       // top pills: save confirmation, clear banner
       let top = "";
-      if (ui.confirmSave) top += '<div class="pill"><span>The gallery is full. Saving removes your oldest picture.</span><button type="button" class="bd-btn" data-a="save-yes">Save</button><button type="button" class="bd-btn quiet" data-a="save-no">Cancel</button></div>';
+      if (ui.confirmSave) top += '<div class="pill"><span>The gallery is full. Saving removes your oldest picture.</span>' +
+        (canArchive() ? '<button type="button" class="bd-btn" data-a="save-folder">Keep it in a folder</button>' : "") +
+        '<button type="button" class="bd-btn" data-a="save-yes">Save</button><button type="button" class="bd-btn quiet" data-a="save-no">Cancel</button></div>';
       if (cs) {
         const who = cs.mine ? "you" : (view.names.partner || "your partner");
         top += `<div class="pill alert"><span>Cleared by ${esc(who)}</span><button type="button" class="bd-btn" data-a="unclear"${busyOp ? " disabled" : ""}>Undo</button><span class="num bd-remain" data-remain></span></div>`;
@@ -409,6 +437,7 @@
       async unclear() { await enqueueOp("unclear"); },
       save: startSave,
       "save-yes"() { if (ui.confirmSave) saveNow(ui.confirmSave); },
+      "save-folder"() { chooseArchiveFolder(true); },
       "save-no"() { ui.confirmSave = null; chrome(); },
       gallery() { ui.gallery = !ui.gallery; ui.preview = null; renderGallery(); },
       "gal-close"() { ui.gallery = false; ui.preview = null; renderGallery(); },
@@ -471,6 +500,7 @@
     })();
     toolUi();
     loadGallery();
+    loadArchiveFolder();
     update(client.getView());
 
     return {

@@ -978,8 +978,9 @@ sealed class App : ApplicationContext, IUmbraHost
     void DropStaleCameraApprovals()
     {
         CameraConsent.Approvals.RevokeCameraExcept(Manifests.Where(m => m.Permissions.Camera).Select(m => m.Id));
+        // same for the picture folder: a widget that stops declaring permissions.saveImages forgets it
+        ImageFolders.Shared.ClearExcept(Manifests.Where(m => m.Permissions.SaveImages).Select(m => m.Id));
     }
-
     /// <summary>Settings revoked the camera for a widget: drop the approval and cancel its recording.</summary>
     public void RevokeCamera(string widgetId)
     {

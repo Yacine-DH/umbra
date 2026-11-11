@@ -138,6 +138,12 @@ New automation goes through the control protocol so the CLI, MCP and tests stay 
   and in the tray, max 3600 stills and 12 h, paused with the camera closed while the widget is hidden, stopped on widget close
   and on exit, stills deleted after render, on cancel and at startup, disk space checked. No network in the capture path.
   **No control command, umbractl or MCP tool may start or approve the camera** (tested). Don't loosen without an issue and review.
+- `permissions.saveImages` (`ImageArchive.cs`, `WidgetWindow.HandleImages`): a widget hands the host a PNG data URL and the host writes it
+  into a folder the user picked in the host's own folder dialog (opened only after a physical left click; no default folder, so nothing is
+  written before the user chose). The page never supplies a path or file name (host-built `<widget> <date> <time>.png`, no overwrite), only
+  PNGs up to 1 MB are accepted (magic bytes checked), 30 saves per 10 minutes, disk space checked, and it can't read files back. The folder
+  (`image-folders.json`) is forgotten when the widget stops declaring the permission or is removed; updates adding it go through `PermissionDiff`.
+  No control command, umbractl or MCP tool may choose the folder or save (tested).
 - Updating an installed catalog widget never grants new access silently: `Community.PrepareAsync` diffs the downloaded manifest against the
   installed one (`PermissionDiff`: hosts, system, media, notifications, camera, commands) and `PendingInstall.Require` refuses until the user accepted.
   Settings asks with a host-drawn box (`SettingsWindow.ConfirmNewAccess`), `umbractl install` needs `--accept-permissions`, and the MCP
