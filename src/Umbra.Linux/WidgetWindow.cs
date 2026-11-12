@@ -47,7 +47,7 @@ sealed class WidgetWindow : IWidgetView
         Manifest = manifest;
         Instance = instance;
 
-        _view = WebHost.NewView(out var content, devTools: Prefs.DeveloperMode);
+        _view = WebHost.NewView(out var content, devTools: Prefs.DeveloperMode, sandbox: manifest, label: instance);
         _view.SetBackgroundColor(new Gdk.RGBA { Red = 0, Green = 0, Blue = 0, Alpha = 0 });
         // The default WebKit menu (Back, Reload, Inspect) never shows; the host-drawn menu comes with edit mode (#183).
         _view.OnContextMenu += (_, _) => true;
@@ -143,6 +143,7 @@ sealed class WidgetWindow : IWidgetView
             switch (type)
             {
                 case "ready":
+                    Log.Verbose($"[{Instance}] ready");
                     _ready = true;
                     SendInit();
                     _readyTcs.TrySetResult();

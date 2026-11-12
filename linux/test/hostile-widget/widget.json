@@ -1,0 +1,12 @@
+{
+  "id": "hostile-widget",
+  "name": "Hostile widget (sandbox test)",
+  "description": "Test only: tries to reach undeclared hosts in every way a page can. Run by linux/test/sandbox.sh, never installed.",
+  "author": "Umbra tests",
+  "version": "1.0.0",
+  "manifestVersion": 1,
+  "entry": "index.html",
+  "width": 360,
+  "height": 220,
+  "permissions": { "hosts": ["api.github.com", "raw.githubusercontent.com"] }
+}

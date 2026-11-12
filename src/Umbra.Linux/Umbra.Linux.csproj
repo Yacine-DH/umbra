@@ -38,4 +38,31 @@
     <Content Include="..\..\settings\**\*" LinkBase="settings" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!--
+    The web-process extension that enforces the widget sandbox (native/umbra-webext.c, #180). Compiled with gcc against
+    webkitgtk-web-process-extension-6.0 (Ubuntu: libwebkitgtk-6.0-dev) and shipped as webext/libumbra-webext.so next to the
+    binary. Linux only: on Windows the project still compiles (the solution builds everywhere) but produces no extension.
+  -->
+  <PropertyGroup>
+    <WebExtSource>$(MSBuildProjectDirectory)/native/umbra-webext.c</WebExtSource>
+    <WebExtOutput>$(MSBuildProjectDirectory)/$(IntermediateOutputPath)webext/libumbra-webext.so</WebExtOutput>
+  </PropertyGroup>
+
+  <Target Name="BuildWebExtension" BeforeTargets="AssignTargetPaths" Condition="$([MSBuild]::IsOSPlatform('Linux'))"
+          Inputs="$(WebExtSource)" Outputs="$(WebExtOutput)">
+    <Exec Command="pkg-config --exists webkitgtk-web-process-extension-6.0" IgnoreExitCode="true" StandardOutputImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="WebExtPkgExit" />
+    </Exec>
+    <Error Condition="'$(WebExtPkgExit)' != '0'"
+           Text="The sandbox extension needs gcc, pkg-config and the WebKitGTK 6 development files (Ubuntu: sudo apt install build-essential pkg-config libwebkitgtk-6.0-dev)." />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(WebExtOutput)'))" />
+    <Exec Command="gcc -shared -fPIC -O2 -Wall -Wextra -Werror -Wno-unused-parameter &quot;$(WebExtSource)&quot; %24(pkg-config --cflags --libs webkitgtk-web-process-extension-6.0) -o &quot;$(WebExtOutput)&quot;" />
+  </Target>
+
+  <Target Name="IncludeWebExtension" BeforeTargets="AssignTargetPaths" DependsOnTargets="BuildWebExtension" Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <ItemGroup>
+      <Content Include="$(WebExtOutput)" Link="webext/libumbra-webext.so" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+
 </Project>

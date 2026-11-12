@@ -40,6 +40,9 @@ sealed class App : IUmbraHost
         try { WidgetTrash.Purge(); } catch (Exception ex) { Log.Write($"Trash purge failed: {ex.Message}"); }
         Prefs.Configure(Settings.General);
         Manifests = WidgetManifest.DiscoverAll();
+        WebHost.Manifests = () => Manifests;
+        if (!WebHost.SandboxAvailable)
+            Log.Write($"Sandbox extension missing ({WebHost.ExtensionDir}): no widget is opened. Error: this build is incomplete.");
         _autostart = LinuxAutostart.Create(Environment.GetEnvironmentVariable, File.Exists, AppPaths.ExePath, AppPaths.IsPortable, portal: null);
         Log.Write($"Umbra started, {Manifests.Count} widget(s) found");
 
@@ -133,7 +136,8 @@ sealed class App : IUmbraHost
         foreach (var m in Manifests)
             foreach (var inst in Settings.Instances(m.Id))
             {
-                var enabled = Settings.For(m, inst).Enabled && !(SafeMode && m.Source != WidgetSource.BuiltIn);
+                // Without the sandbox extension a widget page would be unrestricted, so none is opened (fail closed).
+                var enabled = Settings.For(m, inst).Enabled && !(SafeMode && m.Source != WidgetSource.BuiltIn) && WebHost.SandboxAvailable;
                 var open = _windows.TryGetValue(inst, out var win);
                 if (enabled && !open)
                 {
