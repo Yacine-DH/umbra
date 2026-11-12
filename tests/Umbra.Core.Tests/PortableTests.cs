@@ -16,7 +16,7 @@ public class PortableTests
         try
         {
             Assert.False(PortableMode.IsPortable(app));
-            Assert.EndsWith("Umbra", PortableMode.DataDir(app, null));
+            Assert.EndsWith("Umbra", PortableMode.DataDir(app, null), StringComparison.OrdinalIgnoreCase); // Linux: $XDG_DATA_HOME/umbra
             File.WriteAllText(Path.Combine(app, PortableMode.Marker), "");
             Assert.True(PortableMode.IsPortable(app));
             Assert.Equal(Path.Combine(app, "data"), PortableMode.DataDir(app, null));

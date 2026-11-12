@@ -13,8 +13,8 @@ public interface IProcSource
 }
 
 /// <summary>
-/// The real file-system source. Thin wrapper over <see cref="File"/> and <see cref="Directory"/>; NOT RUN ON LINUX YET
-/// (nothing here is covered by tests, the parsing it feeds is).
+/// The real file-system source: a thin wrapper over <see cref="File"/> and <see cref="Directory"/>
+/// (<c>LinuxLiveTests</c> runs it against the live <c>/proc</c> on Linux).
 /// </summary>
 public sealed class FileProcSource : IProcSource
 {
