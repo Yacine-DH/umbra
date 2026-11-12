@@ -397,3 +397,13 @@ test("adding taps changed no permission: still one host and notifications", () =
   assert.equal(m.permissions.notifications, true);
   assert.ok(core.HEARTH_ROUTES.includes("tap"));
 });
+
+test("toasts follow the copy that may notify; a refused toast hands over; the hint invites the click", () => {
+  const js = read("tap.js");
+  assert.match(js, /leader: !!\(v\.toaster !== undefined \? v\.toaster : v\.leader\)/);
+  assert.match(js, /off for this widget[^]*?client\.setCanNotify\(false\)/);
+  assert.match(js, /function probeNotify\(\)[^]*?requestNotifications\(\)[^]*?client\.setCanNotify/);
+  assert.match(js, /probeNotify\(\);/);
+  assert.equal(T.askText("Sam"), "Click here to get a notification when Sam taps you");
+  assert.equal(T.askText("  "), "Click here to get a notification when your partner taps you");
+});

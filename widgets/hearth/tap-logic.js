@@ -135,6 +135,12 @@
     return { canSend, sent, failed, claimTogether, decide, toastFailed, toastsAllowed, cooldownRemaining: cooldown.remaining };
   }
 
+  /** The hint under the Tap button while the user hasn't told Umbra whether Hearth may notify. */
+  function askText(partner) {
+    const name = String(partner || "").trim();
+    return "Click here to get a notification when " + (name || "your partner") + " taps you";
+  }
+
   // ---------- what the screen says ----------
 
   /** The partner's latest tap that this copy has not shown yet, or null. view: HearthCore client view. seenAt: server time of the last tap the user has seen. */
@@ -209,7 +215,7 @@
   }
 
   const api = {
-    COOLDOWN_MS, RETRY_MS, FRESH_MS, UNSEEN_MS, TOAST_GAP_MS, TOAST_WINDOW_MS, TOAST_TAP_CAP, TOAST_BLOCK_MS, TOGETHER_GAP_MS, SEEN_CAP, TOAST_TAG, TAPBACK_ID, FOLLOW_UP_MS, TOGETHER_TEXT,
+    COOLDOWN_MS, RETRY_MS, FRESH_MS, UNSEEN_MS, TOAST_GAP_MS, TOAST_WINDOW_MS, TOAST_TAP_CAP, TOAST_BLOCK_MS, TOGETHER_GAP_MS, SEEN_CAP, TOAST_TAG, TAPBACK_ID, FOLLOW_UP_MS, TOGETHER_TEXT, askText,
     createCooldown, createPolicy, unseenTap, peerTapAt, tapLine, failure, followUps, buttonState,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

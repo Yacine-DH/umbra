@@ -17,6 +17,9 @@
 // The host side of the contract: umbra.notify({ title, body, tag: "hearth-tap", actions: [{ id: "tapback", label: "Tap back" }] })
 // needs permissions.notifications and the user's per-widget switch (off by default); without them the toast is simply
 // skipped, and a host without `actions` or `onNotificationAction` just never shows the button.
+// Which copy toasts: the client's `toaster` (the first copy Umbra lets notify, else the polling one), so one copy with
+// notifications off can't silence the others. Each copy asks Umbra once at start whether it may notify, without a prompt;
+// while the user hasn't decided, the Tap view says that a click turns tap notifications on.
 (function (root) {
   "use strict";
 
@@ -41,6 +44,7 @@
     let batch = [], flushing = false;
     let destroyed = false;
     let failedCool = false;       // the current short wait follows a tap that was not sent, so the button does not say "Sent"
+    let askHint = false;          // Umbra hasn't been told yet whether Hearth may notify: show "Click to get notified"
 
     const um = () => root.umbra;
     const cardEl = () => (opts && opts.card) || doc.getElementById("app") || doc.body;
@@ -135,6 +139,9 @@
         ui.line.hidden = !text;
         if (ui.line.textContent !== text) ui.line.textContent = text;
         ui.line.dataset.kind = line ? line.kind : "";
+        const ask = askHint && v.phase === "paired" && !text ? L.askText(v.names.partner) : "";
+        ui.ask.hidden = !ask;
+        if (ui.ask.textContent !== ask) ui.ask.textContent = ask;
       }
       notifyChange();
     }
@@ -248,7 +255,11 @@
       const msg = kind === "together"
         ? { title: "Hearth", body: L.TOGETHER_TEXT + ".", tag: L.TOAST_TAG }
         : { title: name + " is thinking of you", body: "Tap back to say it too.", tag: L.TOAST_TAG, actions: [{ id: L.TAPBACK_ID, label: "Tap back" }] };
-      Promise.resolve().then(() => n.notify(msg)).catch((e) => policy.toastFailed(e && e.message ? e.message : e));
+      Promise.resolve().then(() => n.notify(msg)).catch((e) => {
+        const m = e && e.message ? e.message : String(e);
+        policy.toastFailed(m);
+        if (/off for this widget|no permissions\.notifications/i.test(m)) client.setCanNotify(false); // let a copy that may notify take over
+      });
     }
 
     function flush() {
@@ -256,7 +267,8 @@
       const events = batch; batch = [];
       if (destroyed || !events.length) return;
       const v = client.getView();
-      const d = policy.decide(events, { serverNow: Date.now() + (v.sync.skew || 0), leader: !!v.leader });
+      // `toaster` (a copy Umbra lets notify) when the client knows it, else the polling copy as before.
+      const d = policy.decide(events, { serverNow: Date.now() + (v.sync.skew || 0), leader: !!(v.toaster !== undefined ? v.toaster : v.leader) });
       if (d.together) {
         cancelFollowUps();
         setLine({ kind: "together", at: d.together.at });
@@ -291,10 +303,28 @@
       if (notifAsk !== "unknown" || destroyed || !n || typeof n.requestNotifications !== "function" || !client.getView().paired) return;
       notifAsk = "busy";
       Promise.resolve().then(() => n.requestNotifications())
-        .then((allowed) => { notifAsk = "done"; if (allowed) policy.toastsAllowed(); })
+        .then((allowed) => { notifAsk = "done"; askHint = false; client.setCanNotify(!!allowed); if (allowed) policy.toastsAllowed(); paint(); })
         // a prompt already open, too soon, or a click Umbra did not count (edit mode): try again on the next click
         .catch((e) => { notifAsk = /already open|wait a moment|click the widget/i.test(String(e && e.message)) ? "unknown" : "done"; });
     }, true);
+
+    // At start, and when Umbra's settings change: may this copy notify? Asked without a click, so Umbra answers from the
+    // user's switch and never prompts; "click the widget first" means the user hasn't decided yet.
+    function probeNotify() {
+      const n = um();
+      if (destroyed || !n || typeof n.requestNotifications !== "function" || notifAsk === "busy") return;
+      Promise.resolve().then(() => n.requestNotifications())
+        .then((allowed) => { client.setCanNotify(!!allowed); askHint = false; if (allowed) policy.toastsAllowed(); paint(); })
+        .catch((e) => {
+          client.setCanNotify(false);
+          askHint = /click the widget/i.test(String(e && e.message));
+          if (askHint) notifAsk = "unknown"; // the next click asks
+          paint();
+        });
+    }
+    probeNotify();
+    const n1 = um();
+    if (n1 && typeof n1.onSettings === "function") n1.onSettings(() => probeNotify());
 
     // "Tap back" on the toast sends a tap
     const n0 = um();
@@ -317,10 +347,11 @@
       rootEl.className = "ht";
       rootEl.innerHTML =
         `<button type="button" class="ht-btn" data-no-drag>${heartSvg("#E5648F", "ht-heart")}<span class="ht-label">Tap</span><span class="ht-sub num"></span></button>` +
-        `<p class="ht-line" role="status" aria-live="polite" hidden></p>`;
+        `<p class="ht-line" role="status" aria-live="polite" hidden></p>` +
+        `<p class="ht-ask" hidden></p>`;
       el.textContent = "";
       el.appendChild(rootEl);
-      ui = { el, root: rootEl, btn: rootEl.querySelector(".ht-btn"), label: rootEl.querySelector(".ht-label"), sub: rootEl.querySelector(".ht-sub"), line: rootEl.querySelector(".ht-line") };
+      ui = { el, root: rootEl, btn: rootEl.querySelector(".ht-btn"), label: rootEl.querySelector(".ht-label"), sub: rootEl.querySelector(".ht-sub"), line: rootEl.querySelector(".ht-line"), ask: rootEl.querySelector(".ht-ask") };
       ui.btn.addEventListener("click", () => { send({ source: "button" }).catch(() => {}); });
       if (policy.cooldownRemaining()) startTick();
       paint();

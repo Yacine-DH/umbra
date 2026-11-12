@@ -179,6 +179,19 @@
     return best;
   }
 
+  /**
+   * Which copy shows the tap toasts: the smallest id among the copies of this pairing that Umbra lets notify (`nt` in
+   * their heartbeats, `selfNotify` for ourselves). Only the copy that calls umbra.notify needs the user's switch, so this
+   * keeps toasts coming when the polling copy has notifications off. Falls back to `leaderId` when no copy may notify.
+   */
+  function electToaster(selfId, selfFp, selfNotify, peers, now, leaderId, ttlMs) {
+    if (!selfFp) return null;
+    const ttl = ttlMs || POLL.peerTtlMs;
+    let best = selfNotify ? selfId : null;
+    for (const [id, p] of peers) if (id !== selfId && p && p.fp === selfFp && p.nt && now - p.at < ttl && (best === null || id < best)) best = id;
+    return best === null ? leaderId : best;
+  }
+
   // ---------- the merged relay state ----------
 
   const emptyBoard = () => ({ strokes: [], clear: null });
@@ -310,11 +323,13 @@
     let linkPending = null;       // { nonce, at } our own request
     let linkOffer = false;        // another copy on this PC is paired and we are not
     let fast = false;             // the leader is polling fast (shared in state messages)
+    let canNotify = false;        // Umbra lets this copy show toasts (setCanNotify; shared in heartbeats as nt)
     const listeners = new Set(), eventListeners = new Set();
 
     // ----- view -----
 
     const isLeader = () => !!pairing && leaderId === selfId;
+    const isToaster = () => !!pairing && electToaster(selfId, fp, canNotify, peers, now(), leaderId) === selfId;
     const peerSide = () => (pairing && pairing.me === "a" ? "b" : "a");
 
     function getView() {
@@ -333,6 +348,7 @@
         lastOkAt,
         lastError,
         leader: isLeader(),
+        toaster: isToaster(),
         fast: isLeader() ? activity.isActive(t) : fast,
         paused,
         busy,
@@ -347,7 +363,7 @@
     // ----- the channel to the other copies -----
 
     function post(m) { if (channel) { try { channel.postMessage(Object.assign({ v: 1, from: selfId }, m)); } catch (e) { /* closed */ } } }
-    const beat = () => post({ t: "hb", fp });
+    const beat = () => post({ t: "hb", fp, nt: canNotify });
 
     function recompute() {
       const nl = pairing ? electLeader(selfId, fp, peers, now()) : null;
@@ -389,10 +405,12 @@
       const t = now();
       switch (m.t) {
         case "hb": {
-          peers.set(m.from, { at: t, fp: typeof m.fp === "string" ? m.fp : "" });
+          const before = peers.get(m.from);
+          peers.set(m.from, { at: t, fp: typeof m.fp === "string" ? m.fp : "", nt: m.nt === true });
           const offer = !pairing && pairedPeers();
           const flipped = recompute();
-          if (flipped || offer !== linkOffer) { linkOffer = offer; emit(); }
+          const ntChanged = !before || before.nt !== (m.nt === true);
+          if (flipped || ntChanged || offer !== linkOffer) { linkOffer = offer; emit(); }
           break;
         }
         case "bye":
@@ -402,7 +420,7 @@
           recompute(); emit();
           break;
         case "hello":
-          peers.set(m.from, { at: t, fp: typeof m.fp === "string" ? m.fp : "" });
+          peers.set(m.from, { at: t, fp: typeof m.fp === "string" ? m.fp : "", nt: m.nt === true });
           recompute();
           beat(); // let the newcomer know who we are (and that this PC is paired) right away
           if (isLeader() && m.fp === fp) post({ t: "state", fp, sync, unpaired, lastOkAt, failures, lastError, fast: activity.isActive(t), events: [] });
@@ -474,7 +492,7 @@
         if (inv) await store.set(KEYS.invite, inv); else await store.remove(KEYS.invite);
         await store.remove(KEYS.snap);
       } catch (e) { say("error", MSG.save); }
-      beat(); post({ t: "hello", fp });
+      beat(); post({ t: "hello", fp, nt: canNotify });
       recompute();
       settleUntil = Math.max(settleUntil, now() + POLL.settleMs);
       schedule();
@@ -695,7 +713,7 @@
       else if (started) {
         peers.clear(); hoverRemote.clear(); leaderId = null;
         settleUntil = now() + POLL.settleMs;
-        beat(); post({ t: "hello", fp });
+        beat(); post({ t: "hello", fp, nt: canNotify });
         recompute();
         beatTimer = setT(tick, POLL.heartbeatMs);
         schedule();
@@ -759,7 +777,7 @@
       if (channel) channel.onmessage = onMessage;
       settleUntil = now() + POLL.settleMs;
       if (!paused) {
-        beat(); post({ t: "hello", fp });
+        beat(); post({ t: "hello", fp, nt: canNotify });
         beatTimer = setT(tick, POLL.heartbeatMs);
       }
       recompute();
@@ -783,6 +801,8 @@
       onEvent(fn) { eventListeners.add(fn); return () => eventListeners.delete(fn); },
       createHearth, join, unpair, reinvite, dismissInvite,
       call, syncSoon, refresh, setBoardHover, setPaused, setRefreshSeconds,
+      /** Whether Umbra lets this copy notify (umbra.requestNotifications / a refused umbra.notify). Shared with the other copies. */
+      setCanNotify(v) { const n = v === true; if (n === canNotify) return; canNotify = n; beat(); emit(); },
       requestLink, approveLink, denyLink,
       dismissNotice() { notice = null; emit(); },
     };
@@ -792,7 +812,7 @@
     HOST, HEARTH_ROUTES, MAX_URL, CODE_TTL_MS, KEYS, POLL, MSG,
     normalizeCode, checkCode, formatCode, countdown,
     isPairing, fingerprint, relayUrl, pairNewUrl, pairJoinUrl, hearthUrl, classify,
-    pollDelay, createActivity, electLeader,
+    pollDelay, createActivity, electLeader, electToaster,
     emptyState, emptyBoard, mergeBoard, applySync, normalizeState, daysTogether,
     createClient,
   };

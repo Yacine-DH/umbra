@@ -38,6 +38,9 @@
 }
 .ht-line[hidden] { display: none; }
 .ht-line[data-kind="error"] { color: #8A2A4A; }
+/* until the user tells Umbra whether Hearth may notify: a click anywhere on the widget asks */
+.ht-ask { margin: 0; max-width: 100%; font-size: 0.85rem; font-weight: 600; line-height: 1.25; color: var(--hm-ink-2, #7A5E48); text-align: center; overflow-wrap: anywhere; cursor: pointer; }
+.ht-ask[hidden] { display: none; }
 
 /* the heart of the receiving widget pulses and glows for a few seconds */
 .ht-pulse .ht-heart { filter: drop-shadow(0 0 5px var(--hm-pink-deep, #E5648F)); animation: ht-beat calc(0.9s * var(--motion-scale, 1)) ease-in-out infinite; }

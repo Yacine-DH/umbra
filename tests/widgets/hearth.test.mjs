@@ -924,3 +924,40 @@ test("a forged channel message full of garbage can neither break a copy nor smug
   await flush();
   assert.equal(c.view().link.requests.length, 0);
 });
+
+// ---------- which copy shows the tap toasts ----------
+
+test("electToaster: the smallest copy that may notify, else the polling copy", () => {
+  const peers = new Map([
+    ["hearth#2.aa", { at: 1000, fp: "F", nt: false }],
+    ["hearth#3.bb", { at: 1000, fp: "F", nt: true }],
+    ["hearth#1.cc", { at: 1000, fp: "OTHER", nt: true }], // another pairing on this PC
+    ["hearth#0.dd", { at: -99999, fp: "F", nt: true }],   // not heard from lately
+  ]);
+  assert.equal(H.electToaster("hearth.zz", "F", false, peers, 2000, "hearth#2.aa"), "hearth#3.bb");
+  assert.equal(H.electToaster("hearth#2.aa", "F", true, peers, 2000, "hearth#2.aa"), "hearth#2.aa");
+  assert.equal(H.electToaster("hearth.zz", "F", false, new Map(), 2000, "hearth.zz"), "hearth.zz", "nobody may notify: the leader tries");
+  assert.equal(H.electToaster("hearth.zz", "", true, peers, 2000, null), null, "not paired");
+});
+
+test("tap toasts come from a copy that may notify, even when the polling copy may not", async () => {
+  const env = makeEnv();
+  const c1 = await pairedCopy(env, "hearth");
+  const rest = [makeCopy("hearth#2", env), makeCopy("hearth#3", env)];
+  for (const c of rest) { await c.client.start(); await env.clock.advance(100); c.client.requestLink(); await flush(); c1.client.approveLink(c1.view().link.requests[0].nonce); await flush(); }
+  await env.clock.advance(minutes(1));
+  const copies = [c1, ...rest];
+  const leader = copies.find((c) => c.view().leader);
+  assert.equal(leader.view().toaster, true, "nobody may notify yet: the polling copy keeps trying, as before");
+
+  const allowed = copies.find((c) => c !== leader);
+  allowed.client.setCanNotify(true);
+  await env.clock.advance(minutes(1));             // heartbeats carry it to the other copies
+  for (const c of copies) assert.equal(c.view().toaster, c === allowed, c.name);
+  assert.equal(copies.filter((c) => c.view().leader).length, 1, "polling is unchanged");
+  assert.equal(leader.view().leader, true);
+
+  allowed.client.setCanNotify(false);               // the user turned it off again
+  await env.clock.advance(minutes(1));
+  for (const c of copies) assert.equal(c.view().toaster, c === leader, c.name);
+});

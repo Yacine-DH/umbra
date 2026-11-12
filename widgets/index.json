@@ -233,9 +233,9 @@
       "name": "Hearth",
       "description": "A cozy shared space for two people on two PCs. Pair once with a code, then add copies of this widget as an Overview strip, a drawing Board or a Pet. Needs the Umbra relay, which stores your names, dates, drawings and pet state (deleted 7 days after unpairing or after 30 days unused) and never your location.",
       "author": "Yacine-DH",
-      "version": "1.6.0",
+      "version": "1.7.0",
       "manifestVersion": 1,
-      "changelog": "Board pictures no longer disappear when the gallery is full: choose a folder once and the oldest picture is saved there as a PNG instead of being removed (needs an Umbra with umbra.images; older versions still drop the oldest). The update asks you to accept the new folder access.",
+      "changelog": "Tap notifications come from whichever copy Umbra lets notify, so one copy with notifications off no longer silences the others. Until you decide, the Tap view says that a click turns them on.",
       "preview": "preview.png",
       "icon": "icon.png",
       "hosts": [

@@ -30,7 +30,9 @@ repository deploys them; a maintainer has to.
 2. The other chooses **Join with a code** and types it.
 3. The first time you click Hearth after pairing, Umbra asks whether Hearth may show notifications: **Allow** to get a
    Windows notification when your partner taps you, **Not now** to be asked after the next restart, or **Don't ask
-   again**. You can change it any time in Settings > My widgets > Hearth. Each PC asks separately.
+   again**. You can change it any time in Settings > My widgets > Hearth. Each PC asks separately. Until you answer,
+   the Tap view says "Click here to get a notification when ... taps you". With several copies, the toast comes from a
+   copy whose notifications are on, so one copy switched off doesn't silence the rest.
 4. Optional: in the Overview, use the pencil to set your own name and the together-since date. Each of you edits only
    your own name; either of you can change the date.
 
