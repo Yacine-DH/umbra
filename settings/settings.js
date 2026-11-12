@@ -687,6 +687,27 @@ function renderCommands(root, w) {
     }
     root.append(row);
   }
+  if (w.imageFolder) {
+    // permissions.saveImages: Pictures\Umbra\<name> by default; only this host dialog (or the widget's own, after a click) changes it.
+    const row = Object.assign(document.createElement("div"), { className: "cmd" });
+    const desc = Object.assign(document.createElement("div"), { className: "cmd-desc" });
+    desc.append(Object.assign(document.createElement("span"), {
+      className: "cmd-status approved",
+      textContent: w.imageFolderPicked ? "Your folder" : "Default",
+    }), "Saves pictures here");
+    row.append(Object.assign(document.createElement("div"), { className: "cmd-line", textContent: w.imageFolder }), desc);
+    const button = (text, type, cls = "") => {
+      const b = Object.assign(document.createElement("button"), { className: `btn small${cls}`, textContent: text });
+      b.setAttribute("aria-label", `${text}: picture folder of ${w.name}`);
+      b.addEventListener("click", () => post({ type, widget: w.widget }));
+      return b;
+    };
+    const buttons = Object.assign(document.createElement("div"), { className: "cmd-buttons" });
+    buttons.append(button("Open", "openImageFolder"), button("Change...", "pickImageFolder"));
+    if (w.imageFolderPicked) buttons.append(button("Use default", "resetImageFolder"));
+    row.append(buttons);
+    root.append(row);
+  }
   const cmds = w.commands || [];
   if (!cmds.length) return;
   root.append(Object.assign(document.createElement("div"), { className: "cmds-title", textContent: "Runs programs on this PC" }));

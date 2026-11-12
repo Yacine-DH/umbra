@@ -2,17 +2,17 @@
   "$schema": "https://raw.githubusercontent.com/AmineChr54/umbra/main/schemas/widget.schema.json",
   "id": "hearth",
   "name": "Hearth",
-  "description": "A cozy shared space for two people on two PCs. Pair once with a code, then add copies of this widget as an Overview strip, a drawing Board or a Pet. Needs the Umbra relay, which stores your names, dates, drawings and pet state (deleted 7 days after unpairing or after 30 days unused) and never your location.",
+  "description": "A cozy shared space for two people on two PCs. Pair once with a code, then switch between Us, a shared drawing Board and a Pet with the tabs at the top. Needs the Umbra relay, which stores your names, dates, drawings and pet state (deleted 7 days after unpairing or after 30 days unused) and never your location.",
   "author": "Yacine-DH",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "category": "social",
   "manifestVersion": 1,
-  "changelog": "Listed under a category on Browse and the website.",
+  "changelog": "Us, Board and Pet are now tabs at the top of the widget, so one Hearth does it all. Every picture you save from the Board is also kept in Pictures > Umbra > Hearth (change the folder in Settings > My widgets).",
   "entry": "index.html",
   "preview": "preview.png",
   "icon": "icon.png",
-  "width": 300,
-  "height": 120,
+  "width": 340,
+  "height": 540,
   "themeable": false,
   "defaultPosition": { "x": 24, "y": 24 },
   "permissions": {
@@ -22,15 +22,15 @@
   },
   "options": {
     "view": {
-      "label": "View",
+      "label": "Opens on",
       "type": "select",
       "default": "overview",
       "choices": [
-        { "value": "overview", "label": "Overview (small strip)" },
-        { "value": "board", "label": "Board (square, resize it)" },
-        { "value": "pet", "label": "Pet (square, resize it)" }
+        { "value": "overview", "label": "Us (names and days)" },
+        { "value": "board", "label": "Board" },
+        { "value": "pet", "label": "Pet" }
       ],
-      "hint": "Add more copies of Hearth in My widgets and give each its own view. All copies share one pairing."
+      "hint": "Switch any time with the Us, Board and Pet tabs at the top of the widget. Shrink it to a strip if you only want Us. Extra copies of Hearth share one pairing."
     }
   }
 }

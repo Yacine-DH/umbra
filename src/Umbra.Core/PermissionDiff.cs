@@ -55,7 +55,7 @@ public sealed class PermissionDiff
             lines.Add(m.Equals("control", StringComparison.OrdinalIgnoreCase) ? "Can control media playback (play, pause, next, previous)" : "Can read what media is playing");
         if (Notifications) lines.Add("Can show notifications");
         if (Camera) lines.Add("Can record timelapses with your webcam (only after you click it; a red dot shows while recording)");
-        if (SaveImages) lines.Add("Can save pictures into a folder you choose (the folder dialog opens only after you click the widget)");
+        if (SaveImages) lines.Add(@"Can save pictures into Pictures\Umbra\<widget name>, or another folder you choose in Settings");
         if (UserScripts) lines.Add("Can run scripts you add yourself in Settings (you write and approve each one)");
         foreach (var c in Commands) lines.Add($"Can ask to run a program: {c.DisplayLine()} (you still approve it before it runs)");
         return lines;

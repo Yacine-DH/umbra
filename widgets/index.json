@@ -242,12 +242,12 @@
     {
       "id": "hearth",
       "name": "Hearth",
-      "description": "A cozy shared space for two people on two PCs. Pair once with a code, then add copies of this widget as an Overview strip, a drawing Board or a Pet. Needs the Umbra relay, which stores your names, dates, drawings and pet state (deleted 7 days after unpairing or after 30 days unused) and never your location.",
+      "description": "A cozy shared space for two people on two PCs. Pair once with a code, then switch between Us, a shared drawing Board and a Pet with the tabs at the top. Needs the Umbra relay, which stores your names, dates, drawings and pet state (deleted 7 days after unpairing or after 30 days unused) and never your location.",
       "author": "Yacine-DH",
-      "version": "1.7.1",
+      "version": "1.8.0",
       "category": "social",
       "manifestVersion": 1,
-      "changelog": "Listed under a category on Browse and the website.",
+      "changelog": "Us, Board and Pet are now tabs at the top of the widget, so one Hearth does it all. Every picture you save from the Board is also kept in Pictures > Umbra > Hearth (change the folder in Settings > My widgets).",
       "preview": "preview.png",
       "icon": "icon.png",
       "hosts": [

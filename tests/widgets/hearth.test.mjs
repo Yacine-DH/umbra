@@ -869,8 +869,8 @@ test("manifest: id, one declared host, notifications, the view option, a preview
   assert.equal(v.default, "overview");
   assert.deepEqual(v.choices.map((c) => c.value), ["overview", "board", "pet"]);
   assert.deepEqual(Object.keys(manifest.options), ["view"]);
-  assert.equal(manifest.width, 300);
-  assert.equal(manifest.height, 120);
+  assert.equal(manifest.width, 340); // tall enough for all three tabs (Us, Board, Pet)
+  assert.equal(manifest.height, 540);
   assert.equal(manifest.preview, "preview.png");
   assert.ok(existsSync(new URL("../../widgets/hearth/preview.png", import.meta.url)));
 });

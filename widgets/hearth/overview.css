@@ -73,6 +73,11 @@
   .hov-tap .ht { align-items: flex-start; }
   .hov-tap .ht-btn { position: absolute; top: 7px; left: 92px; z-index: 1; }
   .hov-tap .ht-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+  /* The Us / Board / Pet tabs take the spot after the brand, so Tap moves to the header's right end, just before the status
+     dot and the gear, as its heart only (the word stays for screen readers). The status dot carries offline here. */
+  #app:has(.tabs) .hov-tap .ht-btn { left: auto; right: 60px; gap: 0; padding: 2px 8px; }
+  #app:has(.tabs) .hov-tap .ht-label { font-size: 0; }
+  #app:has(.tabs) .top .chip.off { display: none; }
 }
 
 /* ---------- the edit sheet ---------- */
