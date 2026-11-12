@@ -28,7 +28,9 @@ merge commit of the release PR), never from a hand-pushed tag.
    with the notes above `<!-- end of release notes -->`:
    `gh release create vX.Y.Z dist/UmbraSetup-X.Y.Z.exe dist/Umbra-X.Y.Z-portable.zip --target <merge sha> --title "Umbra X.Y.Z" --notes-file <notes> --latest`.
    The installer is unsigned (no signing secrets here).
-7. **Verify:** `gh release view vX.Y.Z --json assets -q ".assets[].name"` lists `UmbraSetup-X.Y.Z.exe` (about 90 MB) and
+7. **Website:** `node scripts/deploy-site.mjs` on the updated `main`, so the site shows the new version and every widget change since the
+   last deploy (Actions is off, nothing else deploys it). Check `https://aminechr54.github.io/umbra/` afterwards.
+8. **Verify:** `gh release view vX.Y.Z --json assets -q ".assets[].name"` lists `UmbraSetup-X.Y.Z.exe` (about 90 MB) and
    `Umbra-X.Y.Z-portable.zip`. For winget, fill the manifests from the *released* installer:
    `gh release download vX.Y.Z -p UmbraSetup-X.Y.Z.exe -D <temp>`, then `powershell -File scripts/winget.ps1 -Installer <temp>/UmbraSetup-X.Y.Z.exe`
    (writes `dist/winget/X.Y.Z`; check with `winget validate --manifest`).
