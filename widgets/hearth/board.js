@@ -311,34 +311,26 @@
       try { await umbra.store.set(L.GALLERY.key, next); gallery = next; return true; }
       catch (e) { note("Could not save: this widget's storage is full.", true); return false; }
     }
-    // Every saved picture is also written to the picture folder (umbra.images: Pictures > Umbra > Hearth unless the user
-    // picked another one in Settings), so the gallery is only the newest few and the folder is the backup. A picture that is
-    // not on disk yet (saved before this, or its copy failed) moves there before the gallery drops it.
+    // Pictures that no longer fit go to the user's folder (umbra.images, needs an Umbra that has it) instead of being lost.
     const canArchive = () => !!(umbra.images && umbra.images.save);
     async function loadArchiveFolder() {
       if (!canArchive()) return;
       try { archiveFolder = await umbra.images.folder(); } catch (e) { archiveFolder = ""; }
       chrome();
     }
-    const why = (e) => (e && e.message ? e.message : "try again");
     async function saveNow(item) {
-      let copyError = "";
-      if (archiveFolder) {
-        try { await umbra.images.save(item.png); item = Object.assign({}, item, { kept: true }); }
-        catch (e) { copyError = why(e); }
-      }
       const plan = L.planGallery(gallery, item);
-      const toMove = archiveFolder ? plan.dropped.filter((d) => !d.kept) : [];
-      let moved = 0;
-      try { for (const d of toMove) { await umbra.images.save(d.png); moved++; } }
-      catch (e) {
-        // nothing is removed unless it is safely in the folder
-        note("Could not save to your folder: " + why(e) + ". Nothing was removed.", true);
-        ui.confirmSave = null; chrome(); return;
+      let kept = 0;
+      if (plan.dropped.length && archiveFolder) {
+        try { for (const d of plan.dropped) { await umbra.images.save(d.png); kept++; } }
+        catch (e) {
+          // nothing is removed unless it is safely in the folder
+          note("Could not save to your folder: " + (e && e.message ? e.message : "try again") + ". Nothing was removed.", true);
+          ui.confirmSave = null; chrome(); return;
+        }
       }
       if (await writeGallery(plan.list)) {
-        note(copyError ? `Saved here, but not in your folder: ${copyError}.`
-          : item.kept ? `Saved, with a copy in ${archiveFolder}.${moved ? " Older pictures are there too." : ""}`
+        note(kept ? `Saved. ${kept === 1 ? "The oldest picture was" : kept + " older pictures were"} moved to ${archiveFolder}.`
           : plan.dropped.length ? "Saved. The oldest picture was removed." : "Saved to your pictures.");
       }
       ui.confirmSave = null;
@@ -375,7 +367,7 @@
       ui.preview = null;
       el.gallery.innerHTML = head("Saved pictures") +
         (gallery.length
-          ? `<p class="bd-gal-sub num">${gallery.length} of ${L.GALLERY.maxItems}. ${archiveFolder ? "Every picture is also in your " + esc(archiveFolder) + " folder." : "The oldest goes first when it is full."}</p><div class="bd-thumbs">` +
+          ? `<p class="bd-gal-sub num">${gallery.length} of ${L.GALLERY.maxItems}. ${archiveFolder ? "The oldest moves to " + esc(archiveFolder) + " when it is full." : "The oldest goes first when it is full."}</p><div class="bd-thumbs">` +
             gallery.slice().reverse().map((g) => `<button type="button" class="thumb" data-a="gal-open" data-id="${esc(g.id)}" title="${esc(fmt(g.at))}"><img alt="Saved picture from ${esc(fmt(g.at))}" src="${g.png}"></button>`).join("") + "</div>"
           : '<p class="bd-gal-sub">Nothing saved yet. Press Save to keep a small copy of the board.</p>');
     }

@@ -173,7 +173,7 @@ html[data-stale] .pt { opacity: 0.72; transition: opacity var(--hm-t); }
 
 /* ---------- sizes ---------- */
 
-/* A short window (a 300 x 120 strip): the blob on the left, three slim buttons on the right. */
+/* A short window (the manifest's 300 x 120 strip): the blob on the left, three slim buttons on the right. */
 @container card (max-height: 170px) {
   .pt { flex-direction: row; align-items: stretch; gap: 8px; }
   .pt-stage { flex: 0 0 auto; width: auto; aspect-ratio: 1; min-height: 0; }

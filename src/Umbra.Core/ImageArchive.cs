@@ -3,9 +3,8 @@ using System.Text.Json;
 namespace Umbra;
 
 /// <summary>
-/// <c>umbra.images</c> (permission <c>saveImages</c>): a widget may hand the host a PNG to keep in its picture folder
-/// (Pictures\Umbra\&lt;widget name&gt;, or another folder the user picked with the host's own folder dialog). The page never
-/// supplies a path or a file name, and never reads anything back.
+/// <c>umbra.images</c> (permission <c>saveImages</c>): a widget may hand the host a PNG to keep in the folder the user picked
+/// with the host's own folder dialog. The page never supplies a path or a file name, and never reads anything back.
 /// Pure rules live here so they are unit tested; the dialog and the click gate are in the Windows host.
 /// </summary>
 public static class ImageArchive
@@ -38,7 +37,10 @@ public static class ImageArchive
     /// <summary>A file name the host chooses: "&lt;prefix&gt; 2026-11-11 14.30.05.png", with " (2)", " (3)"... when taken. <paramref name="exists"/> checks the folder.</summary>
     public static string FileName(string prefix, DateTime now, Func<string, bool> exists)
     {
-        var stem = $"{CleanName(prefix)} {now:yyyy-MM-dd HH.mm.ss}";
+        var clean = new string((prefix ?? "").Where(c => char.IsLetterOrDigit(c) || c == ' ' || c == '-').ToArray()).Trim();
+        if (clean.Length == 0) clean = "Umbra";
+        if (clean.Length > 40) clean = clean[..40].Trim();
+        var stem = $"{clean} {now:yyyy-MM-dd HH.mm.ss}";
         var name = stem + ".png";
         for (var n = 2; exists(name); n++)
         {
@@ -46,15 +48,6 @@ public static class ImageArchive
             name = $"{stem} ({n}).png";
         }
         return name;
-    }
-
-    /// <summary>A widget name reduced to letters, digits, spaces and dashes (at most 40), safe as a file or folder name; "Umbra" when nothing is left.</summary>
-    public static string CleanName(string? name)
-    {
-        var clean = new string((name ?? "").Where(c => char.IsLetterOrDigit(c) || c == ' ' || c == '-').ToArray()).Trim();
-        if (clean.Length == 0) clean = "Umbra";
-        if (clean.Length > 40) clean = clean[..40].Trim();
-        return clean;
     }
 
     /// <summary>What the page may learn about a folder: its last segment, never the full path.</summary>
@@ -71,28 +64,14 @@ public static class ImageArchive
 public sealed class ImageArchiveException(string message) : Exception(message);
 
 /// <summary>
-/// Where a widget's saved pictures go: <c>&lt;defaultRoot&gt;\&lt;widget name&gt;</c> (Pictures\Umbra\Hearth), created on the first
-/// save, unless the user picked another folder in the host's dialog (Settings > My widgets, or the widget's own button right
-/// after a click). The pick is kept in %APPDATA%\Umbra\image-folders.json (not settings.json, so no page can write it) and
-/// cleared when the widget stops declaring <c>saveImages</c>. The page names neither folder.
+/// Where a widget's saved pictures go. No default: nothing is written until the user picked a folder in the host's dialog.
+/// Kept in %APPDATA%\Umbra\image-folders.json (not settings.json, so no page can write it) and cleared when the widget
+/// stops declaring <c>saveImages</c>.
 /// </summary>
-public sealed class ImageFolders(string path, string? defaultRoot = null)
+public sealed class ImageFolders(string path)
 {
     static ImageFolders? _shared;
-    public static ImageFolders Shared => _shared ??= new(Path.Combine(AppPaths.DataDir, "image-folders.json"), PicturesRoot());
-
-    /// <summary>Pictures\Umbra, or null where the system has no Pictures folder (then a folder has to be picked).</summary>
-    static string? PicturesRoot()
-    {
-        var pictures = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
-        return string.IsNullOrEmpty(pictures) ? null : Path.Combine(pictures, "Umbra");
-    }
-
-    /// <summary>The default folder for a widget (it may not exist yet), or null without a Pictures folder.</summary>
-    public string? Default(string widgetName) => defaultRoot is null ? null : Path.Combine(defaultRoot, ImageArchive.CleanName(widgetName));
-
-    /// <summary>Where the next picture goes: the picked folder while it exists, otherwise the default.</summary>
-    public string? Resolve(string widgetId, string widgetName) => Get(widgetId) ?? Default(widgetName);
+    public static ImageFolders Shared => _shared ??= new(Path.Combine(AppPaths.DataDir, "image-folders.json"));
 
     readonly object _gate = new();
     readonly Dictionary<string, List<DateTime>> _recent = new();
@@ -151,12 +130,12 @@ public sealed class ImageFolders(string path, string? defaultRoot = null)
     }
 
     /// <summary>
-    /// Writes one picture into the widget's folder (<see cref="Resolve"/>, created when missing) under a host-chosen name and
-    /// returns that name. Refuses without any folder, over the rate limit, or for anything that is not a small PNG.
+    /// Writes one picture into the widget's folder under a host-chosen name and returns that name. Refuses without a
+    /// picked folder, over the rate limit, or for anything that is not a small PNG.
     /// </summary>
     public string Save(string widgetId, string widgetName, string? dataUrl, DateTime? now = null, Func<string, long>? freeBytes = null)
     {
-        var folder = Resolve(widgetId, widgetName) ?? throw new ImageArchiveException("Choose a folder first");
+        var folder = Get(widgetId) ?? throw new ImageArchiveException("Choose a folder first");
         var bytes = ImageArchive.DecodePng(dataUrl);
         var at = now ?? DateTime.Now;
         lock (_gate)
@@ -164,7 +143,6 @@ public sealed class ImageFolders(string path, string? defaultRoot = null)
             if (!_recent.TryGetValue(widgetId, out var list)) _recent[widgetId] = list = new();
             list.RemoveAll(t => at - t > ImageArchive.Window);
             if (list.Count >= ImageArchive.MaxPerWindow) throw new ImageArchiveException("Too many pictures saved in a short time");
-            Directory.CreateDirectory(folder);
             var free = freeBytes?.Invoke(folder) ?? new DriveInfo(Path.GetPathRoot(folder)!).AvailableFreeSpace;
             if (free < bytes.Length + 10_000_000L) throw new ImageArchiveException("The folder's drive is almost full");
             var name = ImageArchive.FileName(widgetName, at, n => File.Exists(Path.Combine(folder, n)));

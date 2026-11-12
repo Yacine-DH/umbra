@@ -45,7 +45,7 @@
     },
     "entry": { "type": "string", "default": "index.html", "description": "The page Umbra loads, relative to the widget folder." },
     "preview": { "type": "string", "description": "Screenshot shown in Browse (PNG, 2x, black background)." },
-    "icon": { "type": "string", "pattern": "^[A-Za-z0-9_-]+\\.png$", "description": "Tab icon for widget groups: a small PNG (64x64 recommended, light grey on transparent, at most 128 px and 64 KB) in the widget folder. Without one the tab shows the first letter of the widget name." },
+    "icon": { "type": "string", "pattern": "^[A-Za-z0-9_-]+\.png$", "description": "Tab icon for widget groups: a small PNG (64x64 recommended, light grey on transparent, at most 128 px and 64 KB) in the widget folder. Without one the tab shows the first letter of the widget name." },
     "width": { "type": "integer", "minimum": 80, "maximum": 1200, "default": 320, "description": "Logical (96-DPI) pixels; Umbra scales for the display." },
     "height": { "type": "integer", "minimum": 80, "maximum": 1200, "default": 180, "description": "Logical (96-DPI) pixels." },
     "themeable": { "type": "boolean", "default": true, "description": "Set false to keep the widget's own look: the user's theme is not applied to it." },
@@ -82,7 +82,7 @@
         },
         "saveImages": {
           "type": "boolean",
-          "description": "Lets the widget call umbra.images: the host writes PNGs the widget hands it into Pictures > Umbra > (widget name), or a folder the user picked in the host's folder dialog (Settings, or the widget's button after a click). The widget never gives a path or a file name and can't read files back."
+          "description": "Lets the widget call umbra.images: the host writes PNGs the widget hands it into a folder the user picked in the host's folder dialog (opened only after a click on the widget). The widget never gives a path or a file name and can't read files back."
         },
         "userScripts": {
           "type": "boolean",

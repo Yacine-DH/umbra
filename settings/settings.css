@@ -546,8 +546,6 @@ select:not(.select):focus, input:is([type=number], [type=text], [type=time]):not
 .cmd.script .script-name { grid-column: 1; font-size: 13px; font-weight: 600; color: var(--text); }
 .cmd.script .script-actions { grid-column: 2; grid-row: 1 / span 3; display: flex; gap: 6px; }
 .cmd.script .script-actions .btn { grid-column: auto; grid-row: auto; }
-.cmd-buttons { grid-column: 2; grid-row: 1 / span 2; display: flex; gap: 6px; }
-.cmd-buttons .btn { grid-column: auto; grid-row: auto; }
 .cmd.script .btn.icon { width: 30px; }
 /* A script that keeps running (a tunnel, a server): a tag, and whether it is up */
 .script-kind, .script-state { margin-left: 8px; padding: 1px 7px; border-radius: 6px; font-size: 10.5px; font-weight: 650; vertical-align: 1px;

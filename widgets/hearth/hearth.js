@@ -1,7 +1,6 @@
 // Hearth: the per-copy view shell and the pairing UI. All relay and pairing logic lives in hearth-core.js; this file
-// only paints what `client.getView()` says and forwards clicks. Three small tabs in the header (Us, Board, Pet) switch
-// the view inside the widget; the View option is the tab a copy opens on, and the last tab picked is remembered per copy.
-// The content of those views lives in overview.js, board.js and pet.js.
+// only paints what `client.getView()` says and forwards clicks. Every copy of the widget picks a view in its options
+// (overview, board, pet); the content of those views lives in overview.js, board.js and pet.js.
 (() => {
   "use strict";
   const core = window.HearthCore;
@@ -9,13 +8,8 @@
   const app = document.getElementById("app");
 
   const VIEWS = ["overview", "board", "pet"];
-  const TABS = [["overview", "Us"], ["board", "Board"], ["pet", "Pet"]];
-  const TAB_KEY = "tab";
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const optionView = () => (VIEWS.includes(umbra.options.view) ? umbra.options.view : "overview");
-  const which = () => (VIEWS.includes(tab.view) ? tab.view : optionView());
-  // The open tab, and the View option it was picked under: changing the option in Settings moves the copy to that tab.
-  const tab = { view: "", opt: "" };
+  const which = () => (VIEWS.includes(umbra.options.view) ? umbra.options.view : "overview");
 
   let client = null;
   let view = null;               // the last client view
@@ -33,17 +27,8 @@
   const statusOffline = () => !!(view && view.offline) || !!(umbra.status && umbra.status.state === "offline");
   const btn = (act, label, cls = "", extra = "") => `<button class="btn ${cls}" data-act="${act}" data-no-drag ${extra}>${label}</button>`;
 
-  const showTabs = (v) => v.phase === "paired" && !v.invite;
-  function tabs() {
-    const w = which();
-    return `<nav class="tabs" role="tablist" aria-label="Hearth view" data-no-drag>` +
-      TABS.map(([id, label]) => `<button type="button" class="tab" role="tab" data-act="tab" data-tab="${id}" aria-selected="${id === w}"${id === w ? "" : ' tabindex="-1"'}>${label}</button>`).join("") +
-      `</nav>`;
-  }
-
   function top(v) {
-    return `<header class="top"><span class="brand">${HEART}<span class="brand-name">Hearth</span></span>` +
-      (showTabs(v) ? tabs() : "") + `<span class="grow"></span>` +
+    return `<header class="top"><span class="brand">${HEART}Hearth</span><span class="grow"></span>` +
       (statusOffline() ? `<span class="chip off" title="The relay can't be reached. Showing the last data.">Offline</span>` : "") +
       `<umbra-status placement="below-end"></umbra-status>` +
       (v.paired ? `<button class="icon-btn" data-act="panel" data-no-drag aria-label="Hearth settings" title="Hearth settings">&#9881;</button>` : "") +
@@ -136,7 +121,7 @@
     const w = which();
     const days = core.daysTogether(v.togetherSince);
     const mood = moodOf(v);
-    const sig = JSON.stringify([w, showTabs(v), v.phase, v.names, days, statusOffline(), v.invite && [v.invite.code, v.invite.kind, v.invite.expired], v.unpaired, v.notice && v.notice.text,
+    const sig = JSON.stringify([w, v.phase, v.names, days, statusOffline(), v.invite && [v.invite.code, v.invite.kind, v.invite.expired], v.unpaired, v.notice && v.notice.text,
       v.busy, v.link, ui.panel, ui.joining, ui.confirm, w === "pet" ? [mood, v.sync.petName] : 0]);
     if (!force && sig === lastSig) return;
     lastSig = sig;
@@ -191,14 +176,6 @@
 
   // ---------- input ----------
 
-  function setTab(id) {
-    if (!VIEWS.includes(id) || id === which()) return;
-    tab.view = id; tab.opt = optionView();
-    ui.panel = false; resetConfirm();
-    render(true);
-    Promise.resolve(umbra.store.set(TAB_KEY, { view: tab.view, opt: tab.opt })).catch(() => { /* the tab is a convenience */ });
-  }
-
   function resetConfirm() { clearTimeout(confirmTimer); confirmTimer = 0; ui.confirm = null; }
   function askConfirm(kind) {
     ui.confirm = kind;
@@ -208,7 +185,6 @@
   }
 
   const ACTIONS = {
-    tab(el) { setTab(el.dataset.tab); },
     async create() { if (await client.createHearth()) { ui.joining = false; } render(true); },
     "join-open"() { ui.joining = true; ui.focusCode = true; umbra.requestFocus(); render(true); },
     "join-cancel"() { ui.joining = false; ui.draft = ""; client.dismissNotice(); render(true); },
@@ -242,15 +218,6 @@
     render(true);
   });
   document.addEventListener("keydown", (e) => {
-    // arrow keys move between the tabs, like any tab strip
-    if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && e.target.classList && e.target.classList.contains("tab")) {
-      const i = VIEWS.indexOf(which());
-      setTab(VIEWS[(i + (e.key === "ArrowRight" ? 1 : VIEWS.length - 1)) % VIEWS.length]);
-      const next = app.querySelector(`.tab[data-tab="${which()}"]`);
-      if (next) next.focus();
-      e.preventDefault();
-      return;
-    }
     if (e.key !== "Escape") return;
     if (ui.panel) { ui.panel = false; resetConfirm(); render(true); }
     else if (ui.joining) { ui.joining = false; render(true); }
@@ -270,7 +237,6 @@
 
   function onSettings(s) {
     if (!client) return;
-    if (tab.view && tab.opt !== optionView()) { tab.view = ""; tab.opt = ""; Promise.resolve(umbra.store.set(TAB_KEY, null)).catch(() => {}); }
     client.setRefreshSeconds(s.refreshSeconds);
     client.setPaused(!!s.paused);
     if (s.paused) { clearInterval(countdownTimer); countdownTimer = 0; } else startCountdown();
@@ -278,10 +244,6 @@
   }
 
   umbra.ready.then(async () => {
-    try {
-      const saved = await umbra.store.get(TAB_KEY, null);
-      if (saved && VIEWS.includes(saved.view) && saved.opt === optionView()) { tab.view = saved.view; tab.opt = saved.opt; }
-    } catch (e) { /* first run, or storage unavailable: open on the View option */ }
     const channel = typeof BroadcastChannel === "function" ? new BroadcastChannel("umbra-hearth-v1") : null;
     client = core.createClient({
       fetchJson: (url) => umbra.fetchJson(url),

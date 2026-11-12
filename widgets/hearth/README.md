@@ -38,19 +38,20 @@ repository deploys them; a maintainer has to.
 
 Both PCs need an internet connection. Offline, a widget shows an "Offline" chip and keeps its last data.
 
-## Three tabs, one pairing
+## Three views, one pairing
 
-Once paired, the header has three small tabs between the name and the gear: **Us** (the Overview), **Board** and **Pet**.
-Click one (or use the arrow keys on a focused tab) to switch; each copy remembers the tab you left it on. The **Opens on**
-option picks the tab a copy starts with, and changing it moves the copy to that tab.
+A widget can only have one size, so Hearth is **one widget with a `View` option** and you add one copy per view:
 
-Sizes: a new Hearth starts tall (340 x 540), so all three tabs have room. You can also shrink it in edit mode to a small strip
-(about 300 x 120) that suits Us; the Board then says "Make this widget bigger to draw". On the strip the Tap button sits at
-the right of the header, as its heart. Copies installed before 1.8.0 keep their size.
+1. In **Settings > My widgets**, open Hearth, choose **Add another copy**, and pick the view in each copy's options:
+   **Overview**, **Board** or **Pet**.
+2. To show them as tabs in one spot, give the copies the same **Tab group** in Settings > My widgets (or use
+   `umbractl groups`). The group's tab icon for Hearth is the bundled `icon.png`.
+3. All copies on a PC share one pairing. A new copy that has no pairing shows **Use this PC's pairing**; the copy that
+   is already paired then asks you to **Allow**. Only that click hands the pairing to the new copy.
 
-You can still add more copies (Settings > My widgets > **Add another copy**), for example a small Us strip and a big Board
-side by side. All copies on a PC share one pairing: a new copy that has no pairing shows **Use this PC's pairing**, and the
-copy that is already paired then asks you to **Allow**. Only that click hands the pairing to the new copy.
+Sizes: the Overview is a small strip (300 x 120, the default). A new Board or Pet copy starts at that same size, so
+**resize it yourself** to a square in edit mode (the Board says "Make this widget bigger to draw" until you do). Umbra
+cannot give each view its own default size yet.
 
 Several copies on one PC cost no extra traffic: they talk to each other and only one of them asks the relay.
 
@@ -93,7 +94,7 @@ Windows name, or anything else from your PC.
 
 **Stored only on your PC** (in this widget's `umbra.store`, never sent): the pairing itself, a snapshot so the widget can
 paint before the network answers, which tap and milestone messages you have already seen, your last colour and brush,
-the pictures you saved from the Board (the last 6 here, all of them as files in `Pictures\Umbra\Hearth`), and the pet outfit you chose.
+the pictures you saved from the Board (the last 6), and the pet outfit you chose.
 
 ### Privacy, in plain language
 
@@ -129,14 +130,13 @@ A new relay starts empty, so a self-hosted hearth cannot reuse a pairing made on
 - **Outfit choice is not synced.** The relay has no outfit field, so the pet outfit you pick is saved on your PC only;
   your partner sees their own choice. Outfits unlock by pet level and by days together.
 - **Pet "day" is a UTC day.** The daily bond resets at midnight UTC, which can be an odd hour of the day where you live.
-- **Board and Pet need a tall widget.** A new Hearth starts tall; a copy you shrank to the strip (or one from before 1.8.0) needs resizing by hand, and the Board cannot draw on the strip.
+- **Board and Pet need resizing** by hand (see above), and the Board cannot draw at the default strip size.
 - **Board details.** The relay has no eraser, so the eraser paints in the paper colour and uses up strokes like any other
   drawing. The relay's palette is 16 colours and 8 brush sizes. Strokes not yet acknowledged when you close the widget
-  are lost. The gallery keeps your newest 6 pictures, and **every picture you save is also written as a PNG to
-  `Pictures\Umbra\Hearth`** (made on the first save), so the gallery is only the latest few and the folder is the backup. To use
-  another folder, open Settings > My widgets > Hearth (Change..., Open, Use default). Pictures saved before this version move to
-  the folder when the gallery pushes them out; if that fails, nothing is removed. Hearth can't read the folder back. Needs an Umbra
-  with `umbra.images`; an older Umbra asks before the oldest picture is removed, and offers "Keep it in a folder".
+  are lost. The gallery keeps your newest 6 pictures. When it is
+  full, Hearth offers "Keep it in a folder": pick a folder once (a normal Windows folder dialog, opened from your click) and from
+  then on the oldest picture is saved there as a PNG instead of being removed. Archived pictures are files in that folder, not
+  in the gallery, and Hearth can't read them back. If the save fails, nothing is removed. Needs an Umbra with `umbra.images`.
 - **Tap cooldown is per copy** (10 seconds), and the Windows toast is limited to a few per 10 minutes.
 - **Font coverage.** The bundled Nunito covers most Latin alphabets. Names in other scripts use a font your PC has, and
   Vietnamese names can mix the two.

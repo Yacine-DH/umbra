@@ -396,12 +396,12 @@
   });
   const PNG_PREFIX = "data:image/png;base64,";
 
-  /** Anything read back from the store to a clean list (oldest first). `kept`: a copy is already in the picture folder. */
+  /** Anything read back from the store to a clean list (oldest first). */
   function sanitizeGallery(raw, limits) {
     const g = Object.assign({}, GALLERY, limits);
     if (!Array.isArray(raw)) return [];
     const list = raw.filter((x) => x && typeof x.png === "string" && x.png.startsWith(PNG_PREFIX) && x.png.length <= g.maxImageChars && Number.isFinite(x.at))
-      .map((x) => Object.assign({ id: String(x.id || x.at), at: x.at, png: x.png }, x.kept === true ? { kept: true } : {}));
+      .map((x) => ({ id: String(x.id || x.at), at: x.at, png: x.png }));
     return list.slice(-g.maxItems);
   }
 

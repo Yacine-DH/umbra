@@ -74,8 +74,8 @@ public sealed partial class WidgetManifest
         /// </summary>
         public bool Camera { get; set; }
         /// <summary>
-        /// Allows <c>umbra.images</c>: the host writes PNGs the widget hands it into Pictures\Umbra\&lt;name&gt;, or a folder the user
-        /// picked in the host's folder dialog (<see cref="ImageFolders"/>). The page never gives a path or name and can't read files.
+        /// Allows <c>umbra.images</c>: the host writes PNGs the widget hands it into a folder the user picked in the host's
+        /// folder dialog (<see cref="ImageFolders"/>). The page never gives a path or name and can't read files.
         /// </summary>
         public bool SaveImages { get; set; }
     }

@@ -623,20 +623,6 @@ test("pictures read back from the store are checked", () => {
   assert.equal(B.sanitizeGallery(many)[B.GALLERY.maxItems - 1].id, "11", "the newest are kept");
 });
 
-test("a picture already copied to the picture folder says so, and only a real true counts", () => {
-  const list = B.sanitizeGallery([
-    { id: "1", at: 1, png: png(10), kept: true },
-    { id: "2", at: 2, png: png(10), kept: "yes" },
-    { id: "3", at: 3, png: png(10) },
-  ]);
-  assert.deepEqual(list.map((x) => x.kept), [true, undefined, undefined]);
-  assert.ok(!("kept" in list[2]), "no kept key on pictures that are not on disk");
-  // the gallery drops the oldest; the Board only archives the dropped ones without kept
-  const full = Array.from({ length: B.GALLERY.maxItems }, (_, n) => ({ id: String(n), at: n, png: png(10), kept: n === 0 }));
-  const plan = B.planGallery(full, { id: "new", at: 99, png: png(10), kept: true });
-  assert.deepEqual(plan.dropped.map((x) => [x.id, x.kept]), [["0", true]]);
-});
-
 // ---------- the page wiring ----------
 
 const read = (f) => readFileSync(new URL(`../../widgets/hearth/${f}`, import.meta.url), "utf8");

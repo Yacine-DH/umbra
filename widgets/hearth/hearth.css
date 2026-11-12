@@ -63,32 +63,6 @@ html[data-stale] .body { opacity: 0.72; transition: opacity var(--hm-t); }
 .brand { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; letter-spacing: 0.02em; }
 .brand svg { width: 16px; height: 15px; }
 .grow { flex: 1; }
-/* Us / Board / Pet: three small tabs between the name and the gear */
-.tabs {
-  flex: none;
-  display: inline-flex;
-  gap: 2px;
-  padding: 1px;
-  border: 1.5px solid var(--hm-brown);
-  border-radius: 999px;
-  background: var(--hm-green);
-}
-.tab {
-  padding: 0 8px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--hm-ink);
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 800;
-  line-height: 1.45;
-  cursor: pointer;
-  transition: background var(--hm-t);
-}
-.tab:hover:not([aria-selected="true"]) { background: var(--hm-butter); }
-.tab[aria-selected="true"] { background: var(--hm-pink); box-shadow: inset 0 0 0 1.5px var(--hm-brown); }
-.tab:focus-visible { outline: 2px dashed var(--hm-brown); outline-offset: 1px; }
 .chip {
   padding: 0 8px;
   border: 1.5px solid var(--hm-brown);
@@ -231,14 +205,6 @@ form.join input { flex: 1 1 120px; width: 120px; }
   .col { align-items: center; }
   .art { width: 96px; height: 96px; }
   .row { justify-content: center; }
-}
-/* With the tabs in the header, a narrow card keeps the heart and drops the word "Hearth" first. */
-@container card (max-width: 270px) {
-  .top:has(.tabs) .brand-name { display: none; }
-  .top:has(.tabs) { gap: 6px; }
-}
-@container card (max-width: 240px) {
-  .tab { padding: 0 5px; font-size: 0.74rem; }
 }
 @container card (max-width: 230px) {
   .body { flex-direction: column; justify-content: center; text-align: center; }
