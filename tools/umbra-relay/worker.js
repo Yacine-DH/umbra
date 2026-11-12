@@ -12,10 +12,14 @@
 // Hearth (see README.md for every parameter and response):
 //   GET /hearth/sync|stroke|undo|clear|unclear|tap|care|set|unpair|reinvite?room=R&me=a|b&key=K&...
 //
+// Stats (see stats.js): anonymous install counts from the app and page views from the website, no ids of any kind.
+//   GET /stats/install?w=ID   GET /stats/view?p=PATH&r=HOST   GET /stats/installs   GET /stats/summary (Bearer token)
+//
 // GET only, because widgets can only fetch with GET. Every response is JSON with status 200, errors as { error }
 // (the host's fetch throws away the body of a non-2xx answer).
 
 import { GRACE_MS, handleHearth } from "./hearth.js";
+import { STATS_ROUTES, handleStats } from "./stats.js";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no I, L, O, 0, 1
 const CODE_TTL_MS = 10 * 60 * 1000;
@@ -53,6 +57,30 @@ export default {
       const id = q.get("room") || "", me = q.get("me");
       if (!/^[0-9a-f]{32}$/.test(id) || (me !== "a" && me !== "b")) return json({ error: "bad request" });
       return json(await call(room("r:" + id), u.pathname.slice(1), { me, key: q.get("key") || "", iv: q.get("iv") || "60" }));
+    }
+    if (u.pathname.startsWith("/stats/")) {
+      // Read from the website and the app: CORS for any origin, never a non-2xx (except the preflight's 204).
+      const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization", "access-control-max-age": "86400" };
+      if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+      const out = (o, cache) => {
+        const r = json(o);
+        for (const [k, v] of Object.entries(cors)) r.headers.set(k, v);
+        if (cache) r.headers.set("cache-control", cache);
+        return r;
+      };
+      try {
+        const name = u.pathname.slice("/stats/".length);
+        if (!STATS_ROUTES.has(name)) return out({ error: "not found" });
+        if (req.method !== "GET" && req.method !== "HEAD") return out({ error: "GET only" });
+        if (req.url.length > 1000) return out({ error: "too long" });
+        // Only the parameters each route reads go to the object. The token comes in a header (never a public URL) and is
+        // handed to the object on this internal call only.
+        const params = { w: q.get("w") || "", p: q.get("p") || "", r: q.get("r") || "", auth: req.headers.get("authorization") || "" };
+        const r = await call(room("stats"), "stats/" + name, params);
+        return out(r, name === "installs" && !r.error ? "public, max-age=600" : null);
+      } catch {
+        return out({ error: "server error" });
+      }
     }
     if (u.pathname.startsWith("/hearth/")) {
       // Never a non-2xx here: whatever goes wrong is a JSON { error }.
@@ -92,6 +120,9 @@ export class Room {
     const u = new URL(req.url);
     const q = u.searchParams;
     const now = this.clock();
+    if (u.pathname.startsWith("/stats/")) {
+      return Response.json(await handleStats(this.s, u.pathname.slice("/stats/".length), q, this.env, now, q.get("auth")));
+    }
     if (u.pathname.startsWith("/hearth/")) {
       return Response.json(await handleHearth(this.s, u.pathname.slice("/hearth/".length), q, this.env, now));
     }

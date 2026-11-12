@@ -20,11 +20,18 @@ Everything lives in `%APPDATA%\Umbra` (or the `data` folder next to `Umbra.exe` 
 
 ## What Umbra sends
 
-Umbra collects no telemetry and has no account. Its own network traffic is limited to:
+Umbra has no account and doesn't track you. Its own network traffic is limited to:
 
 1. a daily check for a new release on GitHub (turn it off with `umbractl general --updates off`),
-2. the widget and theme catalog when you open **Browse** or **Themes**,
-3. requests that widgets make to hosts they declared in their `widget.json`.
+2. the widget and theme catalog when you open **Browse** or **Themes**, plus the install counts Browse shows,
+3. one anonymous +1 for a catalog widget when you install it from the catalog: the request is just the widget's id, with no
+   user or machine id, no version and nothing about your PC, and updates or file installs aren't counted. The Umbra relay
+   keeps only the total per widget. Turn it off with **Count my widget installs** in **Data & privacy**; that also stops
+   Browse from loading the counts,
+4. requests that widgets make to hosts they declared in their `widget.json`.
+
+This website counts page views the same way: the page's path and the referring site's name, no cookie, no id, and
+nothing at all when your browser sends Do Not Track or Global Privacy Control.
 
 A widget cannot reach anything it didn't declare; the app blocks the rest. See [Sandbox and permissions](/umbra/docs/widgets/sandbox/).
 

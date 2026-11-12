@@ -13,7 +13,7 @@ A widget is a folder with a `widget.json` and a web page (HTML, CSS and JavaScri
 - **It stays where it belongs.** Widget windows are owned by the desktop shell and kept at the bottom of the window stack, so your apps always cover them.
 - **It's sharp.** Windows are opaque true black with corners and a hairline border drawn by Windows itself, so text keeps full ClearType quality. On an OLED screen the black pixels are simply off, and each card seems to float on your wallpaper.
 - **It's safe.** A widget can only reach the HTTPS hosts it declares. The host blocks everything else. An update that asks for new access waits for your OK, and a widget can start a local program only if it declared that exact command and you approved it.
-- **It's private.** No account, no telemetry. Settings, widget data and logs stay in `%APPDATA%\Umbra`.
+- **It's private.** No account, no tracking. Settings, widget data and logs stay in `%APPDATA%\Umbra`; the one thing Umbra reports is an anonymous +1 when you install a catalog widget, and you can turn that off.
 - **It's scriptable.** The `umbractl` command line and a built-in [MCP server](/umbra/docs/automate/mcp/) let scripts and AI agents arrange widgets, take screenshots and write new widgets.
 
 ## Where to go next

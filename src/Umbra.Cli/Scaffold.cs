@@ -21,6 +21,7 @@ static partial class Scaffold
               "author": "your-github-name",
               "version": "0.1.0",
               "manifestVersion": 1,
+              "category": "productivity",
               "entry": "index.html",
               "width": 260,
               "height": 120,

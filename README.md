@@ -258,7 +258,7 @@ Umbra is community-built. The [roadmap board](https://github.com/users/AmineChr5
 
 ## Privacy
 
-Umbra collects no telemetry and has no account. Settings, widget data and logs stay in `%APPDATA%\Umbra` on your PC. The only network traffic Umbra itself makes is a daily check on GitHub for new releases and widget updates (you can turn it off in Settings), the widget and theme catalogs when you open Browse, the downloads you choose to install, and the requests a widget makes to hosts it declares in its `widget.json` (see **Data & privacy** in Settings).
+Umbra has no account and doesn't track you. Settings, widget data and logs stay in `%APPDATA%\Umbra` on your PC. The only network traffic Umbra itself makes is a daily check on GitHub for new releases and widget updates (you can turn it off in Settings), the widget and theme catalogs when you open Browse (with the install counts from the Umbra relay), the downloads you choose to install, one anonymous +1 for a catalog widget when you install it, so Browse can show install counts (no id, no version, nothing about you or your PC; updates aren't counted; turn it off in **Data & privacy**), and the requests a widget makes to hosts it declares in its `widget.json` (see **Data & privacy** in Settings). The website counts page views the same way: a path and the referring site, no cookie, no id, and nothing at all with Do Not Track or Global Privacy Control on.
 
 ## License
 

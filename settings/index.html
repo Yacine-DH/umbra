@@ -167,7 +167,7 @@
         <header class="page-head with-action">
           <div>
             <h1>My widgets</h1>
-            <p>Turn widgets on or off and change their settings. Changes apply instantly.</p>
+            <p>Turn widgets on or off and change their settings. Changes apply instantly. <button class="link-btn help-link" data-help type="button" aria-haspopup="dialog" aria-expanded="false"><span class="ico" data-icon="info"></span>How to add widgets</button></p>
           </div>
           <div class="arrange" id="arrangeBox" title="Widgets are locked unless you arrange them. Also in the tray menu and on a hotkey.">
             <span class="ico arrange-ico" data-icon="lock"></span>
@@ -237,7 +237,7 @@
           <div class="hero-text">
             <div class="eyebrow">Community</div>
             <h2>Widgets made by people like you</h2>
-            <p>Every widget runs in a sandbox and can only reach the sites it declares. Built one? Open a pull request and it shows up here for everyone.</p>
+            <p>Every widget runs in a sandbox and can only reach the sites it declares. Built one? Open a pull request and it shows up here for everyone. <button class="link-btn help-link" data-help type="button" aria-haspopup="dialog" aria-expanded="false"><span class="ico" data-icon="info"></span>How to add widgets</button></p>
             <div class="hero-actions">
               <button class="btn primary" data-url="contribute"><span class="ico" data-icon="plus"></span>Submit a widget</button>
               <button class="btn ghost" id="installMenu" aria-haspopup="menu" aria-expanded="false"><span class="ico" data-icon="download"></span>Install from…<span class="ico caret" data-icon="chevron"></span></button>
@@ -246,16 +246,6 @@
           </div>
           <div class="hero-art" aria-hidden="true"><i></i><i></i><i></i></div>
         </div>
-
-        <details class="howto">
-          <summary>How to add your own widget</summary>
-          <ol>
-            <li>A widget is a folder with a <code>widget.json</code> and an <code>index.html</code>; the folder name must equal the <code>id</code> in <code>widget.json</code>. Start one with <code>umbractl new &lt;id&gt;</code> or copy one from the catalog.</li>
-            <li>To share it, zip the folder (right-click, Send to, Compressed folder). A <code>.umbrawidget</code> file is the same zip, renamed.</li>
-            <li>Open <b>Install from…</b> and pick <b>File…</b> for a zip, <b>Folder…</b> for a folder or <b>URL…</b> for a link. Umbra checks every file first (widget file types only, 5 MB at most) and asks before giving the widget access to websites, system info, media, notifications or commands. A file install replaces an installed widget with the same id and keeps the commands you already approved for it.</li>
-            <li>It is copied to <code>widgets\&lt;id&gt;</code> in your Umbra data folder and shows up in My widgets. To update it, install the newer zip or folder again.</li>
-          </ol>
-        </details>
 
         <div class="search">
           <span class="ico" data-icon="search"></span>
@@ -268,8 +258,13 @@
             <button data-filter="updates">Updates<span id="updatesCount"></span></button>
           </div>
           <span class="toolbar-status" id="updateStatus" role="status"></span>
+          <select class="select small-select" id="browseSort" aria-label="Sort widgets">
+            <option value="popular">Most installed</option>
+            <option value="name">Name</option>
+          </select>
           <button class="btn small primary" id="updateAll" hidden><span class="ico" data-icon="download"></span>Update all</button>
         </div>
+        <div class="cats" id="browseCats" role="group" aria-label="Categories"></div>
         <div class="grid" id="catalog"></div>
       </section>
 
@@ -310,6 +305,13 @@
         </header>
         <div class="group" id="privacyList"></div>
         <div class="group">
+          <div class="row">
+            <div class="row-text">
+              <div class="row-title">Count my widget installs</div>
+              <div class="row-sub">When you install a widget from the catalog, Umbra sends one anonymous +1 for that widget, so Browse can show how many people use it. Nothing else: no id, no version, nothing about you or this PC, and updates aren't counted. Off also stops Browse from loading the counts.</div>
+            </div>
+            <label class="switch"><input type="checkbox" id="countInstalls"><span></span></label>
+          </div>
           <div class="row"><div class="row-text"><div class="row-title">Backup</div><div class="row-sub">Settings, layout, theme, hotkeys and widget data in one file. Command approvals are never included.</div></div>
             <button class="btn" id="exportBackup">Export</button><button class="btn" id="importBackup">Import</button></div>
           <div class="row"><div class="row-text"><div class="row-title">Files</div><div class="row-sub">Where Umbra keeps its data and log.</div></div>
@@ -351,17 +353,39 @@
   </div>
 
   <div class="welcome" id="welcome" hidden>
-    <div class="welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle" aria-describedby="welcomeText">
+    <div class="tour-ring" id="tourRing" aria-hidden="true" hidden></div>
+    <div class="welcome-card" id="welcomeCard" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle" aria-describedby="welcomeText">
       <div class="welcome-art" id="welcomeArt" aria-hidden="true"></div>
       <div class="welcome-step" id="welcomeStep" aria-live="polite"></div>
       <h2 id="welcomeTitle"></h2>
       <p id="welcomeText"></p>
       <div class="welcome-foot">
-        <button class="btn ghost" id="welcomeSkip" type="button">Skip</button>
-        <div class="welcome-dots" id="welcomeDots" aria-hidden="true"><i></i><i></i><i></i></div>
+        <button class="btn ghost" id="welcomeSkip" type="button">Skip tour</button>
+        <div class="welcome-dots" id="welcomeDots" aria-hidden="true"></div>
         <button class="btn" id="welcomeBack" type="button">Back</button>
         <button class="btn primary" id="welcomeNext" type="button">Next</button>
       </div>
+    </div>
+  </div>
+
+  <div class="helppop" id="helpPop" role="dialog" aria-modal="false" aria-labelledby="helpPopTitle" hidden>
+    <div class="helppop-head"><h2 id="helpPopTitle">Add a widget</h2><button class="btn ghost icon small" id="helpPopClose" type="button" aria-label="Close"><span class="ico" data-icon="x"></span></button></div>
+    <h3>From the catalog</h3>
+    <ol>
+      <li>Open <b>Browse</b> and find one: search, or pick a category.</li>
+      <li>Press <b>Install</b>. It shows up on your desktop right away, behind your windows.</li>
+      <li>To move or resize it, turn on <b>Arrange</b> (in My widgets, the tray menu or its hotkey), drag it where you want, then press <b>Done</b>.</li>
+      <li>Its options (city, size, colors...) are in <b>My widgets</b>. Want two? Use <b>Add another copy</b>.</li>
+    </ol>
+    <h3>Your own, or one a friend sent</h3>
+    <ol>
+      <li>A widget is a folder with a <code>widget.json</code> and an <code>index.html</code>. Start one with <code>umbractl new &lt;id&gt;</code>.</li>
+      <li>To share it, zip the folder. A <code>.umbrawidget</code> file is the same zip, renamed; double-click one to install it.</li>
+      <li>Or use <b>Install from…</b> on Browse: <b>File</b>, <b>Folder</b> or <b>URL</b>. Umbra checks every file first and asks before it gets access to websites, system info, media, notifications or commands.</li>
+    </ol>
+    <div class="helppop-foot">
+      <button class="btn small primary" id="helpPopBrowse" type="button"><span class="ico" data-icon="compass"></span>Open Browse</button>
+      <button class="btn small ghost" data-url="contribute" type="button">Build a widget</button>
     </div>
   </div>
 

@@ -32,6 +32,11 @@
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
       "description": "Oldest Umbra release the widget works on, like 1.9.0. Older Umbra versions refuse to install or load it and ask the user to update; Browse greys it out."
     },
+    "category": {
+      "type": "string",
+      "enum": ["time", "productivity", "info", "markets", "system", "media", "developer", "social", "games"],
+      "description": "Where the widget is listed on Browse and the website: time (clocks, calendars, countdowns), productivity (to-dos, notes, timers), info (weather, news, quotes), markets, system (PC monitors), media, developer, social, games. Required for catalog widgets."
+    },
     "changelog": {
       "type": "string",
       "minLength": 1,

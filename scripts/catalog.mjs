@@ -23,7 +23,9 @@ const MAX_CHANGELOG = 500;
 const OPTION_TYPES = new Set(["text", "number", "select", "toggle"]);
 // Highest widget.json format the app understands (WidgetManifest.SupportedManifestVersion).
 const MANIFEST_VERSION = 1;
-const KNOWN_KEYS = new Set(["$schema", "id", "name", "description", "author", "version", "manifestVersion", "minUmbraVersion", "changelog", "entry", "preview", "icon", "width", "height", "themeable", "private", "defaultPosition", "permissions", "options"]);
+// Same list and order as WidgetManifest.Categories in the app.
+const CATEGORIES = ["time", "productivity", "info", "markets", "system", "media", "developer", "social", "games"];
+const KNOWN_KEYS = new Set(["$schema", "id", "name", "description", "author", "version", "manifestVersion", "minUmbraVersion", "changelog", "category", "entry", "preview", "icon", "width", "height", "themeable", "private", "defaultPosition", "permissions", "options"]);
 
 const errors = [];
 const fail = (id, msg) => errors.push(`widgets/${id}: ${msg}`);
@@ -120,6 +122,7 @@ for (const id of readdirSync(widgetsDir).sort()) {
     fail(id, `"minUmbraVersion" must look like 1.9.0`);
   if (m.changelog !== undefined && (typeof m.changelog !== "string" || !m.changelog.trim() || m.changelog.length > MAX_CHANGELOG))
     fail(id, `"changelog" must be a non-empty string of at most ${MAX_CHANGELOG} characters (what changed in this version)`);
+  if (!CATEGORIES.includes(m.category)) fail(id, `"category" is required: one of ${CATEGORIES.join(", ")}`);
   if (m.private !== undefined && typeof m.private !== "boolean") fail(id, `"private" must be true or false`);
   if (m.private === true) fail(id, `"private" widgets are installed from a file, not published in the catalog (see docs/widget-sdk.md)`);
   const entry = m.entry || "index.html";
@@ -170,6 +173,7 @@ for (const id of readdirSync(widgetsDir).sort()) {
     description: m.description,
     author: m.author,
     version: m.version,
+    category: m.category,
     // Browse greys out an entry made for a newer Umbra (WidgetManifest.Incompatibility).
     manifestVersion: m.manifestVersion ?? 1,
     ...(m.minUmbraVersion ? { minUmbraVersion: m.minUmbraVersion } : {}),

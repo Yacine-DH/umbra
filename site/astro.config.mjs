@@ -2,6 +2,7 @@
 // src/content/docs/docs/**). Built by .github/workflows/pages.yml; run `npm run dev` here to work on it.
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import { beacon } from "./src/lib/beacon.mjs";
 
 const group = (label, directory, collapsed = false) => ({ label, collapsed, items: [{ autogenerate: { directory: `docs/${directory}` } }] });
 
@@ -21,7 +22,7 @@ export default defineConfig({
       customCss: ["./src/styles/docs.css"],
       components: { PageTitle: "./src/components/docs/PageTitle.astro" },
       expressiveCode: { themes: ["github-dark-default"], styleOverrides: { borderRadius: "10px" } },
-      head: [{ tag: "meta", attrs: { name: "theme-color", content: "#000000" } }],
+      head: [{ tag: "meta", attrs: { name: "theme-color", content: "#000000" } }, { tag: "script", content: beacon }],
       sidebar: [
         group("Get started", "get-started"),
         group("Using Umbra", "using"),

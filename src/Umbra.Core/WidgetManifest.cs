@@ -21,6 +21,8 @@ public sealed partial class WidgetManifest
     public string? MinUmbraVersion { get; set; }
     /// <summary>What changed in this version (max 500 characters); shown when an update asks for new access.</summary>
     public string? Changelog { get; set; }
+    /// <summary>One of <see cref="Categories"/> (Browse and the website filter by it), or null. Catalog widgets must set one.</summary>
+    public string? Category { get; set; }
     public string Entry { get; set; } = "index.html";
     public string? Preview { get; set; }
     /// <summary>Small PNG (up to 128 px, 64 KB) next to widget.json, drawn on the group tab strip; null = a letter badge.</summary>
@@ -38,6 +40,12 @@ public sealed partial class WidgetManifest
     public PermissionSpec Permissions { get; set; } = new();
     /// <summary>Option schema shown in Settings: key -> {label, type, default, choices?}.</summary>
     public JsonObject Options { get; set; } = new();
+
+    /// <summary>
+    /// The fixed category ids a widget.json "category" may use, in Browse order. Mirrored in scripts/catalog.mjs,
+    /// schemas/widget.schema.json, settings/settings.js (labels) and the website catalog.
+    /// </summary>
+    public static readonly IReadOnlyList<string> Categories = ["time", "productivity", "info", "markets", "system", "media", "developer", "social", "games"];
 
     [JsonIgnore] public List<string> OptionOrder { get; set; } = new();
     [JsonIgnore] public string Folder { get; set; } = "";

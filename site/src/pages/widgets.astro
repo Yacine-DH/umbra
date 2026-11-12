@@ -2,11 +2,16 @@
 import Base from "../layouts/Base.astro";
 import Footer from "../components/landing/Footer.astro";
 import { url, repo, docsHome } from "../lib/url";
-import { widgets, kindOf } from "../lib/data";
+import { RELAY } from "../lib/beacon.mjs";
+import { widgets, kindOf, categories, categoryOf, categoryLabel } from "../lib/data";
 
 const counts: Record<string, number> = { all: widgets.length, offline: 0, online: 0, commands: 0 };
 for (const w of widgets) counts[kindOf(w)]++;
-const chips = [["all", "All"], ["offline", "Works offline"], ["online", "Uses the internet"], ["commands", "Runs commands"]].filter(([k]) => counts[k]);
+const chips = [["all", "Any access"], ["offline", "Works offline"], ["online", "Uses the internet"], ["commands", "Runs commands"]].filter(([k]) => counts[k]);
+const catCounts: Record<string, number> = {};
+for (const w of widgets) catCounts[categoryOf(w)] = (catCounts[categoryOf(w)] ?? 0) + 1;
+const cats = [["all", "All"], ...[...categories, ["other", "Other"]].filter(([id]) => catCounts[id])];
+catCounts.all = widgets.length;
 ---
 
 <Base title="Umbra widget catalog" description={`${widgets.length} community widgets for Umbra: markets, weather, to-dos, habits, timers, calendars, media and games. Each one is reviewed and sandboxed.`}>
@@ -21,16 +26,23 @@ const chips = [["all", "All"], ["offline", "Works offline"], ["online", "Uses th
           <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
           <input id="q" type="search" placeholder={`Search ${widgets.length} widgets`} aria-label="Search widgets" autocomplete="off" />
         </label>
-        <div class="chips" role="group" aria-label="Filter">
+        <select id="sort" class="sort" aria-label="Sort widgets" hidden>
+          <option value="popular">Most installed</option>
+          <option value="name">Name</option>
+        </select>
+        <div class="chips" id="kinds" role="group" aria-label="Filter by access">
           {chips.map(([k, label]) => <button type="button" data-f={k} aria-pressed={k === "all"}>{label} <span>{counts[k]}</span></button>)}
         </div>
+      </div>
+      <div class="chips cats" id="cats" role="group" aria-label="Filter by category">
+        {cats.map(([k, label]) => <button type="button" data-c={k} aria-pressed={k === "all"}>{label} <span>{catCounts[k]}</span></button>)}
       </div>
 
       <div class="grid" id="grid">
         {widgets.map(w => {
           const hosts = w.hosts ?? [], cmds = w.commands ?? [];
           return (
-            <article class="card" id={w.id} data-kind={kindOf(w)} data-q={`${w.name} ${w.description} ${w.id} ${w.author}`.toLowerCase()}>
+            <article class="card" id={w.id} data-name={w.name.toLowerCase()} data-kind={kindOf(w)} data-cat={categoryOf(w)} data-q={`${w.name} ${w.description} ${w.id} ${w.author} ${categoryLabel(categoryOf(w))}`.toLowerCase()}>
               <div class="shot">{w.previewSize && <img src={url(`previews/${w.id}.png`)} alt={`${w.name} widget`} width={w.previewSize.w / 2} height={w.previewSize.h / 2} loading="lazy" />}</div>
               <div class="body">
                 <h2>{w.name}<span>v{w.version}</span></h2>
@@ -41,7 +53,7 @@ const chips = [["all", "All"], ["offline", "Works offline"], ["online", "Uses th
                     : <li class="ok">Works offline</li>}
                   {cmds.length > 0 && <li class="warn" title={cmds.map(c => c.run).join(", ")}>Runs local commands, asks first</li>}
                 </ul>
-                <p class="by">by {w.author} · <a href={`${repo}/tree/main/widgets/${w.id}`}>Source</a></p>
+                <p class="by">{categoryOf(w) !== "other" && <>{categoryLabel(categoryOf(w))} · </>}by {w.author} · <span class="installs" hidden></span><a href={`${repo}/tree/main/widgets/${w.id}`}>Source</a></p>
               </div>
             </article>
           );
@@ -60,17 +72,42 @@ const chips = [["all", "All"], ["offline", "Works offline"], ["online", "Uses th
   <Footer />
 </Base>
 
+<script define:vars={{ RELAY }}>
+  // Install counts come from the relay at view time (anonymous per-widget totals); without them the page is unchanged.
+  const sortSel = document.getElementById("sort");
+  const grid = document.getElementById("grid");
+  const byName = [...grid.querySelectorAll(".card")];
+  let counts = {};
+  const fmt = (n) => n === 1 ? "1 install" : n < 1000 ? `${n} installs` : `${(n / 1000).toFixed(n < 10000 ? 1 : 0).replace(/\.0$/, "")}k installs`;
+  function order() {
+    const list = sortSel.value === "name" ? byName : [...byName].sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0) || a.dataset.name.localeCompare(b.dataset.name));
+    grid.append(...list);
+  }
+  fetch(RELAY + "/stats/installs", { credentials: "omit" }).then((r) => r.json()).then((d) => {
+    counts = d && d.widgets && typeof d.widgets === "object" ? d.widgets : {};
+    let any = false;
+    for (const c of byName) {
+      const n = Number(counts[c.id]);
+      const s = c.querySelector(".installs");
+      if (n > 0) { s.textContent = fmt(n) + " · "; s.hidden = false; any = true; }
+    }
+    if (any) { sortSel.hidden = false; order(); }
+  }).catch(() => {});
+  sortSel.addEventListener("change", order);
+</script>
+
 <script>
   const q = document.getElementById("q") as HTMLInputElement;
   const cards = [...document.querySelectorAll<HTMLElement>(".card")];
-  const chips = [...document.querySelectorAll<HTMLButtonElement>(".chips button")];
+  const chips = [...document.querySelectorAll<HTMLButtonElement>("#kinds button")];
+  const catChips = [...document.querySelectorAll<HTMLButtonElement>("#cats button")];
   const empty = document.getElementById("empty")!;
-  let f = "all";
+  let f = "all", cat = "all";
   function apply() {
     const v = q.value.trim().toLowerCase();
     let n = 0;
     for (const c of cards) {
-      const show = (f === "all" || c.dataset.kind === f) && (!v || c.dataset.q!.includes(v));
+      const show = (f === "all" || c.dataset.kind === f) && (cat === "all" || c.dataset.cat === cat) && (!v || c.dataset.q!.includes(v));
       c.hidden = !show;
       n += +show;
     }
@@ -78,6 +115,14 @@ const chips = [["all", "All"], ["offline", "Works offline"], ["online", "Uses th
   }
   q.addEventListener("input", apply);
   for (const b of chips) b.addEventListener("click", () => { f = b.dataset.f!; for (const c of chips) c.setAttribute("aria-pressed", String(c === b)); apply(); });
+  const pickCat = (id: string) => {
+    if (!catChips.some((b) => b.dataset.c === id)) return;
+    cat = id;
+    for (const c of catChips) c.setAttribute("aria-pressed", String(c.dataset.c === id));
+    apply();
+  };
+  for (const b of catChips) b.addEventListener("click", () => { pickCat(b.dataset.c!); history.replaceState(null, "", cat === "all" ? location.pathname : `?category=${cat}`); });
+  pickCat(new URLSearchParams(location.search).get("category") ?? "all"); // shareable: /widgets/?category=games
   // Linked from the landing page marquee: highlight the card the URL points at.
   if (location.hash) document.querySelector(location.hash)?.classList.add("hit");
 </script>
@@ -92,11 +137,15 @@ const chips = [["all", "All"], ["offline", "Works offline"], ["online", "Uses th
   .search input { width: 100%; padding: 14px 16px 14px 46px; border: 1px solid var(--line2); border-radius: 14px; background: var(--s1); color: var(--text); font: inherit; outline: none; transition: border-color .2s, box-shadow .2s; }
   .search input:focus { border-color: var(--acc); box-shadow: 0 0 0 4px var(--accs); }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sort { font: inherit; font-size: .9rem; color: var(--text2); background: var(--s1); border: 1px solid var(--line2); border-radius: 999px; padding: 9px 14px; cursor: pointer; }
+  .sort[hidden] { display: none; }
   .chips button { font: inherit; font-size: .9rem; color: var(--text2); background: var(--s1); border: 1px solid var(--line2); border-radius: 999px; padding: 9px 16px; cursor: pointer; transition: border-color .2s, color .2s, background .2s; }
   .chips button:hover { color: var(--text); }
   .chips button span { color: var(--text3); margin-left: 4px; }
   .chips button[aria-pressed="true"] { color: var(--text); background: var(--accs); border-color: rgba(139, 147, 255, .5); }
   .chips button[aria-pressed="true"] span { color: var(--acc2); }
+  .cats { margin: -12px 0 28px; }
+  .cats button { font-size: .86rem; padding: 7px 14px; }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 18px; }
   .card { display: flex; flex-direction: column; background: var(--s1); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; scroll-margin-top: 100px; transition: border-color .3s, transform .4s var(--ease); }

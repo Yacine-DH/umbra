@@ -1,0 +1,220 @@
+---
+// Private stats dashboard. The page holds no data: it asks the relay's /stats/summary with the maintainer's token
+// (wrangler secret STATS_TOKEN), kept only in this browser's localStorage, and GitHub's public release download counts.
+// Not linked anywhere, not indexed and not counted as a page view.
+import Base from "../layouts/Base.astro";
+import { RELAY } from "../lib/beacon.mjs";
+---
+
+<Base title="Umbra stats" description="Private dashboard." noindex count={false}>
+  <main class="page statspage">
+    <div class="wrap">
+      <p class="kicker">Private</p>
+      <h1 class="h2">Stats</h1>
+      <p class="sub">Anonymous counts only: catalog installs per widget, site page views per path and referrer, and GitHub release downloads.</p>
+
+      <form class="token" id="tokenForm">
+        <input id="token" type="password" autocomplete="off" placeholder="Stats token" aria-label="Stats token" />
+        <button class="btn primary" type="submit">Show stats</button>
+        <button class="btn ghost" type="button" id="forget" hidden>Forget token</button>
+        <span class="status" id="status" role="status"></span>
+      </form>
+
+      <div id="dash" hidden>
+        <div class="range" role="group" aria-label="Time range">
+          <button type="button" data-days="7">7 days</button>
+          <button type="button" data-days="30" aria-pressed="true">30 days</button>
+          <button type="button" data-days="90">90 days</button>
+        </div>
+        <div class="tiles" id="tiles"></div>
+        <section class="panel"><h2>Widget installs per day</h2><div class="chart" id="installsChart"></div></section>
+        <section class="panel"><h2>Page views per day</h2><div class="chart" id="viewsChart"></div></section>
+        <div class="cols">
+          <section class="panel"><h2>Top widgets <small id="widgetsNote"></small></h2><div class="bars" id="widgets"></div></section>
+          <section class="panel"><h2>Downloads per release</h2><div class="bars" id="downloads"></div></section>
+          <section class="panel"><h2>Top pages</h2><div class="bars" id="pages"></div></section>
+          <section class="panel"><h2>Referrers</h2><div class="bars" id="referrers"></div></section>
+        </div>
+      </div>
+      <div class="tip" id="tip" role="tooltip" hidden></div>
+    </div>
+  </main>
+</Base>
+
+<script define:vars={{ RELAY }}>
+  const $ = (id) => document.getElementById(id);
+  const KEY = "umbraStatsToken";
+  const nf = new Intl.NumberFormat("en");
+  let summary = null, releases = null, days = 30;
+
+  const store = { get: () => { try { return localStorage.getItem(KEY) || ""; } catch { return ""; } },
+    set: (v) => { try { v ? localStorage.setItem(KEY, v) : localStorage.removeItem(KEY); } catch { /* private window */ } } };
+
+  async function load(token) {
+    $("status").textContent = "Loading…";
+    try {
+      const [s, r] = await Promise.all([
+        fetch(RELAY + "/stats/summary", { headers: { authorization: "Bearer " + token }, credentials: "omit" }).then((x) => x.json()),
+        fetch("https://api.github.com/repos/AmineChr54/umbra/releases?per_page=40").then((x) => (x.ok ? x.json() : [])).catch(() => []),
+      ]);
+      if (s.error) { $("status").textContent = s.error === "unauthorized" ? "Wrong token." : s.error; $("dash").hidden = true; return; }
+      store.set(token);
+      $("forget").hidden = false;
+      summary = s; releases = Array.isArray(r) ? r : [];
+      $("status").textContent = `Counting since ${s.since}`;
+      $("dash").hidden = false;
+      render();
+    } catch {
+      $("status").textContent = "Could not reach the relay.";
+    }
+  }
+
+  /** The last `n` UTC days ending at the relay's today, with zeros for days nobody counted. */
+  function lastDays(n) {
+    const byDay = new Map(summary.days.map((d) => [d.day, d]));
+    const out = [];
+    for (let i = n - 1; i >= 0; i--) {
+      const day = new Date(summary.now - i * 86400000).toISOString().slice(0, 10);
+      const d = byDay.get(day) || {};
+      out.push({ day, i: d.i || {}, v: d.v || {}, r: d.r || {} });
+    }
+    return out;
+  }
+  const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
+  const merge = (rows, k) => rows.reduce((acc, d) => { for (const [x, n] of Object.entries(d[k])) acc[x] = (acc[x] || 0) + n; return acc; }, {});
+
+  function render() {
+    const rows = lastDays(days);
+    const installs = rows.map((d) => sum(d.i)), views = rows.map((d) => sum(d.v));
+    const downloads = releases.map((r) => ({ name: r.tag_name, n: (r.assets || []).reduce((a, x) => a + (x.download_count || 0), 0) }));
+    tiles([
+      ["Widget installs", installs.reduce((a, b) => a + b, 0), `last ${days} days`],
+      ["Page views", views.reduce((a, b) => a + b, 0), `last ${days} days`],
+      ["Release downloads", downloads.reduce((a, b) => a + b.n, 0), "all releases"],
+      ["Installs since start", sum(summary.totals), `since ${summary.since}`],
+    ]);
+    chart($("installsChart"), rows.map((d, i) => ({ day: d.day, n: installs[i] })), "installs");
+    chart($("viewsChart"), rows.map((d, i) => ({ day: d.day, n: views[i] })), "views");
+    const ranged = merge(rows, "i");
+    $("widgetsNote").textContent = `last ${days} days · all time in brackets`;
+    bars($("widgets"), Object.entries(summary.totals).map(([id, total]) => ({ name: id, n: ranged[id] || 0, extra: `(${nf.format(total)})` }))
+      .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).slice(0, 15));
+    bars($("downloads"), downloads.slice(0, 12));
+    bars($("pages"), topN(merge(rows, "v"), 12));
+    bars($("referrers"), topN(merge(rows, "r"), 12));
+  }
+  const topN = (o, n) => Object.entries(o).map(([name, v]) => ({ name, n: v })).sort((a, b) => b.n - a.n).slice(0, n);
+
+  function tiles(list) {
+    $("tiles").replaceChildren(...list.map(([label, n, sub]) => {
+      const t = document.createElement("div");
+      t.className = "tile";
+      t.innerHTML = `<div class="tl"></div><div class="tn num"></div><div class="ts"></div>`;
+      t.querySelector(".tl").textContent = label;
+      t.querySelector(".tn").textContent = nf.format(n);
+      t.querySelector(".ts").textContent = sub;
+      return t;
+    }));
+  }
+
+  /** One series of daily counts as thin bars on a zero baseline, a recessive grid, and a tooltip per day. */
+  function chart(el, data, unit) {
+    const W = 900, H = 220, L = 40, B = 24, T = 10, R = 6;
+    const max = Math.max(1, ...data.map((d) => d.n));
+    const step = niceStep(max), top = Math.ceil(max / step) * step;
+    const bw = (W - L - R) / data.length, gap = Math.min(2, bw * 0.25);
+    const y = (n) => T + (H - T - B) * (1 - n / top);
+    let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${unit} per day, last ${data.length} days">`;
+    for (let v = 0; v <= top; v += step) svg += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text class="ax" x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${nf.format(v)}</text>`;
+    data.forEach((d, i) => {
+      const x = L + i * bw + gap / 2, w = Math.max(1, bw - gap), h = y(0) - y(d.n);
+      const r = Math.min(4, w / 2, h);
+      // rounded data end, square at the baseline
+      if (d.n > 0) svg += `<path class="bar" d="M${x},${y(0)} V${y(d.n) + r} Q${x},${y(d.n)} ${x + r},${y(d.n)} H${x + w - r} Q${x + w},${y(d.n)} ${x + w},${y(d.n) + r} V${y(0)} Z"/>`;
+      svg += `<rect class="hit" x="${L + i * bw}" y="${T}" width="${bw}" height="${H - T - B}" data-tip="${d.day}: ${nf.format(d.n)} ${unit}"/>`;
+    });
+    const ticks = [0, Math.floor(data.length / 2), data.length - 1];
+    for (const i of ticks) svg += `<text class="ax" x="${L + i * bw + bw / 2}" y="${H - 6}" text-anchor="middle">${data[i].day.slice(5)}</text>`;
+    svg += `<line class="base" x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}"/></svg>`;
+    el.innerHTML = svg;
+  }
+  function niceStep(max) {
+    const raw = max / 4, p = 10 ** Math.floor(Math.log10(raw)), f = raw / p;
+    return Math.max(1, (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p);
+  }
+
+  /** A ranked list: name, a thin bar to scale, the value as text. */
+  function bars(el, list) {
+    if (!list.length) { el.innerHTML = `<p class="none">Nothing counted yet.</p>`; return; }
+    const max = Math.max(1, ...list.map((x) => x.n));
+    el.replaceChildren(...list.map((x) => {
+      const row = document.createElement("div");
+      row.className = "row";
+      row.dataset.tip = `${x.name}: ${nf.format(x.n)}${x.extra ? " " + x.extra : ""}`;
+      row.innerHTML = `<span class="nm"></span><span class="track"><i style="width:${(x.n / max) * 100}%"></i></span><span class="v num"></span>`;
+      row.querySelector(".nm").textContent = x.name;
+      row.querySelector(".v").textContent = nf.format(x.n) + (x.extra ? " " + x.extra : "");
+      return row;
+    }));
+  }
+
+  // tooltip for chart days and list rows
+  document.addEventListener("pointermove", (e) => {
+    const t = e.target.closest && e.target.closest("[data-tip]");
+    const tip = $("tip");
+    if (!t) { tip.hidden = true; return; }
+    tip.textContent = t.dataset.tip;
+    tip.hidden = false;
+    const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8);
+    tip.style.left = x + "px";
+    tip.style.top = e.clientY + 16 + "px";
+  });
+
+  for (const b of document.querySelectorAll(".range button")) b.addEventListener("click", () => {
+    days = Number(b.dataset.days);
+    for (const o of document.querySelectorAll(".range button")) o.setAttribute("aria-pressed", String(o === b));
+    if (summary) render();
+  });
+  $("tokenForm").addEventListener("submit", (e) => { e.preventDefault(); const v = $("token").value.trim(); if (v) load(v); });
+  $("forget").addEventListener("click", () => { store.set(""); $("token").value = ""; $("dash").hidden = true; $("forget").hidden = true; $("status").textContent = "Token forgotten on this browser."; });
+  const saved = store.get();
+  if (saved) { $("token").value = saved; load(saved); }
+</script>
+
+<style is:global>
+  /* global: the dashboard builds its tiles, charts and lists at run time, which scoped styles never reach */
+  .statspage { padding: 140px 0 60px; }
+  .statspage .token { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 32px 0; }
+  .statspage .token input { flex: 1 1 260px; padding: 12px 14px; border: 1px solid var(--line2); border-radius: 12px; background: var(--s1); color: var(--text); font: inherit; outline: none; }
+  .statspage .token input:focus { border-color: var(--acc); }
+  .statspage .status { color: var(--text3); font-size: .9rem; }
+  .statspage .range { display: flex; gap: 8px; margin-bottom: 18px; }
+  .statspage .range button { font: inherit; font-size: .88rem; color: var(--text2); background: var(--s1); border: 1px solid var(--line2); border-radius: 999px; padding: 7px 14px; cursor: pointer; }
+  .statspage .range button[aria-pressed="true"] { color: var(--text); background: var(--accs); border-color: rgba(139, 147, 255, .5); }
+  .statspage .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 14px; margin-bottom: 14px; }
+  .statspage .tile, .statspage .panel { background: var(--s1); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; }
+  .statspage .tl { color: var(--text2); font-size: .85rem; }
+  .statspage .tn { font: 650 2rem/1.15 var(--display); margin: 6px 0 2px; }
+  .statspage .ts { color: var(--text3); font-size: .8rem; }
+  .statspage .num { font-variant-numeric: tabular-nums; }
+  .statspage .panel { margin-bottom: 14px; }
+  .statspage .panel h2 { font: 600 .95rem var(--body); margin: 0 0 12px; }
+  .statspage .panel h2 small { color: var(--text3); font-weight: 400; margin-left: 6px; }
+  .statspage .chart svg { width: 100%; height: auto; display: block; }
+  .statspage .chart .bar { fill: var(--acc); }
+  .statspage .chart .hit { fill: transparent; }
+  .statspage .chart .hit:hover { fill: rgba(255, 255, 255, .04); }
+  .statspage .chart .grid { stroke: var(--line); stroke-width: 1; }
+  .statspage .chart .base { stroke: var(--line2); stroke-width: 1; }
+  .statspage .chart .ax { fill: var(--text3); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .statspage .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 14px; }
+  .statspage .cols .panel { margin: 0; }
+  .statspage .bars .row { display: grid; grid-template-columns: minmax(0, 9rem) 1fr auto; gap: 10px; align-items: center; padding: 5px 0; font-size: .85rem; }
+  .statspage .bars .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text2); }
+  .statspage .bars .track { height: 8px; border-radius: 4px; background: var(--s3); overflow: hidden; }
+  .statspage .bars .track i { display: block; height: 100%; border-radius: 4px; background: var(--acc); }
+  .statspage .bars .v { color: var(--text); }
+  .statspage .none { color: var(--text3); margin: 0; font-size: .88rem; }
+  .statspage .tip { position: fixed; z-index: 10; pointer-events: none; padding: 6px 10px; border-radius: 8px; background: var(--s3); border: 1px solid var(--line2); color: var(--text); font-size: .8rem; font-variant-numeric: tabular-nums; }
+  .statspage .tip[hidden] { display: none; }
+</style>

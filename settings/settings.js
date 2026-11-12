@@ -28,6 +28,7 @@ const ICONS = {
   download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
   layers: '<path d="m12 4 8.5 4.5L12 13 3.5 8.5z"/><path d="m3.5 12.5 8.5 4.5 8.5-4.5M3.5 16.5 12 21l8.5-4.5"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
+  x: '<path d="M6 6l12 12M18 6 6 18"/>',
   copy: '<rect x="8" y="8" width="11" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h1"/>',
 };
 function icons(root = document) {
@@ -47,6 +48,17 @@ let themesError = null;
 const busy = new Map(); // id -> "install" | "remove"
 let catalogLoading = false;
 let browseFilter = "all"; // all | installed | updates
+let browseCat = "all";    // all | a CATEGORIES id | "other"
+let browseSort = (() => { try { return localStorage.getItem("browseSort") === "name" ? "name" : "popular"; } catch { return "popular"; } })();
+/** "1 install", "840 installs", "1.2k installs"; "" before anyone counted (or with counting off). */
+const installsText = (n) => !(n > 0) ? "" : n === 1 ? "1 install" : n < 1000 ? `${n} installs` : `${(n / 1000).toFixed(n < 10000 ? 1 : 0).replace(/\.0$/, "")}k installs`;
+// widget.json "category" ids in Browse order, with their labels (the list is WidgetManifest.Categories in the host).
+const CATEGORIES = [
+  ["time", "Time & dates"], ["productivity", "Productivity"], ["info", "Info & news"], ["markets", "Markets"],
+  ["system", "System"], ["media", "Media"], ["developer", "Developer"], ["social", "Social"], ["games", "Games"],
+];
+const catOf = (w) => (CATEGORIES.some(([id]) => id === w.category) ? w.category : "other");
+const catLabel = (id) => (CATEGORIES.find(([c]) => c === id) || [, "Other"])[1];
 let updatingAll = null;   // { ids, index, total } while "Update all" runs
 
 // ---------- navigation ----------
@@ -119,6 +131,7 @@ function renderGeneral() {
   $("#startup").disabled = !!state.portable;
   $("#startupSub").textContent = state.portable ? "Not available in portable mode." : "Your widgets appear on the desktop when you sign in.";
   $("#checkUpdates").checked = g.checkForUpdates !== false;
+  $("#countInstalls").checked = g.countInstalls !== false;
   $("#hideFullscreen").checked = !!g.hideOnFullscreen;
   syncInterval(g.refreshSeconds);
   labelRows();
@@ -139,6 +152,7 @@ $("#startup").addEventListener("change", (e) => {
   toast(e.target.checked ? "Umbra will start with Windows" : "Umbra won't start with Windows");
 });
 $("#checkUpdates").addEventListener("change", (e) => { state.settings.general.checkForUpdates = e.target.checked; save(true); });
+$("#countInstalls").addEventListener("change", (e) => { state.settings.general.countInstalls = e.target.checked; save(true); });
 $("#hideFullscreen").addEventListener("change", (e) => { state.settings.general.hideOnFullscreen = e.target.checked; save(true); });
 $$("#interval button").forEach((b) =>
   b.addEventListener("click", () => {
@@ -1333,6 +1347,11 @@ function loadCatalog() {
 }
 $("#reloadCatalog").addEventListener("click", loadCatalog);
 $("#search").addEventListener("input", renderCatalog);
+$("#browseSort").addEventListener("change", (e) => {
+  browseSort = e.target.value === "name" ? "name" : "popular";
+  try { localStorage.setItem("browseSort", browseSort); } catch { /* storage unavailable */ }
+  renderCatalog();
+});
 $$("#browseFilter button").forEach((b) => b.addEventListener("click", () => { browseFilter = b.dataset.filter; renderCatalog(); }));
 $("#updateAll").addEventListener("click", () => {
   const ids = (catalog || []).filter((w) => w.updateAvailable).map((w) => w.id);
@@ -1355,7 +1374,38 @@ function renderBrowseBar() {
   all.disabled = !!updatingAll;
   all.lastChild.textContent = updatingAll ? "Updating..." : n === 1 ? "Update 1 widget" : `Update all (${n})`;
   $("#updateStatus").textContent = updatingAll && updatingAll.index ? `Updating ${updatingAll.index} of ${updatingAll.total}...` : "";
+  renderCats();
 }
+
+// One pill per category the catalog has, with its count; "Other" only for widgets without a known category.
+function renderCats() {
+  const box = $("#browseCats");
+  const counts = new Map();
+  for (const w of catalog || []) counts.set(catOf(w), (counts.get(catOf(w)) || 0) + 1);
+  const ids = [...CATEGORIES.map(([id]) => id), "other"].filter((id) => counts.has(id));
+  if (browseCat !== "all" && !counts.has(browseCat)) browseCat = "all";
+  box.hidden = ids.length < 2;
+  const pill = (id, label, n) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.cat = id;
+    b.className = id === browseCat ? "on" : "";
+    b.setAttribute("aria-pressed", String(id === browseCat));
+    b.append(label);
+    const c = document.createElement("span");
+    c.className = "n";
+    c.textContent = n;
+    b.append(c);
+    return b;
+  };
+  box.replaceChildren(pill("all", "All", (catalog || []).length), ...ids.map((id) => pill(id, catLabel(id), counts.get(id))));
+}
+$("#browseCats").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-cat]");
+  if (!b) return;
+  browseCat = b.dataset.cat;
+  renderCatalog();
+});
 
 const expandedCards = new Set(); // catalog ids whose description and commands are shown in full
 
@@ -1406,15 +1456,23 @@ function renderCatalog() {
   }
   const q = $("#search").value.trim().toLowerCase();
   const inFilter = (w) => browseFilter === "updates" ? w.updateAvailable : browseFilter === "installed" ? w.installed : true;
-  const items = catalog.filter((w) => inFilter(w) && (!q || [w.name, w.description, w.author, w.id].join(" ").toLowerCase().includes(q)));
+  const inCat = (w) => browseCat === "all" || catOf(w) === browseCat;
+  const counted = catalog.some((w) => w.installs > 0);
+  $("#browseSort").hidden = !counted;
+  $("#browseSort").value = browseSort;
+  const items = catalog.filter((w) => inFilter(w) && inCat(w) && (!q || [w.name, w.description, w.author, w.id, catLabel(catOf(w))].join(" ").toLowerCase().includes(q)));
   if (!items.length) {
     const none = q ? "No widgets match your search."
+      : browseCat !== "all" && browseFilter !== "all" ? `Nothing here in ${catLabel(browseCat)}.`
       : browseFilter === "updates" ? "Everything is up to date."
       : browseFilter === "installed" ? "No community widgets installed yet."
       : "The catalog is empty. Be the first to submit one!";
     grid.innerHTML = `<div class="empty" style="grid-column:1/-1">${none}</div>`;
     return;
   }
+  if (counted && browseSort === "popular") items.sort((a, b) => (b.installs || 0) - (a.installs || 0) || a.name.localeCompare(b.name));
+  else items.sort((a, b) => a.name.localeCompare(b.name));
+  welcomeRefresh();
   // Built off-page and swapped in at once, so the grid never shows half-built cards (or loses its scroll position) mid-render.
   const cards = [], clampChecks = [];
   for (const w of items) {
@@ -1422,7 +1480,7 @@ function renderCatalog() {
     catalogThumb(card, w);
     $(".cname", card).textContent = w.name;
     $(".cver", card).textContent = `v${w.version}`;
-    $(".cauthor", card).textContent = w.author ? `by ${w.author}` : "";
+    $(".cauthor", card).textContent = [w.author ? `by ${w.author}` : "", catOf(w) !== "other" ? catLabel(catOf(w)) : "", installsText(w.installs)].filter(Boolean).join(" · ");
     $(".cdesc", card).textContent = w.description || "";
     permissionChips($(".chips", card), w);
     // A widget that can start programs on this PC is flagged with the exact commands (you approve each one on first use).
@@ -1530,6 +1588,7 @@ $("#reloadThemes").addEventListener("click", loadThemes);
 function renderThemes() {
   const grid = $("#themeGrid");
   grid.textContent = "";
+  welcomeRefresh();
   if (!themes) {
     for (let i = 0; i < 3; i++) grid.append(Object.assign(document.createElement("div"), { className: "skeleton" }));
     return;
@@ -1907,31 +1966,109 @@ document.addEventListener("wheel", (e) => {
   if (Math.abs(wheelZoom) >= 100) { zoom(wheelZoom < 0 ? 1 : -1); wheelZoom = 0; }
 }, { passive: false });
 
-// ---------- welcome dialog (#241): described only, nothing here touches the user's widgets ----------
+// ---------- "How to add widgets" (the (i) buttons on Browse and My widgets) ----------
+// A small non-modal popover under the button that opened it; Esc, a click outside or Close dismisses it.
+let helpFrom = null;
+function helpOpen(btn) {
+  const pop = $("#helpPop");
+  if (!pop.hidden && helpFrom === btn) { helpClose(); return; }
+  if (helpFrom) helpFrom.setAttribute("aria-expanded", "false");
+  helpFrom = btn;
+  btn.setAttribute("aria-expanded", "true");
+  $("#helpPopBrowse").hidden = $("section.page.active")?.dataset.page === "browse";
+  pop.hidden = false;
+  helpPlace();
+  $("#helpPopClose").focus();
+}
+function helpPlace() {
+  const pop = $("#helpPop");
+  if (pop.hidden || !helpFrom) return;
+  const r = helpFrom.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+  const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+  let left = Math.min(Math.max(12, r.left), vw - w - 12);
+  let top = r.bottom + 8;
+  if (top + h > vh - 12) top = Math.max(12, r.top - h - 8); // no room below: open above
+  pop.style.left = `${Math.max(12, left)}px`;
+  pop.style.top = `${top}px`;
+}
+function helpClose(refocus = true) {
+  const pop = $("#helpPop");
+  if (pop.hidden) return;
+  pop.hidden = true;
+  if (helpFrom) { helpFrom.setAttribute("aria-expanded", "false"); if (refocus) helpFrom.focus(); }
+  helpFrom = null;
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-help]");
+  if (b) { helpOpen(b); return; }
+  if (!$("#helpPop").hidden && !e.target.closest("#helpPop")) helpClose(false);
+});
+$("#helpPopClose").addEventListener("click", () => helpClose());
+$("#helpPopBrowse").addEventListener("click", () => { helpClose(false); show("browse"); });
+$("#helpPop").addEventListener("click", (e) => { if (e.target.closest("[data-url]")) helpClose(false); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("#helpPop").hidden) { e.preventDefault(); e.stopPropagation(); helpClose(); }
+}, true);
+window.addEventListener("resize", helpPlace);
+$("#content").addEventListener("scroll", helpPlace, { passive: true });
+
+// ---------- welcome tour (#241): a spotlight walk through the real Settings window ----------
+// Each step opens a page and rings one real control with a short caption next to it. It only looks: the page behind
+// is inert, nothing is clicked and the user's widgets are never touched. A step whose control isn't there (an empty
+// catalog, no widgets yet) rings its fallback, or none: then the caption sits in the middle like a slide.
+const WELCOME_ART = {
+  hello: `<svg viewBox="0 0 240 132"><rect class="a-box" x="14" y="16" width="64" height="100" rx="8"/><rect class="a-hot a-pulse" x="22" y="26" width="48" height="14" rx="5"/><rect class="a-dim" x="22" y="48" width="48" height="10" rx="5"/><rect class="a-dim" x="22" y="64" width="48" height="10" rx="5"/><rect class="a-box" x="92" y="16" width="134" height="100" rx="8"/><rect class="a-hot" x="102" y="26" width="52" height="38" rx="7"/><rect class="a-box" x="162" y="26" width="54" height="38" rx="7"/><rect class="a-dim" x="102" y="74" width="114" height="8" rx="4"/><rect class="a-dim" x="102" y="90" width="80" height="8" rx="4"/><circle class="a-acc a-pulse" cx="204" cy="95" r="7"/></svg>`,
+  tray: `<svg viewBox="0 0 240 132"><rect class="a-box" x="30" y="10" width="130" height="80" rx="8"/><rect class="a-hot" x="38" y="18" width="34" height="14" rx="5"/><rect class="a-dim" x="78" y="18" width="34" height="14" rx="5"/><rect class="a-dim" x="118" y="18" width="34" height="14" rx="5"/><rect class="a-dim" x="38" y="42" width="114" height="8" rx="4"/><rect class="a-dim" x="38" y="58" width="80" height="8" rx="4"/><rect class="a-box" x="0" y="110" width="240" height="22"/><circle class="a-acc a-pulse" cx="214" cy="121" r="6"/><circle class="a-dim" cx="196" cy="121" r="5"/></svg>`,
+};
 const WELCOME = [
-  { title: "Welcome to Umbra",
-    text: "Small widgets that live on your wallpaper, behind your windows. Pick the ones you like: clocks, weather, notes, games and more.",
-    art: `<svg viewBox="0 0 240 132"><rect class="a-box" x="14" y="16" width="64" height="100" rx="8"/><rect class="a-hot a-pulse" x="22" y="26" width="48" height="14" rx="5"/><rect class="a-dim" x="22" y="48" width="48" height="10" rx="5"/><rect class="a-dim" x="22" y="64" width="48" height="10" rx="5"/><rect class="a-box" x="92" y="16" width="134" height="100" rx="8"/><rect class="a-hot" x="102" y="26" width="52" height="38" rx="7"/><rect class="a-box" x="162" y="26" width="54" height="38" rx="7"/><rect class="a-dim" x="102" y="74" width="114" height="8" rx="4"/><rect class="a-dim" x="102" y="90" width="80" height="8" rx="4"/><circle class="a-acc a-pulse" cx="204" cy="95" r="7"/></svg>` },
-  { title: "Put them where you want",
-    text: "Widgets stay locked so you can't bump them. Turn on Arrange to drag and resize them, then press Done.",
-    art: `<svg viewBox="0 0 240 132"><rect class="a-box" x="20" y="14" width="84" height="56" rx="8"/><g class="a-slide"><rect class="a-hot" x="72" y="30" width="84" height="56" rx="8"/></g><rect class="a-box" x="64" y="102" width="112" height="22" rx="11"/><rect class="a-acc" x="126" y="106" width="46" height="14" rx="7"/></svg>` },
-  { title: "Umbra stays in the tray",
-    text: "Close this window and your widgets keep running. Click the tray icon to come back, or right-click it for Arrange and Layouts.",
-    art: `<svg viewBox="0 0 240 132"><rect class="a-box" x="30" y="10" width="130" height="80" rx="8"/><rect class="a-hot" x="38" y="18" width="34" height="14" rx="5"/><rect class="a-dim" x="78" y="18" width="34" height="14" rx="5"/><rect class="a-dim" x="118" y="18" width="34" height="14" rx="5"/><rect class="a-dim" x="38" y="42" width="114" height="8" rx="4"/><rect class="a-dim" x="38" y="58" width="80" height="8" rx="4"/><rect class="a-box" x="0" y="110" width="240" height="22"/><circle class="a-acc a-pulse" cx="214" cy="121" r="6"/><circle class="a-dim" cx="196" cy="121" r="5"/></svg>` },
+  { page: "home", art: "hello", title: "Welcome to Umbra",
+    text: "Small widgets that live on your wallpaper, behind your windows. Here's a one-minute look around. Nothing on your desktop changes." },
+  { page: "home", target: [".home-tasks"], title: "Start here",
+    text: "Home has the three things most people do first: add widgets, arrange them on the desktop and change the look." },
+  { page: "browse", target: ["#browseCats", "#search"], title: "Find widgets",
+    text: "Browse is the community catalog: clocks, weather, notes, markets, games and more. Search, or pick a category." },
+  { page: "browse", target: ["#catalog .ccard"], title: "One click to install",
+    text: "Each card says what the widget can reach before you install it. Install puts it on your desktop right away." },
+  { page: "browse", target: ["section[data-page=browse] [data-help]"], title: "Stuck? Look for this",
+    text: "How to add widgets explains installing, moving and options, and how to add your own widget or one a friend sent." },
+  { page: "widgets", target: ["#installed .wcard", "#installMore"], title: "Make it yours",
+    text: "My widgets lists everything you installed. Turn each one on or off and change its options; changes apply instantly." },
+  { page: "widgets", target: ["#arrangeBox"], title: "Move them around",
+    text: "Widgets are locked so you can't bump them. Turn on Arrange, drag and resize them on the desktop, then press Done." },
+  { page: "widgets", target: ["#groupStrip"], title: "Stack widgets in tabs",
+    text: "A group puts several widgets in one spot and shows one at a time. Hover the widget to switch tabs." },
+  { page: "themes", target: ["#themeGrid .tcard", "#appearanceCustomize"], title: "Pick a look",
+    text: "A theme restyles every widget at once. Fine-tune colors, text and size underneath." },
+  { page: "layouts", target: ["#layoutName", "section[data-page=layouts] .group"], title: "Save your setups",
+    text: "Save where everything is and switch between layouts. Umbra can switch on its own when you dock or undock." },
+  { page: "hotkeys", target: ["#hotkeyList"], title: "Shortcuts everywhere",
+    text: "Show or hide all widgets, or start Arrange, from any app with a hotkey." },
+  { page: "home", art: "tray", title: "Umbra stays in the tray",
+    text: "Close this window and your widgets keep running. Click the tray icon to come back. You can replay this tour from About." },
 ];
-let welcomeAt = 0, welcomeFrom = null;
-/** Shows welcome slide n (1-based); called by the host on first run and for captures. */
+let welcomeAt = 0, welcomeFrom = null, welcomePage = null, welcomeTarget = null, welcomeRaf = 0;
+const pageNow = () => $("section.page.active")?.dataset.page || "home";
+const shown = (el) => !!el && !el.hidden && el.getClientRects().length > 0 && el.offsetWidth > 0;
+
+/** Shows tour step n (1-based); called by the host on first run, from the tray and About, and for captures. */
 function welcome(n) {
   const w = $("#welcome");
   const open = w.hidden;
   if (open) {
     welcomeFrom = document.activeElement;
+    welcomePage = pageNow();
+    helpClose(false);
     const g = state && state.settings && state.settings.general;
     document.documentElement.dataset.motion = g && (g.animations === false || g.animationSpeed === "off") ? "off" : "on";
+    $("#welcomeDots").replaceChildren(...WELCOME.map(() => document.createElement("i")));
   }
   welcomeAt = Math.max(0, Math.min(WELCOME.length - 1, (n || 1) - 1));
   const s = WELCOME[welcomeAt];
-  $("#welcomeArt").innerHTML = s.art;
+  const moved = pageNow() !== s.page;
+  if (moved) show(s.page);
+  welcomeTarget = (s.target || []).map((sel) => $(sel)).find(shown) || null;
+  $("#welcomeArt").innerHTML = welcomeTarget ? "" : WELCOME_ART[s.art] || WELCOME_ART.hello;
+  $("#welcomeArt").hidden = !!welcomeTarget;
   $("#welcomeStep").textContent = `${welcomeAt + 1} of ${WELCOME.length}`;
   $("#welcomeTitle").textContent = s.title;
   $("#welcomeText").textContent = s.text;
@@ -1940,22 +2077,70 @@ function welcome(n) {
   $("#welcomeNext").textContent = welcomeAt === WELCOME.length - 1 ? "Get started" : "Next";
   $("#welcomeSkip").hidden = welcomeAt === WELCOME.length - 1;
   w.hidden = false;
+  w.classList.toggle("spot", !!welcomeTarget);
+  if (welcomeTarget) welcomeTarget.scrollIntoView({ block: "center", behavior: "instant" });
+  welcomePlace();
+  if (moved) setTimeout(welcomePlace, 400); // measured again once the page's enter animation is over
   if (open) { document.querySelector(".app").inert = true; $("#welcomeNext").focus(); } // the page behind is out of reach for keys, clicks and screen readers
+}
+
+/** Puts the ring around the target and the caption beside it (below, above, or to one side, whichever fits). */
+function welcomePlace() {
+  cancelAnimationFrame(welcomeRaf);
+  const ring = $("#tourRing"), card = $("#welcomeCard");
+  if ($("#welcome").hidden) return;
+  if (!welcomeTarget || !welcomeTarget.isConnected) {
+    ring.hidden = true;
+    card.style.left = card.style.top = "";
+    card.classList.remove("placed");
+    return;
+  }
+  const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight, pad = 6, gap = 14, m = 12;
+  const r = welcomeTarget.getBoundingClientRect();
+  const box = { left: Math.max(m, r.left - pad), top: Math.max(m, r.top - pad), right: Math.min(vw - m, r.right + pad), bottom: Math.min(vh - m, r.bottom + pad) };
+  ring.hidden = false;
+  Object.assign(ring.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.right - box.left}px`, height: `${box.bottom - box.top}px` });
+  card.classList.add("placed");
+  const cw = card.offsetWidth, ch = card.offsetHeight;
+  const clampX = (x) => Math.min(Math.max(m, x), vw - cw - m), clampY = (y) => Math.min(Math.max(m, y), vh - ch - m);
+  let x, y;
+  if (box.bottom + gap + ch <= vh - m) { x = clampX(box.left); y = box.bottom + gap; }
+  else if (box.top - gap - ch >= m) { x = clampX(box.left); y = box.top - gap - ch; }
+  else if (box.right + gap + cw <= vw - m) { x = box.right + gap; y = clampY(box.top); }
+  else if (box.left - gap - cw >= m) { x = box.left - gap - cw; y = clampY(box.top); }
+  else { x = clampX((vw - cw) / 2); y = vh - ch - m; } // a target as big as the window: the caption sits at the bottom
+  card.style.left = `${x}px`;
+  card.style.top = `${y}px`;
 }
 function welcomeClose() {
   $("#welcome").hidden = true;
+  $("#tourRing").hidden = true;
+  welcomeTarget = null;
   document.querySelector(".app").inert = false;
-  if (welcomeFrom && welcomeFrom.focus) welcomeFrom.focus();
+  if (welcomePage && pageNow() !== welcomePage) show(welcomePage); // back where the tour started
+  welcomePage = null;
+  if (welcomeFrom && welcomeFrom.focus && welcomeFrom.isConnected) welcomeFrom.focus();
   welcomeFrom = null;
+}
+/** The catalog or the themes just re-rendered: ring the control again (a step opened before they arrived). */
+function welcomeRefresh() {
+  if (!$("#welcome").hidden && ["browse", "themes"].includes(WELCOME[welcomeAt].page)) welcomeRaf = requestAnimationFrame(() => welcome(welcomeAt + 1));
 }
 $("#welcomeNext").addEventListener("click", () => (welcomeAt === WELCOME.length - 1 ? welcomeClose() : welcome(welcomeAt + 2)));
 $("#welcomeBack").addEventListener("click", () => welcome(welcomeAt));
 $("#welcomeSkip").addEventListener("click", welcomeClose);
 $("#replayTour").addEventListener("click", () => welcome(1));
+// The ring follows its control when the window is resized or zoomed.
+window.addEventListener("resize", () => { welcomeRaf = requestAnimationFrame(welcomePlace); });
 // On the document in the capture phase: a click on the backdrop moves focus to the body, and Esc must still close only the dialog (not Settings).
 document.addEventListener("keydown", (e) => {
   if ($("#welcome").hidden) return;
   if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); welcomeClose(); return; }
+  if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && !e.altKey && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault(); e.stopPropagation();
+    if (e.key === "ArrowRight") $("#welcomeNext").click(); else if (welcomeAt > 0) welcome(welcomeAt);
+    return;
+  }
   if (e.key === "Tab") { // keep focus inside the dialog
     const f = $$("#welcome button").filter((b) => !b.hidden);
     const first = f[0], last = f[f.length - 1];

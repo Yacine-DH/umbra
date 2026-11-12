@@ -425,6 +425,7 @@ sealed class App : ApplicationContext, IUmbraHost
         _windowsAccent = new WindowsAccent(() => _ui.Post(_ => OnSystemAccentChanged(), null));
         Prefs.SystemAccent = _windowsAccent.Read();
         WebHost.WebSettings = Settings.General;
+        InstallStats.Enabled = () => Settings.General.CountInstalls; // read at each install: the switch in Data & privacy
         Manifests = WidgetManifest.DiscoverAll();
         Log.Write($"Umbra started, {Manifests.Count} widget(s) found");
 

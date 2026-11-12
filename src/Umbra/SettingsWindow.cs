@@ -781,13 +781,18 @@ sealed class SettingsWindow : Form, ISettingsView
         });
     }
 
+    /// <summary>Install totals per widget from the relay, fetched with the catalog (not at all while install counting is off).</summary>
+    IReadOnlyDictionary<string, long> _installCounts = new Dictionary<string, long>();
+
     async Task SendCatalog(bool refetch = true)
     {
         string? error = null;
         if (refetch || _catalog.Count == 0)
         {
+            var counts = _app.Settings.General.CountInstalls ? InstallStats.FetchCountsAsync() : null;
             try { _catalog = await Community.FetchCatalogAsync(); }
             catch (Exception ex) { error = ex.Message; Log.Write($"Catalog fetch failed: {ex.Message}"); }
+            _installCounts = counts is null ? new Dictionary<string, long>() : await counts;
         }
 
         var previews = await Task.WhenAll(_catalog.Select(async entry =>
@@ -813,6 +818,7 @@ sealed class SettingsWindow : Form, ISettingsView
             copy["incompatible"] = Community.CatalogIncompatibility(copy); // made for a newer Umbra: greyed out
             copy["local"] = installed is not null && Community.IsLocalInstall(wid); // installed from a file: no catalog updates
             copy["previewUrl"] = previews.FirstOrDefault(x => x.wid == wid).Item2;
+            copy["installs"] = _installCounts.TryGetValue(wid, out var n) ? n : null;
             list.Add(copy);
         }
         if (error is null) _app.NoteCatalog(_catalog);

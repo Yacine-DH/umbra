@@ -13,7 +13,7 @@ public static partial class WidgetLint
 {
     static readonly HashSet<string> KnownKeys = new(StringComparer.Ordinal)
     {
-        "$schema", "id", "name", "description", "author", "version", "manifestVersion", "minUmbraVersion", "changelog", "entry", "preview",
+        "$schema", "id", "name", "description", "author", "version", "manifestVersion", "minUmbraVersion", "changelog", "category", "entry", "preview",
         "icon", "width", "height", "themeable", "private", "defaultPosition", "permissions", "options",
     };
 
@@ -113,6 +113,8 @@ public static partial class WidgetLint
         if (!Regex.IsMatch(m.Version, @"^\d+\.\d+\.\d+$")) errors.Add("\"version\" must look like 1.2.3");
         if (string.IsNullOrWhiteSpace(m.Description)) warnings.Add("no \"description\": Browse and Settings show it");
         if (string.IsNullOrWhiteSpace(m.Author)) warnings.Add("no \"author\"");
+        if (m.Category is null) warnings.Add($"no \"category\": the catalog needs one of {string.Join(", ", WidgetManifest.Categories)}");
+        else if (!WidgetManifest.Categories.Contains(m.Category)) errors.Add($"unknown category \"{m.Category}\" ({string.Join(", ", WidgetManifest.Categories)})");
         if (m.Width is < 80 or > 1200 || m.Height is < 80 or > 1200) errors.Add("\"width\" and \"height\" must be between 80 and 1200");
         if (m.Preview is null) warnings.Add("no \"preview\": add a 2x screenshot (umbractl capture <id> preview.png) for Browse");
         else if (!files.Contains(m.Preview)) errors.Add($"preview \"{m.Preview}\" not found");

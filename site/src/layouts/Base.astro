@@ -3,9 +3,10 @@ import "../styles/site.css";
 import "lenis/dist/lenis.css";
 import Header from "../components/landing/Header.astro";
 import { url } from "../lib/url";
+import { beacon } from "../lib/beacon.mjs";
 
-interface Props { title: string; description: string }
-const { title, description } = Astro.props;
+interface Props { title: string; description: string; noindex?: boolean; count?: boolean }
+const { title, description, noindex = false, count = true } = Astro.props;
 const image = new URL(url("previews/sp500.png"), Astro.site).href;
 ---
 
@@ -23,7 +24,9 @@ const image = new URL(url("previews/sp500.png"), Astro.site).href;
     <meta name="theme-color" content="#000000" />
     <link rel="icon" href={url("favicon.png")} />
     <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site).href} />
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
     <script is:inline>document.documentElement.classList.add("js");</script>
+    {count && <script is:inline set:html={beacon} />}
   </head>
   <body>
     <div class="grain" aria-hidden="true"></div>

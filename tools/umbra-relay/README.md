@@ -1,6 +1,7 @@
 # Umbra relay
 
-A small Cloudflare Worker plus one Durable Object class. It is the only server Umbra has, and two widgets use it:
+A small Cloudflare Worker plus one Durable Object class. It is the only server Umbra has. Two widgets use it, and it
+also keeps Umbra's anonymous install counts and the website's page views ([Stats](#stats)):
 
 - **Buddy** (`widgets/buddy`): pairs two people with a one-time code and shows whether the other one is online.
 - **Hearth** (epic #207): a long-distance couples widget. The relay keeps the couple's names, together-since date,
@@ -248,6 +249,24 @@ popular, the Workers Paid plan (about US$5 per month) includes 10 million reques
 negligible (kilobytes per room, 300 strokes at most). An idle Hearth poll reads one small row and writes nothing, which
 keeps it far from the Durable Object row limits.
 
+## Stats
+
+`stats.js`, in one Durable Object named `stats` (the same `Room` class, so no migration). Only counters: no ids, IP
+addresses, user agents or versions are stored or derived. Every answer is status-200 JSON with
+`access-control-allow-origin: *` (the website reads it from the browser).
+
+| Call | Who | Response |
+|---|---|---|
+| `GET /stats/install?w=<widget id>` | the app, after a **fresh** catalog install while **Count my widget installs** is on (`InstallStats.cs`) | `{ ok }`, or `{ error: "bad widget id" }` |
+| `GET /stats/view?p=<path>&r=<referrer host>` | the website, once per page (skipped with Do Not Track / Global Privacy Control) | `{ ok }`, or `{ error: "bad request" }` |
+| `GET /stats/installs` | Settings > Browse and the website catalog | `{ widgets: { <id>: n }, since: "YYYY-MM-DD" }`, cached 10 minutes |
+| `GET /stats/summary` with `Authorization: Bearer <STATS_TOKEN>` | the private dashboard (`site/src/pages/stats.astro`, `/umbra/stats/`) | `{ days: [{ day, i, v, r }], totals, since, now }` for the last 120 days; `{ error: "unauthorized" }` without the right token or with no secret set |
+
+Stored: `t` = all-time installs per widget, and `d:<YYYY-MM-DD>` = that UTC day's installs per widget (`i`), views per
+path (`v`) and referrer hosts (`r`), at most 500 widgets, 300 paths and 100 hosts a day (new keys past that are ignored).
+Days older than 400 days are deleted when a new day starts. Counts are not authenticated, so they are a signal, not an
+audit: anyone can add to them. Tests: `tests/relay/stats.test.mjs`.
+
 ## Deploy
 
 One-time and per release, by a maintainer with the Cloudflare account (not done by CI or by the agents that edit this
@@ -263,6 +282,9 @@ npx wrangler deploy        # prints https://umbra-buddy-relay.<subdomain>.worker
   class (`Room`); no migration is needed because Hearth added no class. Keep `name = "umbra-buddy-relay"` in
   `wrangler.toml`: another name creates a new Worker with an empty room namespace and a new host that every installed Buddy
   would have to be updated for.
+- **Stats token** (once): `npx wrangler secret put STATS_TOKEN` and paste a long random string (for example the output of
+  `node -e "console.log(crypto.randomUUID()+crypto.randomUUID())"`). Then open `https://aminechr54.github.io/umbra/stats/`
+  and enter it; the page keeps it in that browser only. Without the secret the summary refuses everyone.
 - Smoke test after deploying (read-only): `curl "https://<host>/hearth/sync?room=00000000000000000000000000000000&me=a&key=x"`
   should print `{"paired":false,"reason":"unknown","now":...}` with status 200, and an existing Buddy pair should keep
   its stars. `npx wrangler rollback` returns to the previous version.

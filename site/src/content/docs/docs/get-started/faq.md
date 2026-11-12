@@ -18,7 +18,7 @@ Each widget runs in a sandbox. It can load only Umbra's own virtual hosts and th
 
 ## Does Umbra collect data?
 
-No telemetry and no account. Settings, widget data and logs stay in `%APPDATA%\Umbra` on your PC. The only network traffic Umbra itself makes is a daily check for a new release on GitHub, the widget catalog when you open **Browse**, and the requests widgets make to hosts they declare. **Settings → Data & privacy** shows what each widget can reach and store.
+No account and no tracking. Settings, widget data and logs stay in `%APPDATA%\Umbra` on your PC. The only network traffic Umbra itself makes is a daily check for a new release on GitHub, the widget catalog and its install counts when you open **Browse**, one anonymous +1 for a catalog widget when you install it (just the widget's id; turn it off in **Data & privacy**), and the requests widgets make to hosts they declare. **Settings → Data & privacy** shows what each widget can reach and store.
 
 ## Why are the windows opaque black, not transparent?
 

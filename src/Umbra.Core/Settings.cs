@@ -13,6 +13,8 @@ public sealed class GeneralSettings
     public string Theme { get; set; } = Umbra.Theme.DefaultId;
     /// <summary>Look for a newer Umbra release on GitHub at start and daily.</summary>
     public bool CheckForUpdates { get; set; } = true;
+    /// <summary>Send an anonymous +1 for a catalog widget when it is freshly installed (<see cref="InstallStats"/>), so Browse can show install counts.</summary>
+    public bool CountInstalls { get; set; } = true;
     /// <summary>Set once the one-time restore of former built-in widgets (sp500) has finished; see <see cref="Restore"/>.</summary>
     public bool LegacyRestoreDone { get; set; }
     /// <summary>Version that last ran, so a newer one shows "What's new" once; "" on a first install. Host-owned: saves and backups never change it.</summary>

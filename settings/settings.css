@@ -366,9 +366,6 @@ select:not(.select):focus, input:is([type=number], [type=text], [type=time]):not
 .hero h2, .hero h1 { margin: 8px 0 8px; font-family: var(--font-display); font-size: 24px; font-weight: 650; letter-spacing: -0.02em; }
 .hero p { margin: 0; color: var(--text-2); line-height: 1.55; }
 .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
-.howto { margin: 0 0 16px; color: var(--text-2); line-height: 1.55; }
-.howto summary { cursor: pointer; color: var(--text); }
-.howto ol { margin: 8px 0 0; padding-left: 20px; }
 .hero-art { position: absolute; right: 44px; top: 50%; width: 150px; height: 150px; transform: translateY(-50%); }
 @media (max-width: 900px) { .hero-art { opacity: 0.35; right: -30px; } }
 .hero-text { margin-right: 190px; }
@@ -775,3 +772,61 @@ select:not(.select):focus, input:is([type=number], [type=text], [type=time]):not
 .welcome-dots { flex: 1; display: flex; justify-content: center; gap: 6px; }
 .welcome-dots i { width: 7px; height: 7px; border-radius: 50%; background: #2b2d36; }
 .welcome-dots i.on { background: var(--accent-strong); }
+
+/* ---------- Browse categories ---------- */
+.cats { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 16px; }
+.cats[hidden] { display: none; }
+.cats button {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 14px;
+  font-size: 12.5px; font-weight: 600; color: var(--text-2);
+  background: color-mix(in srgb, var(--text) 5%, transparent); box-shadow: inset 0 0 0 1px var(--line);
+  transition: background 180ms, color 180ms, box-shadow 180ms;
+}
+.cats button:hover { color: var(--text); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.cats button.on { color: var(--text); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.cats button:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+.cats .n { font-size: 11px; font-weight: 600; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.cats button.on .n { color: var(--text-2); }
+
+/* ---------- "How to add widgets" popover ---------- */
+.help-link { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; vertical-align: baseline; }
+.help-link .ico { width: 13px; height: 13px; }
+.helppop {
+  position: fixed; z-index: 40; width: min(420px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto;
+  padding: 16px 18px; border-radius: 14px; background: var(--surface-1);
+  box-shadow: inset 0 0 0 1px var(--line-strong), 0 20px 60px rgba(0, 0, 0, 0.6);
+  color: var(--text-2); font-size: 12.5px; line-height: 1.5;
+}
+.helppop[hidden] { display: none; }
+.helppop-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.helppop h2 { margin: 0; font-size: 15px; color: var(--text); }
+.helppop h3 { margin: 12px 0 4px; font-size: 11.5px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
+.helppop ol { margin: 0; padding-left: 18px; }
+.helppop li + li { margin-top: 4px; }
+.helppop b { color: var(--text); font-weight: 600; }
+.helppop code { font-size: 11.5px; }
+.helppop-foot { display: flex; gap: 8px; margin-top: 14px; }
+.helppop-head .btn.icon { width: 30px; }
+
+/* ---------- spotlight tour: the ring cuts a hole in the dimmed page around the control a step is about ---------- */
+.welcome.spot { background: transparent; display: block; }
+.tour-ring {
+  position: fixed; z-index: 0; border-radius: 12px; pointer-events: none;
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px var(--accent-soft), 0 0 0 100vmax rgba(0, 0, 0, 0.72);
+  transition: left 320ms var(--ease-out), top 320ms var(--ease-out), width 320ms var(--ease-out), height 320ms var(--ease-out);
+}
+.tour-ring[hidden] { display: none; }
+.welcome-card { position: relative; z-index: 1; }
+.welcome-card.placed { position: fixed; width: min(360px, calc(100vw - 24px)); padding: 18px 20px; transition: left 320ms var(--ease-out), top 320ms var(--ease-out); }
+.welcome-card.placed h2 { font-size: 17px; }
+.welcome-card.placed p { min-height: 0; margin-bottom: 16px; }
+.welcome-art[hidden] { display: none; }
+.welcome-card.placed .welcome-dots { display: none; } /* "7 of 12" says it; 12 dots don't fit the small caption */
+.welcome-card.placed #welcomeBack { margin-left: auto; }
+.welcome-foot .btn { white-space: nowrap; flex: none; }
+.welcome-dots i { width: 6px; height: 6px; }
+[data-motion="off"] .tour-ring, [data-motion="off"] .welcome-card.placed { transition: none; }
+@media (prefers-reduced-motion: reduce) { .tour-ring, .welcome-card.placed { transition: none; } }
+
+.small-select { width: auto; flex: none; height: 30px; font-size: 12.5px; border-radius: 8px; }
+.small-select[hidden] { display: none; }

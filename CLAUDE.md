@@ -39,6 +39,7 @@ community widgets in `widgets\`). `UMBRA_DATA_DIR` overrides the data folder (te
 | `src/Umbra.Core/Community.cs` | Catalog fetch, install/remove, `WriteLocalWidget`, path and type validation |
 | `src/Umbra.Core/Themes.cs` | `Theme`: theme.json model, token allow-list and value validation, generated `:root` CSS (applied by `shared/umbra.js`); installed in `%APPDATA%\Umbra\themes\<id>`, catalog in `themes/` |
 | `src/Umbra.Core/Protocol.cs` (`PortableMode`), `Log.cs` (`AppPaths`) | Portable mode: `portable.txt` next to `Umbra.exe` puts data (and the WebView2 cache) in `<AppDir>\data`; no autostart, no self-install; pipe/mutex name carries a data-dir hash. `UMBRA_DATA_DIR` still wins |
+| `src/Umbra.Core/InstallStats.cs` | The one thing Umbra reports: an anonymous `GET <relay>/stats/install?w=<id>` after a fresh catalog install (`PendingInstall.Commit`; not updates or local installs), only while `General.CountInstalls` is on (`App` sets `InstallStats.Enabled`; null in tests). Also fetches `/stats/installs` for Browse's counts |
 | `src/Umbra.Core/Updates.cs`, `src/Umbra/UpdateService.cs` | Update check: pure version compare / release parsing / URL validation (`Updates`, Core), and `UpdateService` (Windows) (daily GitHub check, background download + verify, silent installer run with `/UPDATE=1`; `Umbra.iss` then starts `Umbra.exe --updated`; release notes shown once after an update via `General.LastSeenVersion`) |
 | `src/Umbra.Updater/`, `src/Umbra.Core/UpdaterArgs.cs` | `Umbra.Updater.exe`: the dark update window (closing, installing with log-derived progress, starting). `UpdateService.InstallAsync` copies it to temp and runs it, which runs the silent installer; without it the installer runs invisibly as before. `UpdaterArgs` (shared source) is its command-line contract |
 | `src/Umbra/ToastService.cs`, `src/Umbra.Core/Notifier.cs` | `umbra.notify`: real toasts via `ToastNotificationManager` (installer shortcut AUMID `AmineChr54.Umbra`; portable/source runs register their own under HKCU; balloon fallback), plus the rate limit and text/action/XML helpers |
@@ -58,7 +59,7 @@ community widgets in `widgets\`). `UMBRA_DATA_DIR` overrides the data folder (te
 | `installer/Umbra.iss`, `build.ps1` | Inno Setup per-user installer; the version comes from `Directory.Build.props` |
 | `tests/Umbra.Core.Tests/` | Unit tests for Core and the CLI (`extern alias cli`); plain `net10.0`, run on Windows and Linux. `[WindowsFact]`/`[WindowsTheory]` skip Windows-only cases elsewhere |
 | `tests/Umbra.Tests/` | Windows host tests (WebView2, WinForms, toasts, power events, command runner with cmd/powershell) |
-| `tools/umbra-relay/` | The only server: a Cloudflare Worker + Durable Object behind Buddy (`/pair`, `/beat`, `/unpair`, API frozen) and Hearth (`/hearth/*`, contract in its README). Free plan, all answers status-200 JSON because `fetchJson` drops non-2xx bodies. Never deployed from here; `tests/relay/*.test.mjs` run the Worker against an in-memory fake (`node --test tests/relay/*.test.mjs`) |
+| `tools/umbra-relay/` | The only server: a Cloudflare Worker + Durable Object behind Buddy (`/pair`, `/beat`, `/unpair`, API frozen) and Hearth (`/hearth/*`, contract in its README), plus anonymous counters (`stats.js`: install counts from the app, website page views, a token-protected summary for `site/src/pages/stats.astro`). Free plan, all answers status-200 JSON because `fetchJson` drops non-2xx bodies. Never deployed from here; `tests/relay/*.test.mjs` run the Worker against an in-memory fake (`node --test tests/relay/*.test.mjs`) |
 
 ## Linux port (epic #172, in progress)
 
@@ -163,6 +164,7 @@ New automation goes through the control protocol so the CLI, MCP and tests stay 
   `scripts/catalog.mjs` and `schemas/theme.schema.json`), and catalog tokens are re-validated before Settings draws them.
 - The control pipe uses `PipeOptions.CurrentUserOnly`. Never add a network listener.
 - Built-in widgets (the generic `<Content>` mechanism, none shipped today) cannot be removed or shadowed by community or agent ids.
+- Install counts (`InstallStats.cs`, relay `stats.js`) send only a catalog widget id, never a user/machine id, version, path or option, and nothing while `CountInstalls` is off. Don't add fields or other events to it without an issue and review; the README, docs and landing page describe exactly this.
 - Self-update (`Updates.cs`) runs in the host only; the installer must be HTTPS from `github.com/AmineChr54/umbra/releases/download/` and named `UmbraSetup-<release version>.exe`. Control commands may check for updates but never install one.
 
 ## Verifying UI changes

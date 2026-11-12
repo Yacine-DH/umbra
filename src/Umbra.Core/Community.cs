@@ -666,9 +666,11 @@ static class Community
         /// <summary>Replaces the installed folder. Call <see cref="Require"/> first.</summary>
         public void Commit()
         {
+            var fresh = !Directory.Exists(Path.Combine(AppPaths.CommunityDir, Manifest.Id));
             Community.Commit(_staging, Manifest.Id);
             MarkLocalInstall(Manifest.Id, IsLocal);
             Log.Write($"Installed {(IsLocal ? "local" : "community")} widget {Manifest.Id} {Manifest.Version}");
+            InstallStats.Installed(Manifest.Id, fresh, IsLocal);
         }
 
         public void Dispose()

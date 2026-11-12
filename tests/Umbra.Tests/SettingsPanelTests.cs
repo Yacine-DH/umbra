@@ -93,16 +93,33 @@ public class SettingsPanelTests
         Assert.Contains($"settings:<{string.Join('|', SettingsWindow.Pages)}>", protocol);
     }
 
-    /// <summary>The first-run welcome dialog is an accessible modal with 3 slides.</summary>
+    /// <summary>The welcome tour is an accessible modal that rings real controls; the page behind stays inert.</summary>
     [Fact]
-    public void Welcome_dialog_is_a_modal_with_three_slides()
+    public void Welcome_tour_is_a_modal_spotlight_over_real_controls()
     {
         var html = File.ReadAllText(Path.Combine(Repo(), "settings", "index.html"));
         Assert.Contains("id=\"welcome\"", html);
         Assert.Contains("role=\"dialog\" aria-modal=\"true\"", html);
+        Assert.Contains("id=\"tourRing\"", html);
         var js = File.ReadAllText(Path.Combine(Repo(), "settings", "settings.js"));
-        var slides = Regex.Match(js, @"const WELCOME = \[.*?\n\];", RegexOptions.Singleline).Value;
-        Assert.Equal(3, Regex.Matches(slides, @"\btitle:").Count);
+        var steps = Regex.Match(js, @"const WELCOME = \[.*?\n\];", RegexOptions.Singleline).Value;
+        var count = Regex.Matches(steps, @"\btitle:").Count;
+        Assert.InRange(count, 8, 14);
+        Assert.Equal(count, Regex.Matches(steps, @"\bpage: ""(home|browse|widgets|themes|layouts|hotkeys|general|privacy|about)""").Count);
+        // Every #id a step rings exists in the page, so a renamed control can't quietly turn a step into a blank slide.
+        foreach (Match m in Regex.Matches(steps, @"#([A-Za-z][\w-]*)")) Assert.Contains($"id=\"{m.Groups[1].Value}\"", html);
+        Assert.Contains("document.querySelector(\".app\").inert = true", js);
+    }
+
+    /// <summary>"How to add widgets": one (i) button on Browse and one on My widgets, covering the catalog and your own widgets.</summary>
+    [Fact]
+    public void How_to_add_widgets_popover_is_on_browse_and_my_widgets()
+    {
+        var html = File.ReadAllText(Path.Combine(Repo(), "settings", "index.html"));
+        Assert.Equal(2, Regex.Matches(html, @"<button[^>]*\bdata-help\b").Count);
+        var pop = Regex.Match(html, "<div class=\"helppop\".*?\n  </div>", RegexOptions.Singleline).Value;
+        foreach (var s in new[] { "From the catalog", "Install", "Arrange", "Install from", ".umbrawidget" }) Assert.Contains(s, pop);
+        Assert.DoesNotContain("class=\"howto\"", html);
     }
 
     static string Read(string name) => File.ReadAllText(Path.Combine(Repo(), "settings", name));
@@ -150,7 +167,7 @@ public class SettingsPanelTests
     {
         var html = Read("index.html");
         var hero = Regex.Match(html, "<div class=\"hero-actions\">.*?</div>", RegexOptions.Singleline).Value;
-        Assert.Equal(3, Regex.Matches(hero, "<button").Count); // Submit, Install from, Refresh
+        Assert.Equal(3, Regex.Matches(hero, "<button").Count); // Submit, Install from, Refresh (How to add widgets is a link in the text)
         Assert.Contains("id=\"installMenu\"", hero);
         Assert.Contains("aria-label=\"Refresh the catalog\"", hero);
         Assert.DoesNotContain("id=\"installFile\"", html);
