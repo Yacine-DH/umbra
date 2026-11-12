@@ -21,6 +21,7 @@ sealed class WidgetWindow : IWidgetView
     readonly Gtk.Window _window;
     readonly WebKit.WebView _view;
     bool _ready, _closed;
+    DateTime _renderedAt;
     readonly TaskCompletionSource _readyTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     readonly TaskCompletionSource _renderedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     readonly HashSet<string> _unsupportedLogged = new();
@@ -150,7 +151,9 @@ sealed class WidgetWindow : IWidgetView
                     break;
 
                 case "rendered":
+                    if (!_renderedTcs.Task.IsCompleted) _renderedAt = DateTime.UtcNow;
                     _renderedTcs.TrySetResult();
+                    await CaptureIfRequested();
                     break;
 
                 case "reload":
@@ -324,7 +327,32 @@ sealed class WidgetWindow : IWidgetView
     /// <summary>True once the page said it is ready (and, with <paramref name="rendered"/>, drew its first frame); for tests and capture.</summary>
     public Task WhenReady(bool rendered = false) => rendered ? _renderedTcs.Task : _readyTcs.Task;
 
-    public Task<byte[]> CaptureAsync() => throw new NotSupportedException("capture is not available on Linux yet (#181)");
+    /// <summary>
+    /// PNG of this widget's web content only (never the screen). Waits for the page to be ready and for its first "rendered"
+    /// signal (widgets that never send one get a few seconds), then lets draw-in animations finish. A hidden window is not
+    /// drawn by GTK, so it is refused with a clear message instead of returning an empty picture.
+    /// </summary>
+    public async Task<byte[]> CaptureAsync()
+    {
+        if (_closed) throw new InvalidOperationException($"'{Instance}' is closed");
+        if (!Visible) throw new InvalidOperationException($"'{Instance}' is hidden, so there is nothing to capture; show it first");
+        await _readyTcs.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        await Task.WhenAny(_renderedTcs.Task, Task.Delay(3000));
+        var settle = _renderedTcs.Task.IsCompleted ? TimeSpan.FromMilliseconds(2500) - (DateTime.UtcNow - _renderedAt) : TimeSpan.Zero;
+        if (settle > TimeSpan.Zero) await Task.Delay(settle);
+        if (_closed) throw new InvalidOperationException($"'{Instance}' was closed during the capture");
+        return await Snapshot.PngAsync(_view);
+    }
+
+    /// <summary>Dev hook: with UMBRA_CAPTURE_DIR set, each widget saves a PNG of itself once it rendered (README and preview images).</summary>
+    async Task CaptureIfRequested()
+    {
+        var dir = Environment.GetEnvironmentVariable("UMBRA_CAPTURE_DIR");
+        if (string.IsNullOrEmpty(dir) || _closed) return;
+        var png = await CaptureAsync();
+        Directory.CreateDirectory(dir);
+        await File.WriteAllBytesAsync(Path.Combine(dir, $"{InstanceId.FileName(Instance)}.png"), png);
+    }
 
     JsonObject SettingsPayload()
     {

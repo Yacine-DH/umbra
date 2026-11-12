@@ -110,10 +110,11 @@ sealed class App : IUmbraHost
     public WidgetWindow? Window(string instance) => _windows.GetValueOrDefault(instance);
     public IEnumerable<WidgetWindow> OpenWindows => _windows.Values;
 
+    /// <summary>No Settings window yet (#184): automation gets the plain message, and so does the log.</summary>
     public ISettingsView ShowSettings(bool background = false)
     {
         NotYet("The Settings window", 184);
-        return new NoSettingsView();
+        throw new Control.CommandException(NoSettingsView.Why);
     }
 
     /// <summary>The manifest and instance id for a widget id or an instance id ("sp500#2"), or null when unknown.</summary>
@@ -212,7 +213,7 @@ sealed class App : IUmbraHost
         SyncWindows();
     }
 
-    public void Peek() => NotYet("Peek", 182);
+    public void Peek() => throw new Control.CommandException("Peek is not available on Linux yet (#182)");
 
     public void QuitSoon() => _ = Task.Delay(300).ContinueWith(_ => _ui.Post(_ => Quit(), null));
 
@@ -419,9 +420,10 @@ sealed class App : IUmbraHost
     /// <summary>Stands in for the Settings window until #184: every call fails with a clear message instead of a crash.</summary>
     sealed class NoSettingsView : ISettingsView
     {
-        const string Why = "The Settings window is not available on Linux yet (#184)";
-        public Task ShowPageAsync(string page) => Task.FromException(new NotSupportedException(Why));
-        public Task<byte[]> CaptureAsync(string page) => Task.FromException<byte[]>(new NotSupportedException(Why));
+        public const string Why = "The Settings window is not available on Linux yet (#184)";
+        // CommandException: reported to the caller as the plain message, without a stack trace in the log.
+        public Task ShowPageAsync(string page) => Task.FromException(new Control.CommandException(Why));
+        public Task<byte[]> CaptureAsync(string page) => Task.FromException<byte[]>(new Control.CommandException(Why));
         public void Close() { }
     }
 }
