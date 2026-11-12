@@ -26,6 +26,8 @@ interface IUmbraHost
 
     /// <summary>The connected monitors, in the order <c>status.monitors</c> numbers them.</summary>
     List<MonitorInfo> Monitors();
+    /// <summary>How widget windows are tied to the desktop, for <c>status</c> ("x11", "none"); null on Windows, which has one way.</summary>
+    string? PinBackend => null;
     /// <summary>Whether Umbra starts when the user signs in.</summary>
     bool StartupEnabled { get; set; }
     /// <summary>The text report for <c>umbractl diagnostics</c>.</summary>

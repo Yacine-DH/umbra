@@ -2,8 +2,26 @@ using System.Text.Json.Nodes;
 
 namespace Umbra;
 
-static class Program
+static partial class Program
 {
+    [System.Runtime.InteropServices.LibraryImport("libc", StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf8)]
+    private static partial int setenv(string name, string value, int overwrite);
+
+    /// <summary>
+    /// Widgets are pinned through X11 window manager hints (#182), which GNOME and KDE also honour for XWayland windows. So on a
+    /// Wayland session with an X server (XWayland) GTK is told to use X11, until the native Wayland backends exist (#186, #187).
+    /// An explicit GDK_BACKEND is respected. Must run before GTK opens the display, and through libc: GTK reads the C environment.
+    /// </summary>
+    static void ChooseDisplayBackend()
+    {
+        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("GDK_BACKEND"))) return;
+        var wayland = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY"));
+        var x = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY"));
+        if (!wayland || !x) return; // a plain X session needs nothing; Wayland without XWayland stays on Wayland (no pinning)
+        setenv("GDK_BACKEND", "x11", 1);
+        Log.Write("Wayland session with XWayland: using the X11 backend so widgets can be pinned to the desktop.");
+    }
+
     /// <summary>The GApplication id (also the .desktop, metainfo and Flatpak id). The Windows AUMID stays <c>AmineChr54.Umbra</c>.</summary>
     public const string AppId = Linux.DesktopEntry.AppId;
 
@@ -34,6 +52,8 @@ static class Program
 
         AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Write($"Fatal: {e.ExceptionObject}");
         TaskScheduler.UnobservedTaskException += (_, e) => { Log.Write($"Unobserved: {e.Exception.GetBaseException().Message}"); e.SetObserved(); };
+
+        ChooseDisplayBackend();
 
         // GirCore resolves the native libraries (libwebkitgtk-6.0.so.4 and what it needs) once these have run.
         Gtk.Module.Initialize();

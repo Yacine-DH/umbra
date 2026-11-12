@@ -64,6 +64,11 @@ sealed class WidgetWindow : IWidgetView
         _window.SetChild(_view);
         _window.OnCloseRequest += (_, _) => { MarkClosed(); return false; };
         ApplySize();
+        // Realize now, so the pin backend can mark the window (type, state, position) before it is first shown.
+        _window.Realize();
+        _app.Pin.Prepare(_window);
+        _window.OnMap += (_, _) => { _app.Pin.Mapped(_window); Place(); };
+        Place();
 
         _view.LoadUri(UmbraScheme.FromHttps(manifest.PageUrl));
     }
@@ -88,11 +93,25 @@ sealed class WidgetWindow : IWidgetView
         _window.SetOpacity(Prefs.EffectiveOpacity(Ws, _app.Settings.General));
     }
 
-    // GTK 4 cannot place or query a toplevel; the pinning backends own the real position (#182, #186, #187).
-    public int Left => Ws.X ?? 0;
-    public int Top => Ws.Y ?? 0;
+    // GTK 4 cannot place or query a toplevel: the pin backend moves it, and this is where it was last asked to be.
+    public int Left { get; private set; }
+    public int Top { get; private set; }
     public int Width { get; private set; }
     public int Height { get; private set; }
+
+    Rectangle Bounds => new(Left, Top, Width, Height);
+
+    /// <summary>Moves the window to where its settings say (see <see cref="WidgetPlacement.Locate"/>).</summary>
+    void Place()
+    {
+        if (_closed) return;
+        var at = WidgetPlacement.Locate(Ws, Manifest.DefaultPosition, new Size(Width, Height), _app.Monitors());
+        Left = at.X; Top = at.Y;
+        _app.Pin.Move(_window, at.X, at.Y);
+    }
+
+    /// <summary>Re-places the window from its saved monitor and offset (monitors were added, removed or rearranged).</summary>
+    public void ReapplyPlacement() => Place();
 
     public bool Visible
     {
@@ -100,7 +119,8 @@ sealed class WidgetWindow : IWidgetView
         set { if (!_closed && _window.GetVisible() != value) _window.SetVisible(value); }
     }
 
-    public void Show() => _window.Present();
+    /// <summary>Shows the window without activating it: a widget never takes focus by appearing.</summary>
+    public void Show() => _window.SetVisible(true);
 
     public void Close()
     {
@@ -122,11 +142,16 @@ sealed class WidgetWindow : IWidgetView
         ws.X = ws.Y = null;
         ws.Monitor = null; ws.RelX = ws.RelY = null;
         _app.SaveSettings();
+        Place();
     }
 
+    /// <summary>Puts the widget on another monitor, keeping its offset from the monitor's corner.</summary>
     public void MoveToMonitor(string monitor)
     {
-        Ws.Monitor = monitor;
+        var ws = Ws;
+        WidgetPlacement.MoveToMonitor(ws, monitor, Bounds, _app.Monitors());
+        Place();
+        ws.X = Left; ws.Y = Top;
         _app.SaveSettings();
     }
 
@@ -310,6 +335,7 @@ sealed class WidgetWindow : IWidgetView
     {
         if (_closed) return;
         ApplySize();
+        Place();
         if (_ready) Post(new JsonObject { ["type"] = "settings", ["settings"] = SettingsPayload() });
     }
 

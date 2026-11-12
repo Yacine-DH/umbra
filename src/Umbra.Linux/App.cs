@@ -24,6 +24,11 @@ sealed class App : IUmbraHost
 
     public IUpdater Updater { get; } = new LinuxUpdater();
 
+    /// <summary>How widget windows are tied to the desktop on this session (X11 hints, or nothing yet on native Wayland).</summary>
+    public IDesktopPin Pin { get; }
+
+    string? IUmbraHost.PinBackend => Pin.Name;
+
     public bool EditMode => !Settings.General.LockAll;
     public bool SafeMode { get; private set; }
     public bool WidgetsHidden { get; private set; }
@@ -44,7 +49,9 @@ sealed class App : IUmbraHost
         if (!WebHost.SandboxAvailable)
             Log.Write($"Sandbox extension missing ({WebHost.ExtensionDir}): no widget is opened. Error: this build is incomplete.");
         _autostart = LinuxAutostart.Create(Environment.GetEnvironmentVariable, File.Exists, AppPaths.ExePath, AppPaths.IsPortable, portal: null);
-        Log.Write($"Umbra started, {Manifests.Count} widget(s) found");
+        Pin = X11Pin.TryCreate() ?? (IDesktopPin)new NoPin();
+        Log.Write($"Umbra started, {Manifests.Count} widget(s) found, desktop pinning: {Pin.Name}");
+        if (Pin is NoPin) Log.Write("Widgets are plain windows on this session: native Wayland pinning is not available yet (#186, #187) and no X server was found.");
 
         var css = Gtk.CssProvider.New();
         css.LoadFromString("window.umbra-widget { background: transparent; }");
@@ -53,6 +60,9 @@ sealed class App : IUmbraHost
 
         Commands.ServicesChanged += _ => _ui.Post(_ => SettingsChangedElsewhere(), null);
         SyncWindows();
+        // A monitor was added, removed or rearranged: put every widget back where its saved monitor and offset say.
+        if (Gdk.Display.GetDefault() is { } d)
+            d.GetMonitors().OnItemsChanged += (_, _) => _ui.Post(_ => { foreach (var w in _windows.Values) w.ReapplyPlacement(); }, null);
     }
 
     /// <summary>Runs work on the UI thread (socket requests arrive on worker threads) and returns its result.</summary>
@@ -82,8 +92,11 @@ sealed class App : IUmbraHost
             if (monitors.GetObject(i) is not Gdk.Monitor m) continue;
             m.GetGeometry(out var g);
             var bounds = new Rectangle(g.X, g.Y, g.Width, g.Height);
-            // GDK 4 does not report a work area or a primary monitor; the first one stands in.
-            list.Add(new MonitorInfo(m.GetConnector() ?? $"monitor-{i + 1}", bounds, bounds, i == 0));
+            // GDK 4 reports neither a primary monitor nor work areas: the first monitor stands in, with the window
+            // manager's work area (panels left out) when the pin backend can read it.
+            var work = bounds;
+            if (i == 0 && Pin.PrimaryWorkArea() is { } wa && Rectangle.Intersect(wa, bounds) is { Width: > 0, Height: > 0 } usable) work = usable;
+            list.Add(new MonitorInfo(m.GetConnector() ?? $"monitor-{i + 1}", bounds, work, i == 0));
         }
         return list;
     }
@@ -213,7 +226,7 @@ sealed class App : IUmbraHost
         SyncWindows();
     }
 
-    public void Peek() => throw new Control.CommandException("Peek is not available on Linux yet (#182)");
+    public void Peek() => throw new Control.CommandException("Peek is not available on Linux yet (#183)");
 
     public void QuitSoon() => _ = Task.Delay(300).ContinueWith(_ => _ui.Post(_ => Quit(), null));
 
