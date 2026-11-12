@@ -52,7 +52,7 @@ sealed class WidgetWindow : IWidgetView
         _view.SetBackgroundColor(new Gdk.RGBA { Red = 0, Green = 0, Blue = 0, Alpha = 0 });
         // The default WebKit menu (Back, Reload, Inspect) never shows; the host-drawn menu comes with edit mode (#183).
         _view.OnContextMenu += (_, _) => true;
-        _view.OnWebProcessTerminated += (_, e) => Log.Write($"[{Instance}] web process ended: {e.Reason}"); // recovery: #185
+        _view.OnWebProcessTerminated += (_, e) => OnProcessFailed(e.Reason);
         content.RegisterScriptMessageHandler("umbra", null);
         content.OnScriptMessageReceived += (_, e) => OnMessage(e.Value.ToJson(0));
 
@@ -65,7 +65,7 @@ sealed class WidgetWindow : IWidgetView
         _window.OnCloseRequest += (_, _) => { MarkClosed(); return false; };
         ApplySize();
         // Realize now, so the pin backend can mark the window (type, state, position) before it is first shown.
-        _window.Realize();
+        ((Gtk.Widget)_window).Realize(); // the widget's realize (creates the surface), not Gtk.Native's
         _app.Pin.Prepare(_window);
         _window.OnMap += (_, _) => { _app.Pin.Mapped(_window); Place(); };
         Place();
@@ -133,6 +133,7 @@ sealed class WidgetWindow : IWidgetView
     {
         if (_closed) return;
         _closed = true;
+        CrashRecovery.SetStopped(Instance, false);
         Closed?.Invoke();
     }
 
@@ -153,6 +154,65 @@ sealed class WidgetWindow : IWidgetView
         Place();
         ws.X = Left; ws.Y = Top;
         _app.SaveSettings();
+    }
+
+    // ---------- crash recovery (policy in CrashRecovery, shared with Windows) ----------
+
+    readonly CrashRecovery _recovery = new();
+    bool _recovering, _stopped;
+
+    /// <summary>What a web process ending means: a crash or a memory kill reloads the page; one we ended ourselves is only logged.</summary>
+    internal static CrashReaction Classify(WebKit.WebProcessTerminationReason reason) => reason switch
+    {
+        WebKit.WebProcessTerminationReason.Crashed or WebKit.WebProcessTerminationReason.ExceededMemoryLimit => CrashReaction.Reload,
+        _ => CrashReaction.Ignore,
+    };
+
+    /// <summary>
+    /// The widget's web process died. Reload the page, at most 3 times per 10 minutes; after that show the host-owned
+    /// "This widget stopped working" page, which runs no widget code and has a Reload button.
+    /// </summary>
+    async void OnProcessFailed(WebKit.WebProcessTerminationReason reason)
+    {
+        try
+        {
+            Log.Write($"[{Instance}] {CrashRecovery.LogMarker}: {reason}");
+            if (Classify(reason) == CrashReaction.Ignore || _stopped || _recovering || !Alive) return;
+            _recovering = true;
+            try
+            {
+                var giveUp = !_recovery.TryAcquire(Environment.TickCount64);
+                _ready = false; // the reloaded page says "ready" again
+                if (giveUp)
+                {
+                    _stopped = true;
+                    CrashRecovery.SetStopped(Instance, true);
+                    Log.Write($"[{Instance}] widget keeps failing ({CrashRecovery.MaxRecoveries} recoveries in {CrashRecovery.Window.TotalMinutes:0} min), not reloading again");
+                }
+                else Log.Write($"[{Instance}] reloading widget ({_recovery.Used}/{CrashRecovery.MaxRecoveries})");
+
+                if (!giveUp) await Task.Delay(500); // let the dead process finish going away
+                if (!Alive) return;
+                // A new web process starts for this load; it asks for the sandbox policy again like the first one did.
+                _view.LoadUri(giveUp ? UmbraScheme.FromHttps(VirtualHosts.Url("shared/crashed.html")) : UmbraScheme.FromHttps(Manifest.PageUrl));
+            }
+            finally { _recovering = false; }
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"[{Instance}] widget recovery failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>The Reload button on the "stopped working" page. Only honoured while that page is showing, so a widget cannot reload itself in a loop.</summary>
+    void ReloadAfterStop()
+    {
+        if (!_stopped || _recovering || !Alive) return;
+        _stopped = false;
+        CrashRecovery.SetStopped(Instance, false);
+        _recovery.Reset();
+        _ready = false;
+        _view.LoadUri(UmbraScheme.FromHttps(Manifest.PageUrl));
     }
 
     // ---------- JS bridge ----------
@@ -182,7 +242,7 @@ sealed class WidgetWindow : IWidgetView
                     break;
 
                 case "reload":
-                    _view.Reload();
+                    ReloadAfterStop();
                     break;
 
                 case "openUrl":

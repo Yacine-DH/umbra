@@ -116,3 +116,28 @@ public sealed class SandboxTests
         Assert.Null(Sandbox.DeadEndProxy("https://proxy.example.com:8443", None));
     }
 }
+
+/// <summary>How the Linux host reads WebKit's "web process terminated" reasons (#185); the retry budget itself is Core's <c>CrashRecovery</c>.</summary>
+public sealed class CrashTests
+{
+    [Fact]
+    public void A_crash_or_a_memory_kill_reloads_and_our_own_termination_does_not()
+    {
+        Assert.Equal(CrashReaction.Reload, WidgetWindow.Classify(WebKit.WebProcessTerminationReason.Crashed));
+        Assert.Equal(CrashReaction.Reload, WidgetWindow.Classify(WebKit.WebProcessTerminationReason.ExceededMemoryLimit));
+        Assert.Equal(CrashReaction.Ignore, WidgetWindow.Classify(WebKit.WebProcessTerminationReason.TerminatedByApi));
+    }
+
+    [Fact]
+    public void The_fourth_crash_inside_ten_minutes_gives_up()
+    {
+        var recovery = new CrashRecovery();
+        Assert.True(recovery.TryAcquire(0));
+        Assert.True(recovery.TryAcquire(1_000));
+        Assert.True(recovery.TryAcquire(2_000));
+        Assert.False(recovery.TryAcquire(3_000));
+        Assert.True(recovery.TryAcquire(601_000)); // the first one aged out
+        recovery.Reset();
+        Assert.Equal(0, recovery.Used);
+    }
+}
