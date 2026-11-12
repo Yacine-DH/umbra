@@ -237,6 +237,24 @@ sealed class SettingsWindow : Form, ISettingsView
                 SendState();
                 break;
 
+            case "pickImageFolder":
+            case "resetImageFolder":
+            case "openImageFolder":
+            {
+                // A widget's picture folder (permissions.saveImages): Pictures\Umbra\<name> unless the user picks another here.
+                if (_app.Manifests.FirstOrDefault(w => w.Id == (msg["widget"]?.GetValue<string>() ?? "")) is not { Permissions.SaveImages: true } iw) break;
+                var kind = msg["type"]!.GetValue<string>();
+                if (kind == "pickImageFolder") WidgetWindow.PickImageFolder(iw, this);
+                else if (kind == "resetImageFolder") ImageFolders.Shared.Clear(iw.Id);
+                else if (ImageFolders.Shared.Resolve(iw.Id, iw.Name) is { } dir)
+                {
+                    try { Directory.CreateDirectory(dir); System.Diagnostics.Process.Start("explorer.exe", $"\"{dir}\""); }
+                    catch (Exception ex) { Log.Write($"open picture folder failed: {ex.Message}"); }
+                }
+                SendState();
+                break;
+            }
+
             case "approveCommand":
             case "revokeCommand":
             {
@@ -741,6 +759,8 @@ sealed class SettingsWindow : Form, ISettingsView
                 ["notifications"] = m.Permissions.Notifications,
                 ["camera"] = m.Permissions.Camera,
                 ["cameraApproved"] = m.Permissions.Camera && _app.CameraConsent.Approvals.CameraApproved(m.Id),
+                ["imageFolder"] = m.Permissions.SaveImages ? ImageFolders.Shared.Resolve(m.Id, m.Name) : null,
+                ["imageFolderPicked"] = m.Permissions.SaveImages && ImageFolders.Shared.Get(m.Id) is not null,
                 ["media"] = new JsonArray(m.Permissions.Media.Select(h => (JsonNode?)h).ToArray()),
                 ["system"] = new JsonArray(m.Permissions.System.Select(h => (JsonNode?)h).ToArray()),
                 ["commands"] = new JsonArray(m.Permissions.Commands.Select(c => (JsonNode?)new JsonObject

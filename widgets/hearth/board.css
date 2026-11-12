@@ -114,7 +114,7 @@
 .bd-cur.eraser { border-style: dashed; }
 .bd-count:not(:empty) { margin-left: 0.35em; font-weight: 800; }
 
-/* a strip too short to draw on (the manifest's 300 x 120): no paper, just the hint and the buttons */
+/* a strip too short to draw on (about 300 x 120): no paper, just the hint and the buttons */
 @container (max-height: 60px) {
   .bd-sq { visibility: hidden; }
 }

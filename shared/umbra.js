@@ -286,15 +286,16 @@
     onChange: (fn) => handlers.timelapse.push(fn),
   };
   /**
-   * Keep pictures in a folder the user picked (needs permissions.saveImages). The host writes the file under its own name;
+   * Keep pictures in the widget's picture folder (needs permissions.saveImages): Pictures\Umbra\<widget name>, or a folder
+   * the user picked in Settings or through chooseFolder(). The host writes the file under its own name;
    * the page never gives a path and can't read files back. chooseFolder() works only right after a left click on the widget.
    */
   const images = {
-    /** The chosen folder's name ("" when none was chosen yet). */
+    /** The picture folder's name ("Hearth"); "" only when the system has no Pictures folder and none was chosen. */
     folder: async () => (await request({ type: "images", op: "folder" }, 10000)).folder,
     /** Host folder dialog. Resolves { folder, changed }. */
     chooseFolder: () => request({ type: "images", op: "chooseFolder" }, 600000),
-    /** Save a PNG data URL (up to 1 MB). Resolves { file, folder }; rejects when no folder is chosen or the picture is refused. */
+    /** Save a PNG data URL (up to 1 MB). Resolves { file, folder }; rejects when the picture is refused. */
     save: (png) => request({ type: "images", op: "save", png }, 20000),
   };
   /** Fetch plain text (up to 2 MB, e.g. Markdown or CSV) through the host, same rules as fetchJson. */

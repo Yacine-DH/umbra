@@ -1113,9 +1113,9 @@ sealed class WidgetWindow : Form, IWidgetView
     }
 
     /// <summary>
-    /// umbra.images (needs permissions.saveImages): folder (the chosen folder's name, or ""), chooseFolder (host folder dialog,
-    /// only after a physical left click) and save (a small PNG, written by the host into the chosen folder under a name the
-    /// host picks). The page never gives a path or a name and never reads a file back.
+    /// umbra.images (needs permissions.saveImages): folder (the picture folder's name: the picked one, else the default
+    /// Pictures\Umbra\&lt;name&gt;), chooseFolder (host folder dialog, only after a physical left click) and save (a small PNG,
+    /// written by the host into that folder under a name the host picks). The page never gives a path or a name and never reads a file back.
     /// </summary>
     async Task HandleImages(JsonNode msg)
     {
@@ -1128,7 +1128,7 @@ sealed class WidgetWindow : Form, IWidgetView
             switch (op)
             {
                 case "folder":
-                    reply["data"] = new JsonObject { ["folder"] = ImageArchive.Label(ImageFolders.Shared.Get(Manifest.Id)) };
+                    reply["data"] = new JsonObject { ["folder"] = ImageArchive.Label(ImageFolders.Shared.Resolve(Manifest.Id, Manifest.Name)) };
                     break;
                 case "chooseFolder":
                     if (!RecentLeftClick()) throw new ImageArchiveException("Click the widget first: the folder dialog opens only from a physical click");
@@ -1137,7 +1137,7 @@ sealed class WidgetWindow : Form, IWidgetView
                 case "save":
                     var png = msg["png"] is JsonValue p && p.GetValueKind() == JsonValueKind.String ? p.GetValue<string>() : null;
                     var file = await Task.Run(() => ImageFolders.Shared.Save(Manifest.Id, Manifest.Name, png));
-                    reply["data"] = new JsonObject { ["file"] = file, ["folder"] = ImageArchive.Label(ImageFolders.Shared.Get(Manifest.Id)) };
+                    reply["data"] = new JsonObject { ["file"] = file, ["folder"] = ImageArchive.Label(ImageFolders.Shared.Resolve(Manifest.Id, Manifest.Name)) };
                     break;
                 default:
                     throw new ImageArchiveException("Unknown images operation");
@@ -1156,20 +1156,28 @@ sealed class WidgetWindow : Form, IWidgetView
     async Task<JsonObject> ChooseImageFolder()
     {
         await Task.Yield(); // let the message handler return before the modal dialog
-        var current = ImageFolders.Shared.Get(Manifest.Id);
+        if (PickImageFolder(Manifest, null) is { } picked)
+            return new JsonObject { ["folder"] = ImageArchive.Label(picked), ["changed"] = true };
+        return new JsonObject { ["folder"] = ImageArchive.Label(ImageFolders.Shared.Resolve(Manifest.Id, Manifest.Name)), ["changed"] = false };
+    }
+
+    /// <summary>
+    /// The host's folder dialog for a widget's pictures (the widget's button after a click, or Settings > My widgets). Opens on
+    /// the current folder, saves the user's pick and returns it, or null when cancelled.
+    /// </summary>
+    internal static string? PickImageFolder(WidgetManifest m, IWin32Window? owner)
+    {
+        var current = ImageFolders.Shared.Resolve(m.Id, m.Name);
         using var dlg = new FolderBrowserDialog
         {
-            Description = $"Where should \"{ApprovalDialog.Clean(Manifest.Name, 40)}\" save pictures?",
+            Description = $"Where should \"{ApprovalDialog.Clean(m.Name, 40)}\" save pictures?",
             UseDescriptionForTitle = true,
-            InitialDirectory = current ?? System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyPictures),
+            InitialDirectory = current is not null && Directory.Exists(current) ? current : System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyPictures),
             ShowNewFolderButton = true,
         };
-        if (dlg.ShowDialog() == DialogResult.OK && Path.IsPathFullyQualified(dlg.SelectedPath))
-        {
-            ImageFolders.Shared.Set(Manifest.Id, dlg.SelectedPath);
-            return new JsonObject { ["folder"] = ImageArchive.Label(dlg.SelectedPath), ["changed"] = true };
-        }
-        return new JsonObject { ["folder"] = ImageArchive.Label(current), ["changed"] = false };
+        if (dlg.ShowDialog(owner) != DialogResult.OK || !Path.IsPathFullyQualified(dlg.SelectedPath)) return null;
+        ImageFolders.Shared.Set(m.Id, dlg.SelectedPath);
+        return dlg.SelectedPath;
     }
 
     static double Number(JsonNode msg, string key) =>

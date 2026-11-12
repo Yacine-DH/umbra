@@ -1,6 +1,6 @@
 namespace Umbra.Tests;
 
-/// <summary>umbra.images: only small PNGs, only into a folder the user picked, under a name the host chooses.</summary>
+/// <summary>umbra.images: only small PNGs, only into the default Pictures\Umbra\&lt;name&gt; or a folder the user picked, under a name the host chooses.</summary>
 public class ImageArchiveTests : IDisposable
 {
     readonly string _root = Path.Combine(Path.GetTempPath(), "umbra-img-" + Guid.NewGuid().ToString("N"));
@@ -72,11 +72,40 @@ public class ImageArchiveTests : IDisposable
     }
 
     [Fact]
-    public void Save_needs_a_chosen_folder()
+    public void Without_a_default_root_save_needs_a_chosen_folder()
     {
         var f = new ImageFolders(Path.Combine(_root, "none.json"));
         Assert.Null(f.Get("demo"));
+        Assert.Null(f.Resolve("demo", "Hearth"));
         Assert.Throws<ImageArchiveException>(() => f.Save("demo", "Hearth", Png()));
+    }
+
+    [Fact]
+    public void Default_folder_is_root_plus_the_clean_widget_name_and_is_created_on_the_first_save()
+    {
+        var root = Path.Combine(_root, "Pictures", "Umbra");
+        var f = new ImageFolders(Path.Combine(_root, "none.json"), root);
+        Assert.Equal(Path.Combine(root, "Hearth"), f.Resolve("demo", "Hearth"));
+        Assert.Equal(Path.Combine(root, "Umbra"), f.Default(@"..\..\")); // a name can't climb out of the root
+        Assert.Null(f.Get("demo")); // nothing picked
+        Assert.False(Directory.Exists(Path.Combine(root, "Hearth")));
+        var name = f.Save("demo", "Hearth", Png(), freeBytes: _ => long.MaxValue);
+        Assert.True(File.Exists(Path.Combine(root, "Hearth", name)));
+    }
+
+    [Fact]
+    public void A_picked_folder_wins_over_the_default_and_forgetting_it_goes_back()
+    {
+        var root = Path.Combine(_root, "Pictures", "Umbra");
+        var picked = Path.Combine(_root, "mine");
+        Directory.CreateDirectory(picked);
+        var f = new ImageFolders(Path.Combine(_root, "folders.json"), root);
+        f.Set("demo", picked);
+        Assert.Equal(picked, f.Resolve("demo", "Hearth"));
+        var name = f.Save("demo", "Hearth", Png(), freeBytes: _ => long.MaxValue);
+        Assert.True(File.Exists(Path.Combine(picked, name)));
+        f.Clear("demo");
+        Assert.Equal(Path.Combine(root, "Hearth"), f.Resolve("demo", "Hearth"));
     }
 
     [Fact]
@@ -125,7 +154,7 @@ public class ImageArchiveTests : IDisposable
         var d = PermissionDiff.Compute(M("{}"), M("""{ "saveImages": true }"""));
         Assert.True(d.SaveImages);
         Assert.False(d.IsEmpty);
-        Assert.Contains(d.Describe(), l => l.Contains("folder you choose"));
+        Assert.Contains(d.Describe(), l => l.Contains("Pictures") && l.Contains("Settings"));
         Assert.True(PermissionDiff.Compute(M("""{ "saveImages": true }"""), M("""{ "saveImages": true }""")).IsEmpty);
     }
 
