@@ -4,7 +4,7 @@
   "name": "Pomodoro",
   "description": "A focus session like Windows Focus: pick the total minutes, optionally split into 22-33 min focus blocks with 5 min breaks, then follow the ring. Pause, skip, add 5 minutes, a toast at each phase change and a daily tally of focus minutes. Optional webcam timelapse of the whole session (replaces Study Time-Lapse). Survives restarts.",
   "author": "AmineChr54",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "manifestVersion": 1,
   "changelog": "Simpler timelapse: it records the whole session, and you only pick one photo every 15, 20, 30 or 60 seconds and see how long the video will be. Adding time or a short pause no longer ends the recording early. The ring now sits in the middle of the widget.",
   "entry": "index.html",

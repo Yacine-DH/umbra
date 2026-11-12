@@ -1359,12 +1359,18 @@ function renderBrowseBar() {
 
 const expandedCards = new Set(); // catalog ids whose description and commands are shown in full
 
+// Previews that already loaded once, kept alive (and so decoded): a re-rendered card shows its picture in the same frame instead of
+// flashing the letter placeholder until onload, which fires a tick later even for a cached image (every install/update re-renders).
+const loadedPreviews = new Map();
+
 function catalogThumb(card, w) {
   const th = $(".cthumb", card);
   $(".initial", card).textContent = (w.name || "?").trim()[0];
   if (!w.previewUrl) return;
+  const show = () => { th.style.backgroundImage = `url("${w.previewUrl}")`; th.classList.add("has-img"); };
+  if (loadedPreviews.has(w.previewUrl)) { show(); return; }
   const img = new Image();
-  img.onload = () => { th.style.backgroundImage = `url("${w.previewUrl}")`; th.classList.add("has-img"); };
+  img.onload = () => { loadedPreviews.set(w.previewUrl, img); show(); };
   img.src = w.previewUrl;
 }
 
@@ -1389,14 +1395,13 @@ function permissionChips(chips, w) {
 
 function renderCatalog() {
   const grid = $("#catalog");
-  grid.textContent = "";
   renderBrowseBar();
   if (catalogError) {
     grid.innerHTML = `<div class="empty" style="grid-column:1/-1">Couldn't reach the community catalog.<br><small>${escapeHtml(catalogError)}</small></div>`;
     return;
   }
   if (!catalog) {
-    for (let i = 0; i < 3; i++) grid.append(Object.assign(document.createElement("div"), { className: "skeleton" }));
+    grid.replaceChildren(...[0, 1, 2].map(() => Object.assign(document.createElement("div"), { className: "skeleton" })));
     return;
   }
   const q = $("#search").value.trim().toLowerCase();
@@ -1410,6 +1415,8 @@ function renderCatalog() {
     grid.innerHTML = `<div class="empty" style="grid-column:1/-1">${none}</div>`;
     return;
   }
+  // Built off-page and swapped in at once, so the grid never shows half-built cards (or loses its scroll position) mid-render.
+  const cards = [], clampChecks = [];
   for (const w of items) {
     const card = $("#tpl-catalog").content.firstElementChild.cloneNode(true);
     catalogThumb(card, w);
@@ -1482,9 +1489,11 @@ function renderCatalog() {
     }
     btn.setAttribute("aria-label", `${btn.textContent.trim()} ${w.name}`);
     icons(card);
-    grid.append(card);
-    checkClamp();
+    cards.push(card);
+    clampChecks.push(checkClamp);
   }
+  grid.replaceChildren(...cards);
+  clampChecks.forEach((check) => check());
 }
 
 // ---------- Themes ----------

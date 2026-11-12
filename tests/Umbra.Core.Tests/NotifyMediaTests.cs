@@ -87,4 +87,28 @@ public class NotifyMediaTests
         Assert.True(MediaService.IsCommand("next"));
         Assert.False(MediaService.IsCommand("shutdown"));
     }
+
+    [Theory]
+    [InlineData("308046B0AF4A39CB", "Firefox", "Firefox")] // the display name always wins
+    [InlineData("308046B0AF4A39CB", null, null)] // Firefox's id is a hash: never shown
+    [InlineData("{6D809377-6AF0-444B-8957-A3773F02200E}\\VLC\\vlc.exe", null, "vlc")]
+    [InlineData("Spotify.exe", null, "Spotify")]
+    [InlineData("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify", null, "Spotify")]
+    [InlineData("Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic", null, "ZuneMusic")]
+    [InlineData("Chrome", "  ", "Chrome")]
+    [InlineData("6D809377-6AF0-444B-8957-A3773F02200E", null, null)]
+    [InlineData("", null, null)]
+    [InlineData(null, null, null)]
+    public void Media_app_label_is_readable_or_null(string? id, string? display, string? expected) =>
+        Assert.Equal(expected, MediaService.AppLabel(id, display));
+
+    [Fact]
+    public void Media_art_scales_to_the_edge_keeping_its_shape()
+    {
+        Assert.Equal((300u, 300u), MediaService.ArtSize(300, 300));
+        Assert.Equal((512u, 512u), MediaService.ArtSize(1200, 1200));
+        Assert.Equal((512u, 288u), MediaService.ArtSize(1280, 720));
+        Assert.Equal((1u, 512u), MediaService.ArtSize(1, 5000));
+        Assert.Equal((0u, 0u), MediaService.ArtSize(0, 100));
+    }
 }

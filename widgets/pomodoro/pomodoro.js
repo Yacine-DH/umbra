@@ -216,7 +216,6 @@ function schedule() {
 const setMinutes = (v) => { setup.minutes = S.clampTotal(v); store("setup", setup); render(); };
 q("minus").onclick = () => setMinutes(Math.ceil(setup.minutes / 5) * 5 - 5);
 q("plus").onclick = () => setMinutes(Math.floor(setup.minutes / 5) * 5 + 5);
-q("minutes").onfocus = () => umbra.requestFocus?.();
 q("minutes").onchange = () => setMinutes(q("minutes").value);
 q("minutes").onkeydown = (e) => { if (e.key === "Enter") q("minutes").blur(); };
 q("skip-breaks").onchange = () => { setup.breaks = !q("skip-breaks").checked; store("setup", setup); render(); };

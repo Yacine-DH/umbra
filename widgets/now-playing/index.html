@@ -6,34 +6,55 @@
   <link rel="stylesheet" href="https://umbra.local/shared/umbra.css">
   <style>
     html, body { height: 100%; overflow: hidden; background: var(--bg); }
-    .np { height: 100%; display: flex; align-items: center; gap: 14px; padding: 0 16px; }
+    /* Everything scales with the widget: at the default 320x128 it is the original 88px art, 16px title and 32px buttons.
+       Wide: art beside the text, as tall as the widget allows. Square or tall: art on top, text and controls centred below. */
+    :root {
+      --padv: clamp(20px, 10vh, 40px);
+      --padh: clamp(16px, 5vw, 32px);
+      --art: min(calc(100vh - 2 * var(--padv)), 42vw);
+      --u: 1vmin;
+    }
+    .np { height: 100%; display: flex; align-items: center; gap: clamp(14px, 4vmin, 28px); padding: 0 var(--padh); }
     .art {
-      width: 88px; height: 88px; flex: none; border-radius: 10px; background: var(--surface-1) center / cover no-repeat;
+      width: var(--art); height: var(--art); flex: none; border-radius: clamp(10px, 4vmin, 18px); background: var(--surface-1) center / cover no-repeat;
       border: 1px solid var(--line, rgba(255,255,255,.08)); display: grid; place-items: center; color: var(--text-3);
     }
-    .art svg { width: 30px; height: 30px; }
+    .art svg { width: 34%; height: 34%; }
     .art.has svg { display: none; }
-    .info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
-    .app { font-size: 11px; font-weight: 500; color: var(--text-3); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .title { font-family: var(--font-display); font-size: 16px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .artist { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .ctl { display: flex; align-items: center; gap: 4px; margin-top: 6px; margin-left: -6px; }
+    .info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: clamp(3px, 1.5vmin, 6px); }
+    .app { font-size: clamp(11px, calc(8.6 * var(--u)), 14px); font-weight: 500; color: var(--text-3); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .title { font-family: var(--font-display); font-size: clamp(16px, calc(12.5 * var(--u)), 28px); font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .artist { font-size: clamp(12px, calc(9.4 * var(--u)), 18px); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ctl { display: flex; align-items: center; gap: clamp(4px, 3vmin, 12px); margin-top: clamp(6px, 3vmin, 12px); margin-left: -6px; }
     .ctl button {
-      width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; color: var(--text-2);
-      display: grid; place-items: center; cursor: pointer;
+      --b: clamp(32px, calc(25 * var(--u)), 46px);
+      width: var(--b); height: var(--b); border: 0; border-radius: 50%; background: none; color: var(--text-2);
+      display: grid; place-items: center; cursor: pointer; flex: none;
     }
     .ctl button:hover:not(:disabled) { background: var(--accent-soft, rgba(255,255,255,.08)); color: var(--text, #fff); }
     .ctl button:disabled { opacity: .3; cursor: default; }
-    .ctl button.main { background: var(--accent); color: #000; width: 36px; height: 36px; }
+    .ctl button.main { --b: clamp(36px, calc(28 * var(--u)), 54px); background: var(--accent); color: #000; }
     .ctl button.main:hover:not(:disabled) { background: var(--accent-strong, var(--accent)); color: #000; }
-    .ctl svg { width: 16px; height: 16px; fill: currentColor; }
+    .ctl svg { width: 50%; height: 50%; fill: currentColor; }
+    .np.no-art { padding-left: calc(var(--padh) + 4px); }
+
+    @media (max-aspect-ratio: 7/5) and (min-height: 200px) {
+      :root { --padv: clamp(14px, 5vh, 28px); --padh: clamp(14px, 6vw, 28px); --u: .4vmin; }
+      .np { flex-direction: column; justify-content: center; padding: var(--padv) var(--padh); text-align: center; }
+      /* the art takes what the text and controls leave, and stays square */
+      .art { flex: 1 1 auto; width: auto; height: auto; min-height: 0; aspect-ratio: 1; max-width: 100%; max-height: calc(100vw - 2 * var(--padh)); }
+      .info { flex: none; width: 100%; align-items: center; }
+      .app, .title, .artist { max-width: 100%; }
+      .ctl { justify-content: center; margin-left: 0; }
+      .np.no-art { padding-left: var(--padh); }
+    }
     .empty { margin: auto; text-align: center; color: var(--text-3); font-size: 12px; }
     .empty b { display: block; color: var(--text-2); font-size: 14px; font-weight: 600; margin-bottom: 4px; }
     [hidden] { display: none !important; }
   </style>
 </head>
 <body>
-  <main class="np">
+  <main class="np" id="np">
     <div id="empty" class="empty" hidden><b>Nothing playing</b>Start music or a video in any app.</div>
     <div class="art" id="art"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3z"/></svg></div>
     <div class="info" id="info">
@@ -52,21 +73,26 @@
   <script>
     const $ = (id) => document.getElementById(id);
     const PLAY = "M8 5v14l11-7z", PAUSE = "M6 5h4v14H6zm8 0h4v14h-4z";
-    let last = null, first = true;
+    let last = null, first = true, shownArt = null;
 
     function render(s) {
       last = s;
       const o = umbra.options;
       $("empty").hidden = !!s;
       $("art").hidden = !s || o.art === false;
+      $("np").classList.toggle("no-art", $("art").hidden);
       $("info").hidden = !s;
       if (!s) return;
       $("title").textContent = s.title || "Unknown title";
       $("artist").textContent = [s.artist, s.album].filter(Boolean).join(" · ");
       $("app").textContent = s.app || "";
       $("app").hidden = o.showApp === false || !s.app;
-      $("art").classList.toggle("has", !!s.art);
-      $("art").style.backgroundImage = s.art ? `url("${s.art}")` : "";
+      const art = s.art || null;
+      if (art !== shownArt) { // the same cover arrives on every poll: only repaint it when it changes
+        shownArt = art;
+        $("art").classList.toggle("has", !!art);
+        $("art").style.backgroundImage = art ? `url("${art}")` : "";
+      }
       $("ctl").hidden = o.controls === false;
       $("prev").disabled = !s.canPrevious;
       $("next").disabled = !s.canNext;

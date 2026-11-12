@@ -10,8 +10,47 @@ public static class MediaService
 {
     public static readonly string[] Kinds = ["read", "control"];
     public static readonly string[] Commands = ["play", "pause", "toggle", "next", "previous"];
-    /// <summary>Album art larger than this is left out (the data URL would be ~4/3 of it).</summary>
+    /// <summary>Album art the host sends is at most this big (the data URL is ~4/3 of it); larger art is scaled down first.</summary>
     public const int MaxArtBytes = 512 * 1024;
+    /// <summary>Art bigger than this at the source is not even read (players hand out art of a few hundred KB, browsers up to ~1 MB PNGs).</summary>
+    public const int MaxArtSourceBytes = 16 * 1024 * 1024;
+    /// <summary>The longest side, in pixels, of the art the host sends: enough for a widget a few hundred pixels wide at 2x.</summary>
+    public const uint ArtEdge = 512;
+
+    /// <summary>The size to scale art of <paramref name="width"/> x <paramref name="height"/> to: unchanged when it fits <see cref="ArtEdge"/>, else the long side becomes ArtEdge.</summary>
+    public static (uint Width, uint Height) ArtSize(uint width, uint height)
+    {
+        if (width == 0 || height == 0) return (0, 0);
+        var longest = Math.Max(width, height);
+        if (longest <= ArtEdge) return (width, height);
+        var scale = (double)ArtEdge / longest;
+        return (Math.Max(1, (uint)Math.Round(width * scale)), Math.Max(1, (uint)Math.Round(height * scale)));
+    }
+
+    /// <summary>
+    /// The <c>app</c> a widget sees: the platform's display name for the media session's app when it has one ("Firefox"), else a readable
+    /// part of the app id ("Spotify.exe" or "...\VLC\vlc.exe" give "Spotify" and "vlc", a packaged "Pub.Name_hash!App" gives "App"), and null for an id that is only a hash
+    /// (Firefox registers "308046B0AF4A39CB", which no widget should show).
+    /// </summary>
+    public static string? AppLabel(string? appId, string? displayName)
+    {
+        if (!string.IsNullOrWhiteSpace(displayName)) return displayName.Trim();
+        var id = appId?.Trim();
+        if (string.IsNullOrEmpty(id)) return null;
+        var bang = id.LastIndexOf('!');
+        if (bang >= 0) id = id[(bang + 1)..];
+        var slash = id.LastIndexOfAny(['\\', '/']);
+        if (slash >= 0) id = id[(slash + 1)..];
+        if (id.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) id = id[..^4];
+        var dot = id.LastIndexOf('.');
+        if (bang >= 0 && dot >= 0) id = id[(dot + 1)..];
+        id = id.Trim();
+        if (id.Length == 0 || LooksLikeHash(id)) return null;
+        return id;
+    }
+
+    static bool LooksLikeHash(string s) =>
+        (s.Length >= 8 && s.All(Uri.IsHexDigit) && s.Any(char.IsDigit)) || Guid.TryParse(s.Trim('{', '}'), out _);
 
     public static void Validate(IEnumerable<string> kinds)
     {

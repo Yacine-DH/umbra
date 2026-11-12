@@ -190,3 +190,9 @@ test("timelapse pill: an early stop that still saved a video says both, and offe
   assert.equal(v.action, undefined);
   assert.match(T.status({ state: "idle", file: "a.mp4", folder: "F" }, { error: "Disk full" }).text, /^Disk full\. What/);
 });
+
+test("no input asks for the keyboard from its own focus event (the host refocus re-fired it: a 1 s focus flicker)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const js = readFileSync(new URL("../../widgets/pomodoro/pomodoro.js", import.meta.url), "utf8");
+  assert.doesNotMatch(js, /(onfocus\s*=|addEventListener\(\s*["']focus(in)?["'])[^\n]*requestFocus/);
+});

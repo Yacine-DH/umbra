@@ -18,6 +18,7 @@ sealed class WidgetWindow : Form, IWidgetView
     long _pressedAt = long.MinValue / 2;
     long _leftPressAt = long.MinValue / 2, _menuAt = long.MinValue / 2;
     IntPtr _foregroundAtPress;
+    long _focusGrantedFor = long.MinValue; // the press (_pressedAt) TakeKeyboardFocus last acted on
     bool _resizing;
     long _lastZoomAt = long.MinValue / 2;
 
@@ -684,7 +685,7 @@ sealed class WidgetWindow : Form, IWidgetView
                 break;
 
             case "system":
-                HandleSystem(msg!);
+                await HandleSystem(msg!);
                 break;
 
             case "notify":
@@ -865,6 +866,10 @@ sealed class WidgetWindow : Form, IWidgetView
         var fg = Native.GetForegroundWindow();
         // Too long since the press, or the user has moved on to another window since: ignore.
         if (System.Environment.TickCount64 - _pressedAt > 1000 || (fg != _foregroundAtPress && fg != Handle)) return;
+        // Once per press: focusing the WebView again blurs and refocuses the page's input, and a page that asks for focus from
+        // onfocus (Pomodoro did) then asks again, so field and caret flickered for the whole second after the click.
+        if (fg == Handle && _focusGrantedFor == _pressedAt) return;
+        _focusGrantedFor = _pressedAt;
         if (fg != Handle)
         {
             // The foreground lock only lets the foreground thread hand over focus, so join its input queue briefly.
@@ -920,8 +925,11 @@ sealed class WidgetWindow : Form, IWidgetView
     /// umbra.run: asks the host to run one of this widget's declared commands (permissions.commands). The page sends
     /// only a command id and string parameters; <see cref="CommandService"/> does the checking and the approval.
     /// </summary>
-    /// <summary>Answers umbra.system() with only the metric kinds the manifest declared (none declared: rejected).</summary>
-    void HandleSystem(JsonNode msg)
+    /// <summary>
+    /// Answers umbra.system() with only the metric kinds the manifest declared (none declared: rejected). Read on the thread pool:
+    /// opening the performance counters for the first gpu or disk read takes ~0.6 s, which on the UI thread froze every widget.
+    /// </summary>
+    async Task HandleSystem(JsonNode msg)
     {
         var reply = new JsonObject { ["type"] = "systemResult", ["id"] = msg["id"]?.DeepClone() };
         if (Manifest.Permissions.System.Count == 0 || !(Alive && Ws.Enabled))
@@ -931,8 +939,18 @@ sealed class WidgetWindow : Form, IWidgetView
         }
         else
         {
-            reply["ok"] = true;
-            reply["data"] = WindowsMetrics.Read(Manifest.Permissions.System);
+            var kinds = Manifest.Permissions.System.ToArray();
+            try
+            {
+                reply["data"] = await Task.Run(() => WindowsMetrics.Read(kinds));
+                reply["ok"] = true;
+            }
+            catch (Exception ex)
+            {
+                reply["ok"] = false;
+                reply["error"] = "System metrics are not available";
+                Log.Write($"[{Manifest.Id}] system metrics failed: {ex.Message}");
+            }
         }
         Post(reply);
     }
