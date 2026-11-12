@@ -1,0 +1,13 @@
+{
+  "id": "edit-widget",
+  "name": "Edit widget (edit mode test)",
+  "description": "Test only: asks the host to move, resize, zoom and focus it without any real input. Run by linux/test/edit.sh, never installed.",
+  "author": "Umbra tests",
+  "version": "1.0.0",
+  "manifestVersion": 1,
+  "entry": "index.html",
+  "width": 300,
+  "height": 160,
+  "defaultPosition": { "x": 400, "y": 300 },
+  "permissions": { "hosts": [] }
+}

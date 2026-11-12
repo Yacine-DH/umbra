@@ -30,6 +30,9 @@ sealed class App : IUmbraHost
     string? IUmbraHost.PinBackend => Pin.Name;
 
     public bool EditMode => !Settings.General.LockAll;
+
+    /// <summary>The widget copy last pressed in edit mode: the one the arrow keys nudge. Null outside edit mode.</summary>
+    public string? EditSelection { get; private set; }
     public bool SafeMode { get; private set; }
     public bool WidgetsHidden { get; private set; }
     public bool HiddenByFullscreen => false;
@@ -54,12 +57,14 @@ sealed class App : IUmbraHost
         if (Pin is NoPin) Log.Write("Widgets are plain windows on this session: native Wayland pinning is not available yet (#186, #187) and no X server was found.");
 
         var css = Gtk.CssProvider.New();
-        css.LoadFromString("window.umbra-widget { background: transparent; }");
+        css.LoadFromString("window.umbra-widget { background: transparent; }\n" + OverlayWindow.Css);
         if (Gdk.Display.GetDefault() is { } display)
             Gtk.StyleContext.AddProviderForDisplay(display, css, 600 /* GTK_STYLE_PROVIDER_PRIORITY_APPLICATION */);
 
         Commands.ServicesChanged += _ => _ui.Post(_ => SettingsChangedElsewhere(), null);
         SyncWindows();
+        if (EditMode) _ui.Post(_ => UpdateEditPills(), null); // left unlocked last time: show the Done pill again
+        UiThread.Every(250, () => { TickGroups(); return true; });
         // A monitor was added, removed or rearranged: put every widget back where its saved monitor and offset say.
         if (Gdk.Display.GetDefault() is { } d)
             d.GetMonitors().OnItemsChanged += (_, _) => _ui.Post(_ => { foreach (var w in _windows.Values) w.ReapplyPlacement(); }, null);
@@ -169,6 +174,7 @@ sealed class App : IUmbraHost
         var live = Manifests.SelectMany(m => Settings.Instances(m.Id)).ToHashSet();
         foreach (var inst in _windows.Keys.Where(k => !live.Contains(k)).ToList()) CloseWidget(inst);
         foreach (var (inst, w) in _windows) w.Visible = WantVisible(inst);
+        RefreshEditPills();
     }
 
     /// <summary>Closes one copy (an instance id), or every copy of a widget (its plain id).</summary>
@@ -176,6 +182,7 @@ sealed class App : IUmbraHost
     {
         foreach (var key in _windows.Keys.Where(k => k == id || (!id.Contains('#') && InstanceId.WidgetOf(k) == id)).ToList())
         {
+            if (EditSelection == key) EditSelection = null;
             var w = _windows[key];
             _windows.Remove(key);
             w.Close();
@@ -183,7 +190,116 @@ sealed class App : IUmbraHost
     }
 
     public void SettingsChangedElsewhere() { } // the Settings window and tray re-render here once they exist (#184, #191)
-    public void RefreshEditPills() { }         // the edit pill is #183
+
+    // ---------- edit mode: selection, pills, snap guides ----------
+
+    readonly List<EditPill> _pills = new();
+    SnapGuides? _snapGuides;
+    readonly Dictionary<string, long> _handScaledAt = new();
+
+    /// <summary>A zoom or resize by hand just happened: an in-flight Settings save must not revert it.</summary>
+    public void NoteHandScale(string instance) => _handScaledAt[instance] = Environment.TickCount64;
+
+    /// <summary>Marks one widget copy as the edit-mode selection (stronger outline, arrow keys); everyone else is deselected.</summary>
+    public void SelectForEdit(string instance)
+    {
+        if (!EditMode || EditSelection == instance) return;
+        EditSelection = instance;
+        foreach (var w in _windows.Values) w.ShowEditSelected(w.Instance == instance);
+    }
+
+    /// <summary>Draws (or, with none, hides) the alignment guides while a widget is moved in edit mode.</summary>
+    public void ShowGuides(IReadOnlyList<Snap.Guide> guides)
+    {
+        if (guides.Count == 0 && _snapGuides is null) return;
+        (_snapGuides ??= new SnapGuides(this)).Set(guides);
+    }
+
+    /// <summary>The "Done" pills: one per monitor that shows a widget (the primary one if none does) while edit mode is on, none otherwise.</summary>
+    void UpdateEditPills()
+    {
+        if (!EditMode)
+        {
+            foreach (var p in _pills) p.Close();
+            _pills.Clear();
+            return;
+        }
+        var screens = Monitors();
+        var areas = _windows.Values.Where(w => w.Visible)
+            .Select(w => Placement.Find(screens, w.Bounds)).OfType<MonitorInfo>().Select(m => m.WorkArea).Distinct().ToList();
+        if (areas.Count == 0) areas = screens.Where(s => s.Primary).Select(s => s.WorkArea).Take(1).ToList();
+        // Only touch pills that must appear or go, so a save or a drag never makes them flicker.
+        foreach (var p in _pills.Where(p => !areas.Contains(p.Area)).ToList()) { p.Close(); _pills.Remove(p); }
+        foreach (var area in areas.Where(a => _pills.All(p => p.Area != a)))
+        {
+            var pill = new EditPill(this, area);
+            _pills.Add(pill);
+            pill.Show();
+        }
+        foreach (var p in _pills) p.RefreshState();
+    }
+
+    /// <summary>Moves the pills to the monitors that show widgets now (a widget was dragged to another monitor, added or removed).</summary>
+    public void RefreshEditPills() { if (EditMode) UpdateEditPills(); }
+
+    /// <summary>The pill's snap switch: flips snapping and refreshes the pills.</summary>
+    public void ToggleSnap()
+    {
+        Snap.Toggle(Settings.General);
+        SaveSettings();
+        foreach (var p in _pills) p.RefreshState();
+        SettingsChangedElsewhere();
+    }
+
+    // ---------- tab strips of widget groups ----------
+
+    readonly Dictionary<string, GroupTabs> _tabStrips = new();
+    readonly Dictionary<string, long> _tabSwitchedAt = new();
+
+    /// <summary>
+    /// Every tick: keeps a group's tab strip on its visible widget (hidden with it) and switches groups that have a cycle
+    /// interval to their next tab (not while the pointer is over them or in edit mode).
+    /// </summary>
+    void TickGroups()
+    {
+        foreach (var id in _tabStrips.Keys.Where(k => !Settings.Groups.TryGetValue(k, out var g) || g.Members.Count < 2).ToList())
+        {
+            _tabStrips[id].Close();
+            _tabStrips.Remove(id);
+            _tabSwitchedAt.Remove(id);
+        }
+        if (Settings.Groups.Count == 0) return;
+        var now = Environment.TickCount64;
+        var pointer = Pin.Pointer()?.At;
+        var screens = Monitors();
+        foreach (var (id, g) in Settings.Groups.ToList())
+        {
+            if (g.Members.Count < 2) continue;
+            var active = Groups.ActiveOf(g);
+            var win = active is null ? null : Window(active);
+            var shown = win is { Visible: true } && !WidgetsHidden;
+            _tabStrips.TryGetValue(id, out var strip);
+            if (shown)
+            {
+                if (strip is null) _tabStrips[id] = strip = new GroupTabs(this, id);
+                strip.Rebuild();
+                var area = Placement.Find(screens, win!.Bounds) is MonitorInfo m ? m.WorkArea : win.Bounds;
+                strip.Place(win.Bounds, area);
+                strip.Show();
+            }
+            else strip?.Hide();
+
+            var hover = shown && pointer is { } p && win!.Bounds.Contains(p);
+            if (!_tabSwitchedAt.ContainsKey(id)) _tabSwitchedAt[id] = now;
+            if (g.CycleSeconds > 0 && shown && !hover && !EditMode && now - _tabSwitchedAt[id] >= g.CycleSeconds * 1000L)
+            {
+                _tabSwitchedAt[id] = now;
+                StepTab(id, 1);
+                return; // the settings changed under the loop; the next tick carries on
+            }
+            if (hover) _tabSwitchedAt[id] = now;
+        }
+    }
 
     /// <summary>Re-scans widget folders after an install/remove and opens/closes windows to match.</summary>
     public void ReloadWidgets()
@@ -208,14 +324,18 @@ sealed class App : IUmbraHost
 
     void PushAll() { foreach (var w in _windows.Values) w.PushSettings(); }
 
-    /// <summary>Turns "Arrange widgets" on or off and tells the pages; moving and resizing by hand arrive with #183.</summary>
+    /// <summary>Turns "Arrange widgets" (the global lock off) on or off, saves it and updates the widgets and the pills.</summary>
     public void SetEditMode(bool on)
     {
         if (EditMode == on) return;
         Settings.General.LockAll = !on;
         SaveSettings();
+        if (!on) ShowGuides([]);
+        EditSelection = null;
         Log.Write($"Edit mode {(on ? "on" : "off")}");
         PushAll();
+        UpdateEditPills();
+        SettingsChangedElsewhere();
     }
 
     public void SetSafeMode(bool on)
@@ -234,6 +354,9 @@ sealed class App : IUmbraHost
     public void Quit()
     {
         foreach (var id in _windows.Keys.ToList()) CloseWidget(id);
+        foreach (var p in _pills) p.Close();
+        foreach (var t in _tabStrips.Values) t.Close();
+        _snapGuides?.Close();
         _gtk.Quit();
     }
 
@@ -309,8 +432,14 @@ sealed class App : IUmbraHost
         change(Settings);
         Groups.Prune(Settings);
         SaveSettings();
+        // Order matters: the outgoing tab goes first, the incoming one is placed while still hidden, and only then shown,
+        // so two tabs are never on screen together.
+        foreach (var (inst, w) in _windows) if (w.Visible && !WantVisible(inst)) w.Visible = false;
+        foreach (var w in _windows.Values) w.ReapplyPlacement();
         SyncWindows();
         PushAll();
+        foreach (var id in _tabStrips.Keys.ToList()) _tabSwitchedAt[id] = Environment.TickCount64;
+        TickGroups();
     }
 
     public JsonArray GroupsJson() => new(Settings.Groups.Select(kv => (JsonNode)new JsonObject
@@ -360,6 +489,7 @@ sealed class App : IUmbraHost
         else if (Groups.IconPath(icon) is null) throw new ArgumentException($"Unknown tab icon '{icon}'");
         ws.TabIcon = icon;
         SaveSettings();
+        foreach (var strip in _tabStrips.Values) strip.Rebuild();
     }
 
     // ---------- copies ----------

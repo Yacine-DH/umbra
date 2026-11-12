@@ -10,7 +10,7 @@ namespace Umbra;
 /// Desktop pinning, positioning, edit mode and focus gating arrive with their own backends (#182, #183, #186-#188);
 /// until then this is a plain toplevel the compositor places.
 /// </summary>
-sealed class WidgetWindow : IWidgetView
+sealed partial class WidgetWindow : IWidgetView
 {
     /// <summary>GTK sizes are logical pixels; the toolkit applies the monitor scale itself.</summary>
     const int LogicalDpi = 96;
@@ -63,6 +63,7 @@ sealed class WidgetWindow : IWidgetView
         _window.AddCssClass("umbra-widget");
         _window.SetChild(_view);
         _window.OnCloseRequest += (_, _) => { MarkClosed(); return false; };
+        InitInput();
         ApplySize();
         // Realize now, so the pin backend can mark the window (type, state, position) before it is first shown.
         ((Gtk.Widget)_window).Realize(); // the widget's realize (creates the surface), not Gtk.Native's
@@ -84,13 +85,20 @@ sealed class WidgetWindow : IWidgetView
     /// <summary>Sizes the window from this copy's settings and zooms the page to fill it.</summary>
     void ApplySize()
     {
-        var size = SavedSize();
+        SetWindowSize(SavedSize());
+        _window.SetOpacity(Prefs.EffectiveOpacity(Ws, _app.Settings.General));
+    }
+
+    /// <summary>Gives the window this size (the window follows its only child's size request) and returns the page zoom that fills it.</summary>
+    double SetWindowSize(Size size)
+    {
         Width = size.Width;
         Height = size.Height;
         _window.SetDefaultSize(size.Width, size.Height);
         _view.SetSizeRequest(size.Width, size.Height);
-        _view.ZoomLevel = WidgetGeometry.ZoomFor(Manifest.Width, Manifest.Height, LogicalDpi, size.Width, size.Height);
-        _window.SetOpacity(Prefs.EffectiveOpacity(Ws, _app.Settings.General));
+        var zoom = WidgetGeometry.ZoomFor(Manifest.Width, Manifest.Height, LogicalDpi, size.Width, size.Height);
+        _view.ZoomLevel = zoom;
+        return zoom;
     }
 
     // GTK 4 cannot place or query a toplevel: the pin backend moves it, and this is where it was last asked to be.
@@ -99,7 +107,7 @@ sealed class WidgetWindow : IWidgetView
     public int Width { get; private set; }
     public int Height { get; private set; }
 
-    Rectangle Bounds => new(Left, Top, Width, Height);
+    public Rectangle Bounds => new(Left, Top, Width, Height);
 
     /// <summary>Moves the window to where its settings say (see <see cref="WidgetPlacement.Locate"/>).</summary>
     void Place()
@@ -271,7 +279,8 @@ sealed class WidgetWindow : IWidgetView
                     break;
 
                 default:
-                    // drag, resize, zoom, nudge, pointer, focus, exitEdit (#183), notify (#189), media (#190), run/stop (#194), ...
+                    if (HandleEditMessage(type, msg)) break;
+                    // notify (#189), media (#190), run/stop (#194), timelapse, images, tabIcon, ...
                     if (_unsupportedLogged.Add(type)) Log.Write($"[{Instance}] '{type}' is not available on Linux yet");
                     Unsupported(type, msg);
                     break;
@@ -459,7 +468,7 @@ sealed class WidgetWindow : IWidgetView
             ["locale"] = Prefs.LocaleOf(CultureInfo.CurrentCulture),
             ["hour12"] = Prefs.Hour12Of(CultureInfo.CurrentCulture),
             ["editMode"] = _app.EditMode,
-            ["editSelected"] = false,
+            ["editSelected"] = _app.EditMode && _app.EditSelection == Instance,
             ["options"] = ws.Options.DeepClone(),
         };
     }

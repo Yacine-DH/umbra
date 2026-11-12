@@ -11,11 +11,26 @@ interface IDesktopPin
     /// <summary>Short name for the log and <c>umbractl status</c>: "x11" or "none".</summary>
     string Name { get; }
 
-    /// <summary>Call once per window after it was realized and before it is shown.</summary>
-    void Prepare(Gtk.Window window);
+    /// <summary>
+    /// Call once per window after it was realized and before it is shown. <paramref name="overlay"/> is for the host's own
+    /// small windows (edit pill, snap guides, tab strip): just above the widgets, still below normal windows.
+    /// </summary>
+    void Prepare(Gtk.Window window, bool overlay = false);
 
     /// <summary>Call each time the window was mapped: (re)asserts the hints a window manager only reads from a mapped window.</summary>
-    void Mapped(Gtk.Window window);
+    void Mapped(Gtk.Window window, bool overlay = false);
+
+    /// <summary>
+    /// Where the pointer is and which buttons and modifier keys are physically down, straight from the display server, or null
+    /// when the session cannot say. This is what a page cannot fake: the gates for drag, resize, zoom and nudge read it.
+    /// </summary>
+    PointerState? Pointer();
+
+    /// <summary>Lets the window take keyboard focus (true, only right after a physical press) or never on its own (false, the normal state).</summary>
+    void SetFocusable(Gtk.Window window, bool on);
+
+    /// <summary>Gives the window the keyboard focus now.</summary>
+    void Focus(Gtk.Window window);
 
     /// <summary>Moves the window so its top-left corner is at this point (logical pixels, like the GDK monitor rectangles).</summary>
     void Move(Gtk.Window window, int x, int y);
@@ -24,12 +39,18 @@ interface IDesktopPin
     Rectangle? PrimaryWorkArea();
 }
 
+/// <summary>The pointer as the display server reports it (logical pixels).</summary>
+readonly record struct PointerState(Point At, bool ButtonDown, bool Shift, bool Ctrl);
+
 /// <summary>No pinning: plain windows the compositor places (a Wayland session without a native backend and without XWayland).</summary>
 sealed class NoPin : IDesktopPin
 {
     public string Name => "none";
-    public void Prepare(Gtk.Window window) { }
-    public void Mapped(Gtk.Window window) { }
+    public void Prepare(Gtk.Window window, bool overlay = false) { }
+    public void Mapped(Gtk.Window window, bool overlay = false) { }
+    public PointerState? Pointer() => null;
+    public void SetFocusable(Gtk.Window window, bool on) { }
+    public void Focus(Gtk.Window window) { }
     public void Move(Gtk.Window window, int x, int y) { }
     public Rectangle? PrimaryWorkArea() => null;
 }
@@ -60,6 +81,10 @@ sealed unsafe partial class X11Pin : IDesktopPin
     [LibraryImport(X11)] private static partial int XGetWindowProperty(IntPtr display, nuint window, nuint property, nint offset, nint length, int delete,
         nuint reqType, out nuint actualType, out int actualFormat, out nuint items, out nuint bytesAfter, out IntPtr data);
     [LibraryImport(X11)] private static partial int XFree(IntPtr data);
+    [LibraryImport(X11)] private static partial int XRaiseWindow(IntPtr display, nuint window);
+    [LibraryImport(X11)] private static partial int XSetInputFocus(IntPtr display, nuint window, int revertTo, nuint time);
+    [LibraryImport(X11)] private static partial int XQueryPointer(IntPtr display, nuint window, out nuint root, out nuint child,
+        out int rootX, out int rootY, out int winX, out int winY, out uint mask);
 
     [StructLayout(LayoutKind.Sequential)]
     struct XClientMessageEvent
@@ -119,17 +144,18 @@ sealed unsafe partial class X11Pin : IDesktopPin
     /// <summary>The integer scale GDK applies on X11: X11 coordinates are device pixels, GTK's are logical.</summary>
     static int Scale(Gtk.Window window) => Math.Max(1, window.GetSurface()?.GetScaleFactor() ?? 1);
 
-    string[] States => _utility
+    /// <summary>A widget is a DESKTOP window (or UTILITY kept BELOW); an overlay is always UTILITY kept BELOW, so it is above the desktop layer.</summary>
+    string[] StatesFor(bool overlay) => _utility || overlay
         ? ["_NET_WM_STATE_BELOW", "_NET_WM_STATE_STICKY", "_NET_WM_STATE_SKIP_TASKBAR", "_NET_WM_STATE_SKIP_PAGER"]
         : ["_NET_WM_STATE_STICKY", "_NET_WM_STATE_SKIP_TASKBAR", "_NET_WM_STATE_SKIP_PAGER"];
 
-    public void Prepare(Gtk.Window window)
+    public void Prepare(Gtk.Window window, bool overlay = false)
     {
         var xid = Xid(window);
         if (xid == 0) return;
         // Before the first map a window manager reads these as properties.
-        SetType(xid);
-        var states = States.Select(Atom).ToArray();
+        SetType(xid, overlay);
+        var states = StatesFor(overlay).Select(Atom).ToArray();
         fixed (nuint* p = states) XChangeProperty(_display, xid, Atom("_NET_WM_STATE"), XaAtom, 32, PropModeReplace, p, states.Length);
         var all = AllDesktops;
         XChangeProperty(_display, xid, Atom("_NET_WM_DESKTOP"), XaCardinal, 32, PropModeReplace, &all, 1);
@@ -137,9 +163,9 @@ sealed unsafe partial class X11Pin : IDesktopPin
         XFlush(_display);
     }
 
-    void SetType(nuint xid)
+    void SetType(nuint xid, bool overlay)
     {
-        var type = Atom(_utility ? "_NET_WM_WINDOW_TYPE_UTILITY" : "_NET_WM_WINDOW_TYPE_DESKTOP");
+        var type = Atom(_utility || overlay ? "_NET_WM_WINDOW_TYPE_UTILITY" : "_NET_WM_WINDOW_TYPE_DESKTOP");
         XChangeProperty(_display, xid, Atom("_NET_WM_WINDOW_TYPE"), XaAtom, 32, PropModeReplace, &type, 1);
     }
 
@@ -150,20 +176,46 @@ sealed unsafe partial class X11Pin : IDesktopPin
         XSetWMHints(_display, xid, &hints);
     }
 
-    public void Mapped(Gtk.Window window)
+    public void Mapped(Gtk.Window window, bool overlay = false)
     {
         var xid = Xid(window);
         if (xid == 0) return;
         // GTK wrote its own window type (NORMAL) and WM_HINTS just before it asked for the map. The window manager only reads
         // them when it handles that request, which is after this runs, so ours are the ones it sees.
-        SetType(xid);
+        SetType(xid, overlay);
         // Once mapped, state changes go through the window manager as client messages (EWMH).
-        var add = States.Select(Atom).ToArray();
+        var add = StatesFor(overlay).Select(Atom).ToArray();
         for (var i = 0; i < add.Length; i += 2)
             SendRoot(xid, "_NET_WM_STATE", 1 /* _NET_WM_STATE_ADD */, (nint)add[i], i + 1 < add.Length ? (nint)add[i + 1] : 0, 1);
         SendRoot(xid, "_NET_WM_DESKTOP", unchecked((nint)AllDesktops), 1, 0, 0);
         NoInput(xid);
-        XLowerWindow(_display, xid);
+        if (overlay) XRaiseWindow(_display, xid); // above the widgets when both are in the "below" layer
+        else XLowerWindow(_display, xid);
+        XFlush(_display);
+    }
+
+    public PointerState? Pointer()
+    {
+        if (XQueryPointer(_display, _root, out _, out _, out var x, out var y, out _, out _, out var mask) == 0) return null;
+        var k = Math.Max(1, (Gdk.Display.GetDefault()?.GetMonitors().GetObject(0) as Gdk.Monitor)?.GetScaleFactor() ?? 1);
+        const uint ShiftMask = 1, ControlMask = 4, Buttons = (1 << 8) | (1 << 9) | (1 << 10);
+        return new PointerState(new Point(x / k, y / k), (mask & Buttons) != 0, (mask & ShiftMask) != 0, (mask & ControlMask) != 0);
+    }
+
+    public void SetFocusable(Gtk.Window window, bool on)
+    {
+        var xid = Xid(window);
+        if (xid == 0) return;
+        var hints = new XWMHints { Flags = InputHint, Input = on ? 1 : 0 };
+        XSetWMHints(_display, xid, &hints);
+        XFlush(_display);
+    }
+
+    public void Focus(Gtk.Window window)
+    {
+        var xid = Xid(window);
+        if (xid == 0) return;
+        XSetInputFocus(_display, xid, 2 /* RevertToParent */, 0 /* CurrentTime */);
         XFlush(_display);
     }
 
