@@ -792,7 +792,11 @@ sealed class SettingsWindow : Form, ISettingsView
             var counts = _app.Settings.General.CountInstalls ? InstallStats.FetchCountsAsync() : null;
             try { _catalog = await Community.FetchCatalogAsync(); }
             catch (Exception ex) { error = ex.Message; Log.Write($"Catalog fetch failed: {ex.Message}"); }
-            _installCounts = counts is null ? new Dictionary<string, long>() : await counts;
+            // Counts are a nicety: a slow relay never holds Browse back. Past the catalog fetch they get 1.5 s more; a late answer
+            // is kept for the next render instead.
+            if (counts is null) _installCounts = new Dictionary<string, long>();
+            else if (await Task.WhenAny(counts, Task.Delay(1500)) == counts) _installCounts = await counts;
+            else _ = counts.ContinueWith(t => { if (t.IsCompletedSuccessfully && t.Result.Count > 0) _installCounts = t.Result; }, TaskScheduler.Default);
         }
 
         var previews = await Task.WhenAll(_catalog.Select(async entry =>

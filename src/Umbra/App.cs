@@ -527,7 +527,7 @@ sealed class App : ApplicationContext, IUmbraHost
         {
             var r = await Restore.RunAsync(
                 () => OnUi(() => Task.FromResult(Restore.ToRestore(Settings, Manifests))),
-                Community.FetchCatalogAsync, e => Community.InstallAsync(e), Log.Write);
+                Community.FetchCatalogAsync, e => Community.InstallAsync(e, countInstall: false), Log.Write);
             await OnUi(() =>
             {
                 _restoring.Clear();

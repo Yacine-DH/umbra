@@ -27,11 +27,19 @@ public class InstallStatsTests
         return sent.Where(u => u.EndsWith("=" + id, StringComparison.Ordinal)).ToList();
     }
 
-    static async Task Install(string id, string version)
+    static async Task Install(string id, string version, bool count = true)
     {
         using var p = await Community.PrepareAsync(Entry(id), Catalog(id, version));
         p.Require(true);
-        p.Commit();
+        p.Commit(count);
+    }
+
+    [Fact]
+    public async Task An_install_Umbra_makes_on_its_own_is_not_counted()
+    {
+        var id = $"cnt-{Guid.NewGuid():N}"[..12];
+        try { Assert.Empty(await Capture(id, true, () => Install(id, "1.0.0", count: false))); }
+        finally { Community.Remove(id); }
     }
 
     [Fact]
