@@ -58,6 +58,8 @@ community widgets in `widgets\`). `UMBRA_DATA_DIR` overrides the data folder (te
 | `schemas/widget.schema.json`, `docs/widget-sdk.md` | Manifest schema and SDK reference (both ship next to umbractl for agents) |
 | `installer/Umbra.iss`, `build.ps1` | Inno Setup per-user installer; the version comes from `Directory.Build.props` |
 | `tests/Umbra.Core.Tests/` | Unit tests for Core and the CLI (`extern alias cli`); plain `net10.0`, run on Windows and Linux. `[WindowsFact]`/`[WindowsTheory]` skip Windows-only cases elsewhere |
+| `src/Umbra.Linux/` | The Linux host (assembly `umbra`, GTK4 + WebKitGTK 6 through GirCore; epic #172), a skeleton so far: `Program.cs` (single instance, control socket, `Gtk.Application`), `App.cs` (`IUmbraHost`; features without a Linux backend log "not available on Linux yet (#N)"), `WidgetWindow.cs` (one undecorated transparent window + `WebKit.WebView` per widget copy, the page message switch), `WebHost.cs` (shared context and session, the `umbra://` scheme handler, `xdg-open`), `UmbraScheme.cs` (pure path rules of the scheme: the Linux counterpart of the virtual-host folder mapping), `UiThread.cs` (GLib main-loop synchronization context) |
+| `tests/Umbra.Linux.Tests/` | Unit tests for the pure parts of the Linux host (no display needed) |
 | `tests/Umbra.Tests/` | Windows host tests (WebView2, WinForms, toasts, power events, command runner with cmd/powershell) |
 | `tools/umbra-relay/` | The only server: a Cloudflare Worker + Durable Object behind Buddy (`/pair`, `/beat`, `/unpair`, API frozen) and Hearth (`/hearth/*`, contract in its README). Free plan, all answers status-200 JSON because `fetchJson` drops non-2xx bodies. Never deployed from here; `tests/relay/*.test.mjs` run the Worker against an in-memory fake (`node --test tests/relay/*.test.mjs`) |
 
@@ -67,9 +69,12 @@ Read epic [#172](https://github.com/AmineChr54/umbra/issues/172) before touching
 child issues (#173-#200). Only part of it exists in the repo; don't document or assume the rest as done.
 
 - **Exists:** `src/Umbra.Core`, `tests/Umbra.Core.Tests`, `src/Umbra.Cli` as plain `net10.0`, `Umbra.Linux.slnf`, the Ubuntu CI job,
-  the bridge shim in `shared/bridge.js`, and `.claude/skills/linux-port/SKILL.md` (the loop a Linux contributor runs: `/loop 2m /linux-port`).
-- **Planned, not in the repo yet** (names from the epic; add map rows when the files land): `src/Umbra.Linux` (GTK4 + WebKitGTK host,
-  assembly `umbra`, from #179), `src/Umbra.Linux/native/umbra-webext.c` (web-process extension, #180), `tests/Umbra.Linux.Tests`,
+  the bridge shim in `shared/bridge.js`, `.claude/skills/linux-port/SKILL.md` (the loop a Linux contributor runs: `/loop 2m /linux-port`),
+  and the host skeleton `src/Umbra.Linux` + `tests/Umbra.Linux.Tests` (#179): widgets load from `umbra://` and talk to the host
+  (`dotnet run --project src/Umbra.Linux`, with `UMBRA_DATA_DIR=$(mktemp -d)`). Pages must reach the SDK through `umbra://` until #180
+  rewrites `https://umbra.local/...`, so catalog widgets do not load yet; there is no sandbox, pinning, Settings, tray or capture yet.
+- **Planned, not in the repo yet** (names from the epic; add map rows when the files land): `src/Umbra.Linux/native/umbra-webext.c`
+  (web-process extension, #180),
   `linux/` (launcher, `.desktop`, metainfo, `flatpak/`, `test/`), `linux/gnome-extension/umbra@aminechr54.github.io/` (#187).
   Linux app id: `io.github.aminechr54.Umbra` (the Windows AUMID stays `AmineChr54.Umbra`).
 - Every security invariant below applies **unchanged** on Linux and sandbox parity is a release blocker. If something can't be matched,

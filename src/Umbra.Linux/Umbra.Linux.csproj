@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Linux host (KDE Plasma 6, GNOME 46+): GTK4 + WebKitGTK 6 through GirCore. Epic #172. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
+    <AssemblyName>umbra</AssemblyName>
+    <RootNamespace>Umbra</RootNamespace>
+    <Description>Desktop widgets that live on your wallpaper.</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Umbra.Linux.Tests" />
+    <!-- GTK and WebKitGTK exist only on Linux; this tells the platform analyzer the whole host is Linux-only. -->
+    <AssemblyAttribute Include="System.Runtime.Versioning.SupportedOSPlatformAttribute">
+      <_Parameter1>linux</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Umbra.Core\Umbra.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The only bindings the Linux host uses (epic #172): GTK4 and WebKitGTK 6. They bring Gio, so D-Bus needs no package. -->
+    <PackageReference Include="GirCore.Gtk-4.0" Version="0.8.1" />
+    <PackageReference Include="GirCore.WebKit-6.0" Version="0.8.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\shared\**\*" LinkBase="shared" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\settings\**\*" LinkBase="settings" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

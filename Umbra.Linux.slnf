@@ -4,7 +4,9 @@
     "projects": [
       "src/Umbra.Core/Umbra.Core.csproj",
       "src/Umbra.Cli/Umbra.Cli.csproj",
-      "tests/Umbra.Core.Tests/Umbra.Core.Tests.csproj"
+      "src/Umbra.Linux/Umbra.Linux.csproj",
+      "tests/Umbra.Core.Tests/Umbra.Core.Tests.csproj",
+      "tests/Umbra.Linux.Tests/Umbra.Linux.Tests.csproj"
     ]
   }
 }
