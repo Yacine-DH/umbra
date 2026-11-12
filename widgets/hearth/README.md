@@ -44,9 +44,10 @@ Once paired, the header has three small tabs between the name and the gear: **Us
 Click one (or use the arrow keys on a focused tab) to switch; each copy remembers the tab you left it on. The **Opens on**
 option picks the tab a copy starts with, and changing it moves the copy to that tab.
 
-Sizes: a new Hearth starts tall (340 x 540), so all three tabs have room. You can also shrink it in edit mode to a small strip
-(about 300 x 120) that suits Us; the Board then says "Make this widget bigger to draw". On the strip the Tap button sits at
-the right of the header, as its heart. Copies installed before 1.8.0 keep their size.
+Sizes: a new Hearth starts as a small strip (300 x 120), which suits Us. For the Board and the Pet, make it taller in edit
+mode, up to three times the strip's height (360; the Board says "Make this widget bigger to draw" until you do). It goes
+down to half the strip (60 high), and the text size follows the width, so a tall Hearth isn't zoomed.
+On the strip the Tap button sits at the right of the header, as its heart.
 
 You can still add more copies (Settings > My widgets > **Add another copy**), for example a small Us strip and a big Board
 side by side. All copies on a PC share one pairing: a new copy that has no pairing shows **Use this PC's pairing**, and the
@@ -129,7 +130,7 @@ A new relay starts empty, so a self-hosted hearth cannot reuse a pairing made on
 - **Outfit choice is not synced.** The relay has no outfit field, so the pet outfit you pick is saved on your PC only;
   your partner sees their own choice. Outfits unlock by pet level and by days together.
 - **Pet "day" is a UTC day.** The daily bond resets at midnight UTC, which can be an odd hour of the day where you live.
-- **Board and Pet need a tall widget.** A new Hearth starts tall; a copy you shrank to the strip (or one from before 1.8.0) needs resizing by hand, and the Board cannot draw on the strip.
+- **Board and Pet need a taller widget** than the default strip: resize it by hand (see above). The Board cannot draw on the strip.
 - **Board details.** The relay has no eraser, so the eraser paints in the paper colour and uses up strokes like any other
   drawing. The relay's palette is 16 colours and 8 brush sizes. Strokes not yet acknowledged when you close the widget
   are lost. The gallery keeps your newest 6 pictures, and **every picture you save is also written as a PNG to

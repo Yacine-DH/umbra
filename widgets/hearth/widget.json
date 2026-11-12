@@ -4,15 +4,15 @@
   "name": "Hearth",
   "description": "A cozy shared space for two people on two PCs. Pair once with a code, then switch between Us, a shared drawing Board and a Pet with the tabs at the top. Needs the Umbra relay, which stores your names, dates, drawings and pet state (deleted 7 days after unpairing or after 30 days unused) and never your location.",
   "author": "Yacine-DH",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "category": "social",
   "manifestVersion": 1,
-  "changelog": "Us, Board and Pet are now tabs at the top of the widget, so one Hearth does it all. Every picture you save from the Board is also kept in Pictures > Umbra > Hearth (change the folder in Settings > My widgets).",
+  "changelog": "You can make Hearth small again: it resizes from a thin strip up to tall, with the tabs at the top. A new Hearth starts as the strip; drag its corner in edit mode to make room for the Board and the Pet.",
   "entry": "index.html",
   "preview": "preview.png",
   "icon": "icon.png",
-  "width": 340,
-  "height": 540,
+  "width": 300,
+  "height": 120,
   "themeable": false,
   "defaultPosition": { "x": 24, "y": 24 },
   "permissions": {
@@ -30,7 +30,7 @@
         { "value": "board", "label": "Board" },
         { "value": "pet", "label": "Pet" }
       ],
-      "hint": "Switch any time with the Us, Board and Pet tabs at the top of the widget. Shrink it to a strip if you only want Us. Extra copies of Hearth share one pairing."
+      "hint": "Switch any time with the Us, Board and Pet tabs at the top of the widget. Make it taller in edit mode for the Board and the Pet. Extra copies of Hearth share one pairing."
     }
   }
 }

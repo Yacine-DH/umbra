@@ -869,8 +869,10 @@ test("manifest: id, one declared host, notifications, the view option, a preview
   assert.equal(v.default, "overview");
   assert.deepEqual(v.choices.map((c) => c.value), ["overview", "board", "pet"]);
   assert.deepEqual(Object.keys(manifest.options), ["view"]);
-  assert.equal(manifest.width, 340); // tall enough for all three tabs (Us, Board, Pet)
-  assert.equal(manifest.height, 540);
+  // The base size is the strip: Umbra resizes from 50 % to 300 % of it and zooms by the smaller stretch, so a small base
+  // lets the user go from a thin strip to a tall card. A tall base (1.8.0: 340 x 540) blocked shrinking below 270 px.
+  assert.equal(manifest.width, 300);
+  assert.equal(manifest.height, 120);
   assert.equal(manifest.preview, "preview.png");
   assert.ok(existsSync(new URL("../../widgets/hearth/preview.png", import.meta.url)));
 });
