@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Umbra
+GenericName=Desktop widgets
+Comment=Small web widgets that live on your wallpaper
+Exec=umbra
+Icon=io.github.aminechr54.Umbra
+Terminal=false
+Categories=Utility;GTK;
+Keywords=widgets;desktop;clock;weather;notes;
+StartupNotify=false
+SingleMainWindow=true
