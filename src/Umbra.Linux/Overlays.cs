@@ -24,6 +24,7 @@ abstract class OverlayWindow
     /// <summary>Call from the subclass constructor once the content is set.</summary>
     protected void Finish()
     {
+        App.Pin.Init(Window, overlay: true);
         ((Gtk.Widget)Window).Realize();
         App.Pin.Prepare(Window, overlay: true);
         Window.OnMap += (_, _) => { App.Pin.Mapped(Window, overlay: true); App.Pin.Move(Window, X, Y); };

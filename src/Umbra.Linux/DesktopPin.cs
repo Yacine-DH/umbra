@@ -8,8 +8,14 @@ namespace Umbra;
 /// </summary>
 interface IDesktopPin
 {
-    /// <summary>Short name for the log and <c>umbractl status</c>: "x11" or "none".</summary>
+    /// <summary>Short name for the log and <c>umbractl status</c>: "layer-shell", "x11" or "none".</summary>
     string Name { get; }
+
+    /// <summary>
+    /// Call once per window before it is realized: a backend that turns the window into another kind of surface (layer-shell)
+    /// has to do it before GTK creates the surface. <paramref name="overlay"/> as for <see cref="Prepare"/>.
+    /// </summary>
+    void Init(Gtk.Window window, bool overlay = false) { }
 
     /// <summary>
     /// Call once per window after it was realized and before it is shown. <paramref name="overlay"/> is for the host's own
@@ -42,7 +48,7 @@ interface IDesktopPin
 /// <summary>The pointer as the display server reports it (logical pixels).</summary>
 readonly record struct PointerState(Point At, bool ButtonDown, bool Shift, bool Ctrl);
 
-/// <summary>No pinning: plain windows the compositor places (a Wayland session without a native backend and without XWayland).</summary>
+/// <summary>No pinning: plain windows the compositor places (a Wayland session without layer-shell and without XWayland).</summary>
 sealed class NoPin : IDesktopPin
 {
     public string Name => "none";

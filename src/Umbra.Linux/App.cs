@@ -76,9 +76,9 @@ sealed class App : IUmbraHost
         if (!WebHost.SandboxAvailable)
             Log.Write($"Sandbox extension missing ({WebHost.ExtensionDir}): no widget is opened. Error: this build is incomplete.");
         _autostart = LinuxAutostart.Create(Environment.GetEnvironmentVariable, File.Exists, AppPaths.ExePath, AppPaths.IsPortable, portal: null);
-        Pin = X11Pin.TryCreate() ?? (IDesktopPin)new NoPin();
+        Pin = LayerShellPin.TryCreate() ?? X11Pin.TryCreate() ?? (IDesktopPin)new NoPin();
         Log.Write($"Umbra started, {Manifests.Count} widget(s) found, desktop pinning: {Pin.Name}");
-        if (Pin is NoPin) Log.Write("Widgets are plain windows on this session: native Wayland pinning is not available yet (#186, #187) and no X server was found.");
+        if (Pin is NoPin) Log.Write("Widgets are plain windows on this session: this compositor has no layer-shell (GNOME: #187) and no X server was found.");
 
         // Umbra is dark everywhere: the Settings title bar and the host dialogs follow the dark variant of the GTK theme.
         if (Gtk.Settings.GetDefault() is { } gtkSettings) gtkSettings.GtkApplicationPreferDarkTheme = true;

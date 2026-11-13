@@ -65,6 +65,7 @@ sealed class SettingsWindow : ISettingsView
             _window.SetDecorated(false);
             _window.SetOpacity(0.01);
             _window.SetCanFocus(false);
+            _app.Pin.Init(_window);
             ((Gtk.Widget)_window).Realize();
             _app.Pin.Prepare(_window);
             _window.OnMap += (_, _) => _app.Pin.Mapped(_window);

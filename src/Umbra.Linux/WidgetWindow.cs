@@ -65,6 +65,7 @@ sealed partial class WidgetWindow : IWidgetView
         _window.OnCloseRequest += (_, _) => { MarkClosed(); return false; };
         InitInput();
         ApplySize();
+        _app.Pin.Init(_window);
         // Realize now, so the pin backend can mark the window (type, state, position) before it is first shown.
         ((Gtk.Widget)_window).Realize(); // the widget's realize (creates the surface), not Gtk.Native's
         _app.Pin.Prepare(_window);
