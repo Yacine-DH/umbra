@@ -95,7 +95,7 @@
 
         <div class="hint">
           <span class="ico" data-icon="info"></span>
-          <span class="hint-grow">Umbra lives in the tray. Close this window and your widgets keep running; click the tray icon to come back.</span>
+          <span class="hint-grow" id="homeHint">Umbra lives in the tray. Close this window and your widgets keep running; click the tray icon to come back.</span>
           <button class="btn small ghost" id="homeTour" type="button">Take the tour</button>
         </div>
       </section>
@@ -296,7 +296,7 @@
       <section class="page" data-page="hotkeys">
         <header class="page-head">
           <h1>Hotkeys</h1>
-          <p>System-wide shortcuts that work while any app has focus. Click a shortcut, then press the keys (at least one of Ctrl, Alt or Win). Esc cancels, Backspace turns it off.</p>
+          <p id="hotkeysIntro">System-wide shortcuts that work while any app has focus. Click a shortcut, then press the keys (at least one of Ctrl, Alt or Win). Esc cancels, Backspace turns it off.</p>
         </header>
         <div class="group" id="hotkeyList"></div>
         <p><button class="btn" id="hotkeyReset">Reset all</button></p>

@@ -10,6 +10,7 @@
 #   UMBRA_DATA_DIR   the throwaway profile          UMBRA_PID     the host's process id
 #   UMBRACTL         "dotnet <umbractl.dll>"        UMBRA_OPENED  file listing the URLs "opened in the browser"
 # Its exit code is the script's; when it fails, the end of umbra.log and of the host's output are printed.
+# Umbra starts with --background (no Settings window) unless UMBRA_ARGS says otherwise (UMBRA_ARGS= for a plain start).
 # UMBRA_KEEP=1 keeps the profile folder (its path is printed) for a closer look. Needs: xvfb, openbox, dbus (dbus-run-session), a built src/Umbra.Linux and src/Umbra.Cli.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
@@ -52,7 +53,7 @@ unset WAYLAND_DISPLAY
 xvfb-run -a -s "-screen 0 1920x1080x24" dbus-run-session -- bash -c '
   openbox >/dev/null 2>&1 &
   sleep 0.5
-  "$UMBRA_BIN" > "$UMBRA_DATA_DIR/stdout.txt" 2>&1 &
+  "$UMBRA_BIN" ${UMBRA_ARGS---background} > "$UMBRA_DATA_DIR/stdout.txt" 2>&1 &
   export UMBRA_PID=$!
   sleep "$UMBRA_WAIT"
   "$@"

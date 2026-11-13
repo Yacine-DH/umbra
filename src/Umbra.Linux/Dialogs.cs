@@ -1,0 +1,170 @@
+namespace Umbra;
+
+/// <summary>
+/// Host-drawn GTK dialogs for the Settings window (the Linux <c>HostDialog</c>, <c>PackageInstall</c> boxes and file pickers).
+/// They are native windows on the UI thread, never HTML: a page can ask for one, but only the user's click answers it.
+/// Only one is open at a time, so nothing can stack prompts on the user.
+/// </summary>
+static class Dialogs
+{
+    static bool _open;
+
+    /// <summary>Widget-controlled text for a dialog: control characters removed, at most <paramref name="max"/> characters.</summary>
+    public static string Clean(string? s, int max)
+    {
+        var t = new string((s ?? "").Where(c => !char.IsControl(c)).ToArray()).Trim();
+        return t.Length > max ? t[..max] + "..." : t;
+    }
+
+    /// <summary>A Yes/No box. True only when the user picked <paramref name="yes"/>; Esc, the close box and No are false. No is the default.</summary>
+    public static async Task<bool> ConfirmAsync(Gtk.Window? parent, string message, string? detail = null, string yes = "Yes", string no = "Cancel")
+    {
+        if (_open) { Log.Write("A host dialog is already open; request ignored"); return false; }
+        _open = true;
+        try
+        {
+            var dlg = Gtk.AlertDialog.NewWithProperties([]);
+            dlg.SetMessage(message);
+            if (!string.IsNullOrEmpty(detail)) dlg.SetDetail(detail);
+            dlg.SetButtons([no, yes]);
+            dlg.SetCancelButton(0);
+            dlg.SetDefaultButton(0);
+            dlg.SetModal(true);
+            return await dlg.ChooseAsync(parent!) == 1;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { return false; } // dismissed
+        finally { _open = false; }
+    }
+
+    /// <summary>"Todo 1.3 wants new access: ..." with the list and the changelog. Cancel is the default button.</summary>
+    public static Task<bool> ConfirmNewAccessAsync(Gtk.Window? parent, Community.PendingInstall p, string? source = null)
+    {
+        var name = Clean(p.Manifest.Name, 60);
+        var detail = string.Join('\n', p.Added.Describe().Select(l => "• " + Clean(l, 200)))
+            + (source is null ? "" : $"\n\nFrom: {Clean(source, 200)}")
+            + (WidgetManifest.SanitizeChangelog(p.Manifest.Changelog) is { } cl ? "\n\nWhat's new: " + cl : "")
+            + (p.IsUpdate ? "\n\nUpdate and allow this?" : "\n\nInstall and allow this?");
+        return ConfirmAsync(parent, $"{name} {Clean(p.Manifest.Version, 30)} wants {(p.IsUpdate ? "new " : "")}access:", detail,
+            p.IsUpdate ? "Update" : "Install", "Cancel");
+    }
+
+    /// <summary>The review text for a widget that asks for no access (same wording as Windows).</summary>
+    public static string PlainReview(Community.PendingInstall p, string source) =>
+        $"{(p.IsUpdate ? "Replace the installed" : "Install")} {Clean(p.Manifest.Name, 60)} {Clean(p.Manifest.Version, 30)}"
+        + (p.Manifest.Author.Length > 0 ? $" by {Clean(p.Manifest.Author, 60)}" : "")
+        + $"?\n\nFrom {Clean(source, 200)}. It asks for no access to websites, system info, media, notifications or commands.";
+
+    /// <summary>A small host-drawn box asking for an https:// address. Returns the checked address, or null (cancelled, or a bad address, which is explained).</summary>
+    public static async Task<string?> AskUrlAsync(Gtk.Window? parent)
+    {
+        if (_open) return null;
+        _open = true;
+        string? url = null;
+        try
+        {
+            var tcs = new TaskCompletionSource<bool>();
+            var win = Gtk.Window.New();
+            win.SetTitle("Install a widget from a web address");
+            win.SetModal(true);
+            win.SetResizable(false);
+            if (parent is not null) win.SetTransientFor(parent);
+            win.SetDefaultSize(520, -1);
+            var box = Gtk.Box.New(Gtk.Orientation.Vertical, 10);
+            box.SetMarginTop(16); box.SetMarginBottom(16); box.SetMarginStart(16); box.SetMarginEnd(16);
+            var label = Gtk.Label.New("Address of a .umbrawidget (or .zip) file, https:// only:");
+            label.SetXalign(0);
+            var entry = Gtk.Entry.New();
+            entry.SetHexpand(true);
+            var buttons = Gtk.Box.New(Gtk.Orientation.Horizontal, 8);
+            buttons.SetHalign(Gtk.Align.End);
+            var cancel = Gtk.Button.NewWithLabel("Cancel");
+            var ok = Gtk.Button.NewWithLabel("Download and review");
+            ok.AddCssClass("suggested-action");
+            buttons.Append(cancel);
+            buttons.Append(ok);
+            box.Append(label);
+            box.Append(entry);
+            box.Append(buttons);
+            win.SetChild(box);
+            cancel.OnClicked += (_, _) => { tcs.TrySetResult(false); win.Destroy(); };
+            ok.OnClicked += (_, _) => { url = entry.GetText().Trim(); tcs.TrySetResult(true); win.Destroy(); };
+            entry.OnActivate += (_, _) => { url = entry.GetText().Trim(); tcs.TrySetResult(true); win.Destroy(); };
+            win.OnCloseRequest += (_, _) => { tcs.TrySetResult(false); return false; };
+            var keys = Gtk.EventControllerKey.New();
+            keys.OnKeyPressed += (_, e) =>
+            {
+                if (e.Keyval != 0xff1b /* Escape */) return false;
+                tcs.TrySetResult(false); win.Destroy(); return true;
+            };
+            win.AddController(keys);
+            win.Present();
+            if (!await tcs.Task) return null;
+        }
+        finally { _open = false; }
+        if (string.IsNullOrEmpty(url)) return null;
+        if (Community.CheckDownloadUrl(url) is { } bad) { await InfoAsync(parent, bad); return null; }
+        return url;
+    }
+
+    /// <summary>A message with only an OK button.</summary>
+    public static async Task InfoAsync(Gtk.Window? parent, string message)
+    {
+        try
+        {
+            var dlg = Gtk.AlertDialog.NewWithProperties([]);
+            dlg.SetMessage(message);
+            dlg.SetButtons(["OK"]);
+            dlg.SetModal(true);
+            await dlg.ChooseAsync(parent!);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { }
+    }
+
+    /// <summary>The GTK file chooser (the desktop portal's under Flatpak). Null when cancelled.</summary>
+    public static async Task<string?> OpenFileAsync(Gtk.Window? parent, string title, string? filterName = null, string[]? patterns = null, string? initialFolder = null)
+    {
+        var dlg = NewFileDialog(title, filterName, patterns, initialFolder);
+        try { return (await dlg.OpenAsync(parent!))?.GetPath(); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { return null; }
+    }
+
+    /// <summary>The GTK folder chooser. Null when cancelled.</summary>
+    public static async Task<string?> PickFolderAsync(Gtk.Window? parent, string title, string? initialFolder = null)
+    {
+        var dlg = NewFileDialog(title, null, null, initialFolder);
+        try { return (await dlg.SelectFolderAsync(parent!))?.GetPath(); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { return null; }
+    }
+
+    /// <summary>The GTK save dialog. Null when cancelled.</summary>
+    public static async Task<string?> SaveFileAsync(Gtk.Window? parent, string title, string initialName, string? filterName = null, string[]? patterns = null)
+    {
+        var dlg = NewFileDialog(title, filterName, patterns, null);
+        dlg.SetInitialName(initialName);
+        try { return (await dlg.SaveAsync(parent!))?.GetPath(); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { return null; }
+    }
+
+    static Gtk.FileDialog NewFileDialog(string title, string? filterName, string[]? patterns, string? initialFolder)
+    {
+        var dlg = Gtk.FileDialog.New();
+        dlg.SetTitle(title);
+        dlg.SetModal(true);
+        if (patterns is { Length: > 0 })
+        {
+            var filter = Gtk.FileFilter.New();
+            filter.SetName(filterName ?? title);
+            foreach (var p in patterns) filter.AddPattern(p);
+            var list = Gio.ListStore.New(Gtk.FileFilter.GetGType());
+            list.Append(filter);
+            var all = Gtk.FileFilter.New();
+            all.SetName("All files");
+            all.AddPattern("*");
+            list.Append(all);
+            dlg.SetFilters(list);
+            dlg.SetDefaultFilter(filter);
+        }
+        if (initialFolder is { Length: > 0 } && Directory.Exists(initialFolder)) dlg.SetInitialFolder(Gio.FileHelper.NewForPath(initialFolder));
+        return dlg;
+    }
+}

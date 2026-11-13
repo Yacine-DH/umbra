@@ -25,19 +25,24 @@ static partial class Program
     /// <summary>The GApplication id (also the .desktop, metainfo and Flatpak id). The Windows AUMID stays <c>AmineChr54.Umbra</c>.</summary>
     public const string AppId = Linux.DesktopEntry.AppId;
 
+    /// <summary>Passed by Settings > Restart: the new process waits for the old one to let go of the single-instance lock.</summary>
+    public const string RestartArg = "--restart";
+
     /// <summary>
     /// umbra              start (or, if already running, ask the running instance to open Settings)
     /// umbra --background start without opening Settings (the autostart entry uses it)
     /// umbra --safe       start with community widgets off (not saved; the next normal start restores them)
+    /// umbra --restart    started by Settings > Restart: waits for the old instance to exit, then starts without opening Settings
     /// Automation: umbractl / umbractl mcp talk to the running instance over the control socket (Protocol.cs).
     /// </summary>
     static int Main(string[] args)
     {
         var background = args.Contains("--background", StringComparer.OrdinalIgnoreCase);
         var safe = args.Contains("--safe", StringComparer.OrdinalIgnoreCase);
+        var restart = args.Contains(RestartArg, StringComparer.OrdinalIgnoreCase);
 
         // One Umbra per user and data folder: the same named mutex and per-user control socket as on Windows.
-        using var instance = new SingleInstance();
+        using var instance = new SingleInstance(waitForPrevious: restart);
         if (!instance.IsFirst)
         {
             if (safe)
@@ -67,8 +72,11 @@ static partial class Program
             if (app is not null) return;
             var ui = new UiThread();
             SynchronizationContext.SetSynchronizationContext(ui);
+            var firstRun = !File.Exists(Path.Combine(AppPaths.DataDir, "settings.json"));
             app = new App(gtk, ui, safe);
             app.SaveSettings();
+            // No tray yet (#191): a normal start (the app menu, a second launch) opens Settings; autostart and restart stay quiet.
+            if (!background && !restart) app.OpenSettingsOnStart(firstRun);
             gtk.Hold(); // widgets are plain windows, not application windows: keep the loop alive until Quit
             instance.Listen(new Control(app).HandleLineAsync);
         };

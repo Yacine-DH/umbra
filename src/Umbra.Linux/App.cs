@@ -37,7 +37,9 @@ sealed class App : IUmbraHost
     public bool WidgetsHidden { get; private set; }
     public bool HiddenByFullscreen => false;
     public bool Peeking => false;
-    public bool SettingsOpen => false;
+    public bool SettingsOpen => _settings is { IsClosed: false };
+
+    SettingsWindow? _settings;
 
     public App(Gtk.Application gtk, UiThread ui, bool safe)
     {
@@ -56,6 +58,8 @@ sealed class App : IUmbraHost
         Log.Write($"Umbra started, {Manifests.Count} widget(s) found, desktop pinning: {Pin.Name}");
         if (Pin is NoPin) Log.Write("Widgets are plain windows on this session: native Wayland pinning is not available yet (#186, #187) and no X server was found.");
 
+        // Umbra is dark everywhere: the Settings title bar and the host dialogs follow the dark variant of the GTK theme.
+        if (Gtk.Settings.GetDefault() is { } gtkSettings) gtkSettings.GtkApplicationPreferDarkTheme = true;
         var css = Gtk.CssProvider.New();
         css.LoadFromString("window.umbra-widget { background: transparent; }\n" + OverlayWindow.Css);
         if (Gdk.Display.GetDefault() is { } display)
@@ -128,11 +132,25 @@ sealed class App : IUmbraHost
     public WidgetWindow? Window(string instance) => _windows.GetValueOrDefault(instance);
     public IEnumerable<WidgetWindow> OpenWindows => _windows.Values;
 
-    /// <summary>No Settings window yet (#184): automation gets the plain message, and so does the log.</summary>
+    /// <summary>
+    /// Opens (or brings forward) the Settings window. <paramref name="background"/> is for captures: when Settings isn't open,
+    /// a hidden window is made just for the capture (the caller closes it); an open window is captured as it is.
+    /// </summary>
     public ISettingsView ShowSettings(bool background = false)
     {
-        NotYet("The Settings window", 184);
-        throw new Control.CommandException(NoSettingsView.Why);
+        if (_settings is { IsClosed: false } open)
+        {
+            if (!background) open.Present();
+            return open;
+        }
+        var win = new SettingsWindow(this, _gtk, background);
+        if (!background)
+        {
+            _settings = win;
+            win.Closed += () => { if (_settings == win) _settings = null; };
+        }
+        win.Present();
+        return win;
     }
 
     /// <summary>The manifest and instance id for a widget id or an instance id ("sp500#2"), or null when unknown.</summary>
@@ -189,7 +207,101 @@ sealed class App : IUmbraHost
         }
     }
 
-    public void SettingsChangedElsewhere() { } // the Settings window and tray re-render here once they exist (#184, #191)
+    /// <summary>Something changed outside the Settings window (umbractl, the edit pill, a script): it re-renders. The tray is #191.</summary>
+    public void SettingsChangedElsewhere() => _settings?.RefreshState();
+
+    /// <summary>Settings on a normal start; the first run also shows the welcome tour once.</summary>
+    public void OpenSettingsOnStart(bool firstRun)
+    {
+        var win = ShowSettings();
+        if (!firstRun || Settings.General.TourDone) return;
+        Settings.General.TourDone = true;
+        SaveSettings();
+        _ = win.ShowPageAsync("welcome").ContinueWith(t => Log.Write($"Welcome tour failed: {t.Exception?.GetBaseException().Message}"),
+            TaskContinuationOptions.OnlyOnFaulted);
+    }
+
+    /// <summary>Whether some copy of the widget has a window (it is on, and not held back by safe mode).</summary>
+    public bool HasOpenWindow(string widgetId) => _windows.Values.Any(w => w.Manifest.Id == widgetId);
+
+    /// <summary>The user saved or deleted a script: tell every open copy of that widget (umbra.onCommandsChange).</summary>
+    public void CommandsChanged(string widgetId)
+    {
+        foreach (var w in _windows.Values) if (w.Manifest.Id == widgetId) w.NotifyCommandsChanged();
+    }
+
+    bool HandScaledRecently(string instance) =>
+        _handScaledAt.TryGetValue(instance, out var t) && Environment.TickCount64 - t < 2000;
+
+    /// <summary>A save from the Settings page: everything the page owns, while positions, groups, hotkeys and the lock stay the host's.</summary>
+    public void ApplySettings(Settings incoming)
+    {
+        foreach (var id in incoming.Widgets.Keys.Where(k => InstanceId.IsExtra(k) && !Settings.Widgets.ContainsKey(k)).ToList())
+            incoming.Widgets.Remove(id);
+        foreach (var (id, cur) in Settings.Widgets)
+            if (!incoming.Widgets.ContainsKey(id) && InstanceId.IsExtra(id)) incoming.Widgets[id] = cur;
+        foreach (var (id, ws) in incoming.Widgets)
+            if (Settings.Widgets.TryGetValue(id, out var cur))
+            {
+                ws.X = cur.X; ws.Y = cur.Y; ws.Monitor = cur.Monitor; ws.RelX = cur.RelX; ws.RelY = cur.RelY;
+                if (HandScaledRecently(id)) { ws.Scale = cur.Scale; ws.Width = cur.Width; ws.Height = cur.Height; }
+            }
+        incoming.Groups = Settings.Groups;
+        incoming.Hotkeys = Settings.Hotkeys;
+        incoming.General.LastSeenVersion = Settings.General.LastSeenVersion;
+        incoming.General.TourDone = Settings.General.TourDone;
+        incoming.General.LockAll = Settings.General.LockAll;
+        incoming.SettingsPanel = Settings.SettingsPanel;
+        Prefs.FollowDefaultScale(incoming);
+        Settings = incoming;
+        SaveSettings();
+        SyncWindows();
+        foreach (var w in _windows.Values) w.PushSettings();
+        RefreshEditPills();
+    }
+
+    /// <summary>Undo of Settings > Remove: brings back the trashed widget with its data, options and position.</summary>
+    public WidgetManifest? RestoreWidget(string token)
+    {
+        string id;
+        try { id = WidgetTrash.Restore(Settings, token); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { throw new InvalidOperationException($"Could not restore the widget: {ex.Message}"); }
+        SaveSettings();
+        ReloadWidgets();
+        return Manifests.FirstOrDefault(m => m.Id == id);
+    }
+
+    /// <summary>Starts a fresh Umbra that waits for this one to exit, then quits. For settings that only apply on start.</summary>
+    public void Restart()
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo(AppPaths.ExePath) { UseShellExecute = false };
+            psi.ArgumentList.Add(Program.RestartArg);
+            using var p = System.Diagnostics.Process.Start(psi);
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"Restart failed: {ex.Message}");
+            return;
+        }
+        Log.Write("Restarting");
+        QuitSoon();
+    }
+
+    /// <summary>"Ubuntu 24.04.1 LTS, GNOME on x11": the system line of a bug report.</summary>
+    public static string SystemLine()
+    {
+        var os = System.Runtime.InteropServices.RuntimeInformation.OSDescription;
+        try
+        {
+            if (File.Exists("/etc/os-release"))
+                foreach (var line in File.ReadLines("/etc/os-release"))
+                    if (line.StartsWith("PRETTY_NAME=", StringComparison.Ordinal)) { os = line[12..].Trim('"'); break; }
+        }
+        catch (IOException) { }
+        return $"{os}, {Environment.GetEnvironmentVariable("XDG_CURRENT_DESKTOP") ?? "unknown desktop"} on {Environment.GetEnvironmentVariable("XDG_SESSION_TYPE") ?? "unknown"}";
+    }
 
     // ---------- edit mode: selection, pills, snap guides ----------
 
@@ -357,6 +469,7 @@ sealed class App : IUmbraHost
         foreach (var p in _pills) p.Close();
         foreach (var t in _tabStrips.Values) t.Close();
         _snapGuides?.Close();
+        _settings?.Close();
         _gtk.Quit();
     }
 
@@ -403,6 +516,7 @@ sealed class App : IUmbraHost
     public JsonArray LayoutsJson() => Layouts.ToJson(CurrentFingerprint());
     public void SaveLayout(string name) => Layouts.Capture(name, Settings, CurrentFingerprint());
     public void RenameLayout(string name, string newName) => Layouts.Rename(name, newName);
+    public void PinLayout(string name, bool pinned) => Layouts.SetPin(name, pinned ? CurrentFingerprint() : null);
     public bool DeleteLayout(string name) => Layouts.Delete(name);
 
     public int ApplyLayout(string name)
@@ -558,16 +672,6 @@ sealed class App : IUmbraHost
         Settings = s;
         SaveSettings();
         SyncWindows();
-    }
-
-    /// <summary>Stands in for the Settings window until #184: every call fails with a clear message instead of a crash.</summary>
-    sealed class NoSettingsView : ISettingsView
-    {
-        public const string Why = "The Settings window is not available on Linux yet (#184)";
-        // CommandException: reported to the caller as the plain message, without a stack trace in the log.
-        public Task ShowPageAsync(string page) => Task.FromException(new Control.CommandException(Why));
-        public Task<byte[]> CaptureAsync(string page) => Task.FromException<byte[]>(new Control.CommandException(Why));
-        public void Close() { }
     }
 }
 

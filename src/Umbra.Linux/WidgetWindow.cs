@@ -408,6 +408,12 @@ sealed partial class WidgetWindow : IWidgetView
         if (_ready) Post(new JsonObject { ["type"] = "settings", ["settings"] = SettingsPayload() });
     }
 
+    /// <summary>The user saved or deleted one of this widget's scripts in Settings (umbra.onCommandsChange).</summary>
+    public void NotifyCommandsChanged()
+    {
+        if (_ready) Post(new JsonObject { ["type"] = "commandsChanged" });
+    }
+
     public void RefreshData()
     {
         if (_ready) Post(new JsonObject { ["type"] = "refresh" });
