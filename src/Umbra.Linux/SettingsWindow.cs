@@ -730,7 +730,7 @@ sealed class SettingsWindow : ISettingsView
                 ["autostart"] = !AppPaths.IsPortable,
                 ["updates"] = "notify",
                 ["accent"] = Prefs.SystemAccent is not null,
-                ["energySaver"] = false,
+                ["energySaver"] = true,
                 ["runAsAdmin"] = false,
                 ["camera"] = false,
                 ["fullscreen"] = false,

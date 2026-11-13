@@ -567,16 +567,30 @@ sealed partial class WidgetWindow : IWidgetView
         await File.WriteAllBytesAsync(Path.Combine(dir, $"{InstanceId.FileName(Instance)}.png"), png);
     }
 
+    bool Saver => _app.Session.EnergySaver && _app.Settings.General.SlowOnEnergySaver;
+
+    /// <summary>The system clock or time zone changed: the SDK runs the page's onTimeChanged handlers, or its refresh handlers when it has none.</summary>
+    public void NotifyTimeChanged()
+    {
+        if (_ready) Post(TimeChange.Message());
+    }
+
+    /// <summary>Pausing or the power profile changed: tell the page without touching the window (unlike <see cref="PushSettings"/>).</summary>
+    public void PushPower()
+    {
+        if (_ready) Post(new JsonObject { ["type"] = "settings", ["settings"] = SettingsPayload() });
+    }
+
     JsonObject SettingsPayload()
     {
         var ws = Ws;
         var general = _app.Settings.General;
         return new JsonObject
         {
-            // Pausing and Energy Saver come with the power backend (#193).
-            ["refreshSeconds"] = Prefs.EffectiveRefresh(ws, general),
-            ["paused"] = false,
-            ["energySaver"] = false,
+            // Stretched 4x while the power-saver profile is on and the user allows it (the Windows Energy Saver policy).
+            ["refreshSeconds"] = Prefs.EffectiveRefresh(ws, general) * (Saver ? 4 : 1),
+            ["paused"] = _app.Session.Paused,
+            ["energySaver"] = Saver,
             ["animations"] = Prefs.MotionOn(general),
             ["appearanceCss"] = Manifest.Themeable ? Prefs.AppearanceCss(general) : "",
             ["themeCss"] = Manifest.Themeable ? _app.ThemeCss : "",

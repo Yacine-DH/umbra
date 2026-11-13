@@ -24,6 +24,9 @@ sealed class App : IUmbraHost
 
     public IUpdater Updater { get; } = new LinuxUpdater();
 
+    /// <summary>Sleep/resume, lock, power profile, clock and accent from the desktop session (#193).</summary>
+    public LinuxSession Session { get; private set; } = null!;
+
     // ---------- notifications (#189) ----------
 
     readonly Notifier _notifier = new();
@@ -88,6 +91,12 @@ sealed class App : IUmbraHost
         if (Gdk.Display.GetDefault() is { } iconDisplay)
             Gtk.IconTheme.GetForDisplay(iconDisplay).AddSearchPath(Path.Combine(AppPaths.AppDir, "icons"));
         _tray = LinuxTray.TryStart(_ui, TrayItems, () => ShowSettings());
+        Session = new LinuxSession(_ui);
+        Session.PowerChanged += () => { foreach (var w in _windows.Values) w.PushPower(); };
+        Session.RefreshNeeded += reason => { Log.Write($"Refreshing widgets after {reason}"); foreach (var w in _windows.Values) w.RefreshData(); };
+        Session.TimeChanged += () => { foreach (var w in _windows.Values) w.NotifyTimeChanged(); };
+        Session.AccentChanged += () => { PushAll(); SettingsChangedElsewhere(); };
+        Session.Start();
         SyncWindows();
         if (EditMode) _ui.Post(_ => UpdateEditPills(), null); // left unlocked last time: show the Done pill again
         UiThread.Every(250, () => { TickGroups(); return true; });
