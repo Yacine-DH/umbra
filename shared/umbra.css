@@ -1,7 +1,7 @@
 /* Umbra design tokens - shared by every widget and the Settings panel.
    Surfaces are true black: on OLED those pixels are off, so widgets melt into a dark wallpaper. */
 /* Inter (SIL OFL 1.1, fonts/Inter-LICENSE.txt), bundled for systems without Segoe UI (Linux). It comes after the Segoe names,
-   so on Windows it is never used or even downloaded. An installed Inter is used first. */
+   so Windows keeps Segoe (Inter is fetched there only for a character Segoe lacks). An installed Inter is used first. */
 @font-face {
   font-family: "Inter";
   font-style: normal;

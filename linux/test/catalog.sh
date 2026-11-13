@@ -7,7 +7,7 @@ set -u
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 # Widgets whose "platforms" leaves out linux (#194) are skipped by the host, so they're not expected to load.
-linux_ok() { node -e 'const p=require(process.argv[1]).platforms; process.exit(!p || p.includes("linux") ? 0 : 1)' "$1/widget.json"; }
+linux_ok() { python3 -c 'import json,sys; p=json.load(open(sys.argv[1])).get("platforms"); sys.exit(0 if not p or "linux" in p else 1)' "$1/widget.json"; }
 
 if [ "${UMBRA_PID:-}" = "" ]; then
   args=()
