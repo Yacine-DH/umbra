@@ -376,12 +376,14 @@ sheet.addEventListener("keydown", (e) => {
 });
 
 // ---------- emoji menu ----------
+// Win + . opens the emoji panel only on Windows; elsewhere the hint would point at nothing.
+const ON_WINDOWS = /win/i.test(navigator.userAgentData?.platform || navigator.platform || "");
 
 function openEmojiMenu() {
   emojiMenu.innerHTML = `
     <div class="emoji-grid">${EMOJI.map((e) => `<button type="button" data-emoji="${e}">${e}</button>`).join("")}</div>
     <div class="emoji-foot">
-      <input class="field small" id="emoji-other" maxlength="16" placeholder="Other (Win + .)" spellcheck="false" aria-label="Any emoji">
+      <input class="field small" id="emoji-other" maxlength="16" placeholder="${ON_WINDOWS ? "Other (Win + .)" : "Other emoji"}" spellcheck="false" aria-label="Any emoji">
       <button type="button" class="btn small" data-emoji="">No icon</button>
     </div>`;
   emojiMenu.hidden = false;

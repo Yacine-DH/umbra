@@ -6,17 +6,19 @@
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
+# Widgets whose "platforms" leaves out linux (#194) are skipped by the host, so they're not expected to load.
+linux_ok() { node -e 'const p=require(process.argv[1]).platforms; process.exit(!p || p.includes("linux") ? 0 : 1)' "$1/widget.json"; }
 
 if [ "${UMBRA_PID:-}" = "" ]; then
   args=()
-  for d in "$repo"/widgets/*/; do [ -f "$d/widget.json" ] && args+=(-w "${d%/}"); done
+  for d in "$repo"/widgets/*/; do [ -f "$d/widget.json" ] && linux_ok "$d" && args+=(-w "${d%/}"); done
   json=$(mktemp); printf '{"general":{"logLevel":"verbose"}}' > "$json"
   UMBRA_WEB_CONSOLE=1 "$here/headless.sh" "${args[@]}" -j "$json" -s 2 -- "$0"; code=$?
   rm -f "$json"; exit $code
 fi
 
 # ----- inside the session -----
-ids=$(for d in "$repo"/widgets/*/; do [ -f "$d/widget.json" ] && basename "$d"; done)
+ids=$(for d in "$repo"/widgets/*/; do [ -f "$d/widget.json" ] && linux_ok "$d" && basename "$d"; done)
 total=$(echo "$ids" | wc -l)
 for _ in $(seq 1 60); do
   [ "$(grep -c '\] ready$' "$UMBRA_DATA_DIR/umbra.log")" -ge "$total" ] && break
