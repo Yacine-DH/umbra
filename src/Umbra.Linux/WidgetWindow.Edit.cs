@@ -72,6 +72,9 @@ sealed partial class WidgetWindow
         };
     }
 
+    /// <summary>Any physical mouse press on this widget in the last 2 s (the media controls' gate, as on Windows).</summary>
+    bool RecentUserPress() => Environment.TickCount64 - _pressedAt is >= 0 and <= 2000;
+
     /// <summary>A physical left click on this widget in the last 2 s, outside edit mode: the only thing that may open a host prompt.</summary>
     bool RecentLeftClick() => !_app.EditMode && Environment.TickCount64 - _leftPressAt is >= 0 and <= 2000;
 

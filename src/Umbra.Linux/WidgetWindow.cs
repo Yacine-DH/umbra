@@ -278,6 +278,10 @@ sealed partial class WidgetWindow : IWidgetView
                     await HandleRequestNotifications(msg);
                     break;
 
+                case "media":
+                    await HandleMedia(msg);
+                    break;
+
                 case "commands":
                     // permissions.commands on Linux is #194: no command is offered until then.
                     Post(new JsonObject { ["type"] = "commandsResult", ["id"] = msg["id"]?.DeepClone(), ["ok"] = true, ["data"] = new JsonArray() });
@@ -364,6 +368,40 @@ sealed partial class WidgetWindow : IWidgetView
     {
         if (!Alive || !Ws.Enabled || !Manifest.Permissions.Notifications) return;
         Post(new JsonObject { ["type"] = "notificationAction", ["action"] = action, ["tag"] = tag });
+    }
+
+    /// <summary>umbra.media: "get" needs permissions.media "read"; "control" needs "control" and a physical press on the widget just now.</summary>
+    async Task HandleMedia(JsonNode msg)
+    {
+        var reply = new JsonObject { ["type"] = "mediaResult", ["id"] = msg["id"]?.DeepClone() };
+        try
+        {
+            var media = Manifest.Permissions.Media;
+            if (!(Alive && Ws.Enabled)) throw new WidgetCommandException("The widget is disabled");
+            var action = msg["action"] is JsonValue a && a.GetValueKind() == System.Text.Json.JsonValueKind.String ? a.GetValue<string>() : null;
+            if (action == "get")
+            {
+                if (!media.Contains("read")) throw new WidgetCommandException("This widget has no permissions.media \"read\"");
+                reply["data"] = await LinuxMedia.NowPlayingAsync();
+            }
+            else if (action == "control")
+            {
+                if (!media.Contains("control")) throw new WidgetCommandException("This widget has no permissions.media \"control\"");
+                var cmd = msg["command"] is JsonValue c && c.GetValueKind() == System.Text.Json.JsonValueKind.String ? c.GetValue<string>() : null;
+                if (!MediaService.IsCommand(cmd)) throw new WidgetCommandException("Unknown media command");
+                if (!RecentUserPress()) throw new WidgetCommandException("Click the widget first: media controls need a physical click");
+                reply["data"] = await LinuxMedia.ControlAsync(cmd!);
+            }
+            else throw new WidgetCommandException("Unknown media action");
+            reply["ok"] = true;
+        }
+        catch (Exception ex)
+        {
+            reply["ok"] = false;
+            reply["error"] = ex is WidgetCommandException ? ex.Message : "Media is not available";
+            if (ex is not WidgetCommandException) Log.Write($"[{Manifest.Id}] media failed: {ex.Message}");
+        }
+        Post(reply);
     }
 
     /// <summary>Requests that expect an answer get a clean failure, so a widget's promise settles instead of hanging.</summary>
