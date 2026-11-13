@@ -614,17 +614,7 @@ sealed class SettingsWindow : ISettingsView
         await SendCatalog(refetch: false);
     }
 
-    /// <summary>Opens a folder (or file) in the user's file manager. Fixed argv, no shell.</summary>
-    static void OpenFolder(string path)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo("xdg-open") { UseShellExecute = false };
-            psi.ArgumentList.Add(path);
-            using var p = Process.Start(psi);
-        }
-        catch (Exception ex) { Log.Write($"Open {path} failed: {ex.Message}"); }
-    }
+    static void OpenFolder(string path) => App.OpenWithDesktop(path);
 
     async Task RunJob(string id, Func<Task> job, Func<string?>? undo = null)
     {
@@ -735,7 +725,7 @@ sealed class SettingsWindow : ISettingsView
             // What this host can do; settings.js hides or rewords what it can't (Windows sends none of this).
             ["capabilities"] = new JsonObject
             {
-                ["tray"] = false,
+                ["tray"] = _app.TrayShown,
                 ["hotkeys"] = false,
                 ["autostart"] = !AppPaths.IsPortable,
                 ["updates"] = "notify",

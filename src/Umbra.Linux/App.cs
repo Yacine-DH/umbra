@@ -66,6 +66,9 @@ sealed class App : IUmbraHost
             Gtk.StyleContext.AddProviderForDisplay(display, css, 600 /* GTK_STYLE_PROVIDER_PRIORITY_APPLICATION */);
 
         Commands.ServicesChanged += _ => _ui.Post(_ => SettingsChangedElsewhere(), null);
+        if (Gdk.Display.GetDefault() is { } iconDisplay)
+            Gtk.IconTheme.GetForDisplay(iconDisplay).AddSearchPath(Path.Combine(AppPaths.AppDir, "icons"));
+        _tray = LinuxTray.TryStart(_ui, TrayItems, () => ShowSettings());
         SyncWindows();
         if (EditMode) _ui.Post(_ => UpdateEditPills(), null); // left unlocked last time: show the Done pill again
         UiThread.Every(250, () => { TickGroups(); return true; });
@@ -162,7 +165,111 @@ sealed class App : IUmbraHost
         return Settings.Instances(m.Id).Contains(id) ? (m, id) : null;
     }
 
-    public void SaveSettings() { Prefs.Configure(Settings.General); Settings.Save(); }
+    public void SaveSettings()
+    {
+        Prefs.Configure(Settings.General);
+        Settings.Save();
+        RefreshTray();
+    }
+
+    // ---------- tray (#191) ----------
+
+    readonly LinuxTray? _tray;
+
+    /// <summary>True when a tray icon is shown (a StatusNotifierWatcher took it): Settings then talks about the tray.</summary>
+    public bool TrayShown => _tray?.Shown == true;
+
+    /// <summary>Rebuilds the tray menu and tooltip (coalesced to one rebuild per main-loop turn).</summary>
+    void RefreshTray()
+    {
+        if (_tray is null) return;
+        var on = _windows.Count;
+        _tray.SetStatus("Umbra - " + Tray.Tooltip(on, EditMode, SafeMode, Updater.Available is not null, Commands.RunningServices().Count),
+            Updater.Available is not null);
+        _tray.Invalidate();
+    }
+
+    /// <summary>The tray menu: the same items as the Windows tray (Settings, tour, Arrange, safe mode, layouts, widgets, refresh, data folder, restart, quit).</summary>
+    IEnumerable<TrayItem> TrayItems()
+    {
+        if (Updater.Available is { } up)
+        {
+            yield return new TrayItem { Label = $"Download Umbra v{up.Version}", Click = () => WebHost.OpenExternal(up.PageUrl) };
+            yield return TrayItem.Line();
+        }
+        var scripts = Commands.RunningServices();
+        if (scripts.Count > 0)
+        {
+            yield return new TrayItem
+            {
+                Label = scripts.Count == 1 ? "1 script running" : $"{scripts.Count} scripts running",
+                Children = scripts.Select(s => new TrayItem
+                {
+                    Label = $"Stop {Tray.MenuText(s.Title)} ({Tray.MenuText(Manifests.FirstOrDefault(x => x.Id == s.WidgetId)?.Name ?? s.WidgetId)})",
+                    Click = () => Commands.Stop(s.WidgetId, s.WidgetId, s.ScriptId),
+                }).ToList(),
+            };
+            yield return TrayItem.Line();
+        }
+        yield return new TrayItem { Label = "Settings...", Click = () => ShowSettings() };
+        yield return new TrayItem { Label = "Welcome tour", Click = () => _ = ShowSettings().ShowPageAsync("welcome") };
+        yield return new TrayItem { Label = "Arrange widgets (unlock)", Checked = EditMode, Click = () => SetEditMode(!EditMode) };
+        yield return new TrayItem { Label = "Hide widgets", Checked = WidgetsHidden, Click = ToggleHidden };
+        yield return new TrayItem { Label = "Safe mode (community widgets off)", Checked = SafeMode, Click = () => SetSafeMode(!SafeMode) };
+        var layouts = Layouts.Items.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
+            .Select(name => new TrayItem { Label = name, Click = () => ApplyLayout(name) }).ToList();
+        if (layouts.Count > 0) layouts.Add(TrayItem.Line());
+        layouts.Add(new TrayItem
+        {
+            Label = "Save current layout",
+            Click = () =>
+            {
+                var n = Layouts.Items.Count + 1;
+                while (Layouts.Items.ContainsKey($"Layout {n}")) n++;
+                try { SaveLayout($"Layout {n}"); SettingsChangedElsewhere(); } catch (Exception ex) { Log.Write($"Save layout failed: {ex.Message}"); }
+            },
+        });
+        yield return new TrayItem { Label = "Layouts", Children = layouts };
+        yield return TrayItem.Line();
+        foreach (var m in Manifests)
+            foreach (var inst in Settings.Instances(m.Id))
+            {
+                var ws = Settings.For(m, inst);
+                yield return new TrayItem
+                {
+                    Label = InstanceId.Label(m, inst),
+                    Checked = ws.Enabled,
+                    Click = () => { ws.Enabled = !ws.Enabled; SaveSettings(); SyncWindows(); SettingsChangedElsewhere(); },
+                };
+            }
+        yield return TrayItem.Line();
+        yield return new TrayItem { Label = "Refresh all", Click = () => { foreach (var w in _windows.Values) w.RefreshData(); } };
+        yield return new TrayItem { Label = "Open data folder", Click = () => OpenWithDesktop(AppPaths.DataDir) };
+        yield return new TrayItem { Label = "Restart Umbra", Click = Restart };
+        yield return new TrayItem { Label = "Quit", Click = Quit };
+    }
+
+    /// <summary>Shows or hides every widget (tray, and the toggle-widgets hotkey once #192 lands).</summary>
+    public void ToggleHidden()
+    {
+        WidgetsHidden = !WidgetsHidden;
+        foreach (var (inst, w) in _windows) w.Visible = WantVisible(inst);
+        RefreshEditPills();
+        RefreshTray();
+        SettingsChangedElsewhere();
+    }
+
+    /// <summary>Opens a folder or file with the desktop's default app. Fixed argv, no shell.</summary>
+    public static void OpenWithDesktop(string path)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("xdg-open") { UseShellExecute = false };
+            psi.ArgumentList.Add(path);
+            using var p = System.Diagnostics.Process.Start(psi);
+        }
+        catch (Exception ex) { Log.Write($"Open {path} failed: {ex.Message}"); }
+    }
 
     bool WantVisible(string inst) => !WidgetsHidden && Groups.IsShownTab(Settings, inst);
 
@@ -208,7 +315,11 @@ sealed class App : IUmbraHost
     }
 
     /// <summary>Something changed outside the Settings window (umbractl, the edit pill, a script): it re-renders. The tray is #191.</summary>
-    public void SettingsChangedElsewhere() => _settings?.RefreshState();
+    public void SettingsChangedElsewhere()
+    {
+        _settings?.RefreshState();
+        RefreshTray();
+    }
 
     /// <summary>Settings on a normal start; the first run also shows the welcome tour once.</summary>
     public void OpenSettingsOnStart(bool firstRun)
@@ -456,6 +567,7 @@ sealed class App : IUmbraHost
         SafeMode = on;
         Log.Write($"Safe mode {(on ? "on" : "off")}");
         SyncWindows();
+        SettingsChangedElsewhere();
     }
 
     public void Peek() => throw new Control.CommandException("Peek is not available on Linux yet (#183)");

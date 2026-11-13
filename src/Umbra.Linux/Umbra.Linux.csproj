@@ -36,6 +36,8 @@
   <ItemGroup>
     <Content Include="..\..\shared\**\*" LinkBase="shared" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\settings\**\*" LinkBase="settings" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- The app icon (hicolor theme): window icon, tray icon (and its attention variant), later the .desktop entry. -->
+    <Content Include="..\..\linux\icons\**\*" LinkBase="icons" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--
