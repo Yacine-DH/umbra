@@ -24,6 +24,25 @@ sealed class App : IUmbraHost
 
     public IUpdater Updater { get; } = new LinuxUpdater();
 
+    // ---------- notifications (#189) ----------
+
+    readonly Notifier _notifier = new();
+    LinuxNotifications? _notifications;
+
+    /// <summary>The click-gated "Allow notifications?" prompt state (umbra.requestNotifications).</summary>
+    public NotificationConsent NotificationConsent { get; } = new();
+
+    /// <summary>Shows a widget's notification unless its rate limit is used up (the other checks are done by the window).</summary>
+    public bool Notify(string instance, string widgetName, string title, string body, string? url, string? tag, IReadOnlyList<NotifyAction> actions)
+    {
+        if (!_notifier.TryAcquire(instance, DateTime.UtcNow)) return false;
+        Log.Write($"[{instance}] notify: {title}");
+        _notifications ??= new LinuxNotifications(DBus.Session, (inst, t, action) => Window(inst)?.NotificationAction(t, action));
+        _ = _notifications.ShowAsync(instance, widgetName, title, body, url, tag, actions)
+            .ContinueWith(t => Log.Write($"[{instance}] notification failed: {t.Exception?.GetBaseException().Message}"), TaskContinuationOptions.OnlyOnFaulted);
+        return true;
+    }
+
     /// <summary>How widget windows are tied to the desktop on this session (X11 hints, or nothing yet on native Wayland).</summary>
     public IDesktopPin Pin { get; }
 

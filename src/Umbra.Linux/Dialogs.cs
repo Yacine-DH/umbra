@@ -106,6 +106,65 @@ static class Dialogs
         return url;
     }
 
+    /// <summary>
+    /// The "Allow notifications?" prompt for a widget (the Linux <c>ApprovalDialog.AskNotifications</c>). Null when it closed
+    /// without an answer. Not now is the default and Esc.
+    /// </summary>
+    public static async Task<NotifyChoice?> AskNotificationsAsync(string widgetName)
+    {
+        if (_open) return null;
+        _open = true;
+        try
+        {
+            var tcs = new TaskCompletionSource<NotifyChoice?>();
+            var win = Gtk.Window.New();
+            win.SetTitle("Umbra");
+            win.SetResizable(false);
+            win.SetDefaultSize(420, -1);
+            var box = Gtk.Box.New(Gtk.Orientation.Vertical, 10);
+            box.SetMarginTop(18); box.SetMarginBottom(16); box.SetMarginStart(18); box.SetMarginEnd(18);
+            var heading = Gtk.Label.New($"Allow notifications from {Clean(widgetName, 60)}?");
+            heading.AddCssClass("title-4");
+            heading.SetXalign(0);
+            heading.SetWrap(true);
+            var detail = Gtk.Label.New("The widget can then show desktop notifications (at most 5 every 10 minutes). You can change this any time in Settings > My widgets.");
+            detail.SetXalign(0);
+            detail.SetWrap(true);
+            detail.SetMaxWidthChars(52);
+            var buttons = Gtk.Box.New(Gtk.Orientation.Horizontal, 8);
+            buttons.SetHalign(Gtk.Align.End);
+            buttons.SetMarginTop(6);
+            void Add(string label, NotifyChoice choice, bool primary = false)
+            {
+                var b = Gtk.Button.NewWithLabel(label);
+                if (primary) b.AddCssClass("suggested-action");
+                b.OnClicked += (_, _) => { tcs.TrySetResult(choice); win.Destroy(); };
+                buttons.Append(b);
+            }
+            Add("Don't ask again", NotifyChoice.Never);
+            Add("Not now", NotifyChoice.NotNow);
+            Add("Allow", NotifyChoice.Allow, primary: true);
+            box.Append(heading);
+            box.Append(detail);
+            box.Append(buttons);
+            win.SetChild(box);
+            win.OnCloseRequest += (_, _) => { tcs.TrySetResult(NotifyChoice.NotNow); return false; };
+            var keys = Gtk.EventControllerKey.New();
+            keys.OnKeyPressed += (_, e) =>
+            {
+                if (e.Keyval != 0xff1b /* Escape */) return false;
+                tcs.TrySetResult(NotifyChoice.NotNow); win.Destroy(); return true;
+            };
+            win.AddController(keys);
+            win.Present();
+            // Like Windows: no answer within 2 minutes counts as none, and the box goes away.
+            var answered = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromMinutes(2)));
+            if (answered != tcs.Task) { win.Destroy(); return null; }
+            return await tcs.Task;
+        }
+        finally { _open = false; }
+    }
+
     /// <summary>A message with only an OK button.</summary>
     public static async Task InfoAsync(Gtk.Window? parent, string message)
     {

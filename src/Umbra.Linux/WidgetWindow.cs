@@ -270,6 +270,14 @@ sealed partial class WidgetWindow : IWidgetView
                     HandleSystem(msg);
                     break;
 
+                case "notify":
+                    HandleNotify(msg);
+                    break;
+
+                case "requestNotifications":
+                    await HandleRequestNotifications(msg);
+                    break;
+
                 case "commands":
                     // permissions.commands on Linux is #194: no command is offered until then.
                     Post(new JsonObject { ["type"] = "commandsResult", ["id"] = msg["id"]?.DeepClone(), ["ok"] = true, ["data"] = new JsonArray() });
@@ -290,6 +298,72 @@ sealed partial class WidgetWindow : IWidgetView
         {
             Log.Write($"[{Instance}] message failed: {ex.Message}");
         }
+    }
+
+    /// <summary>umbra.notify: needs permissions.notifications, the user's switch for this widget, a url allowed by <c>AllowsUrl</c>, and stays within the rate limit.</summary>
+    void HandleNotify(JsonNode msg)
+    {
+        var reply = new JsonObject { ["type"] = "notifyResult", ["id"] = msg["id"]?.DeepClone() };
+        string? error = null;
+        static string? Str(JsonNode? n) => n is JsonValue v && v.GetValueKind() == System.Text.Json.JsonValueKind.String ? v.GetValue<string>() : null;
+        var title = Notifier.Clean(Str(msg["title"]), Notifier.MaxTitle);
+        var body = Notifier.Clean(Str(msg["body"]), Notifier.MaxBody);
+        var url = Str(msg["url"]);
+        var tag = Notifier.CleanTag(Str(msg["tag"]));
+        var actions = Notifier.ParseActions(msg["actions"], out var actionError);
+        if (!Manifest.Permissions.Notifications) error = "This widget has no permissions.notifications";
+        else if (!(Alive && Ws.Enabled) || !Prefs.EffectiveNotifications(Ws, _app.Settings.General)) error = "Notifications are off for this widget (Settings)";
+        else if (title.Length == 0) error = "A title is required";
+        else if (url is not null && !Manifest.AllowsUrl(url)) error = "url must be HTTPS on a host in permissions.hosts";
+        else if (actions is null) error = actionError;
+        else if (!_app.Notify(Instance, InstanceId.Label(Manifest, Instance), title, body, url, tag, actions)) error = "Rate limit reached (5 per 10 minutes)";
+        reply["ok"] = error is null;
+        if (error is not null) reply["error"] = error;
+        Post(reply);
+    }
+
+    /// <summary>
+    /// umbra.requestNotifications: answers whether this widget may notify, and when the user's switch is unset shows the
+    /// host-drawn prompt (a native GTK dialog), only right after a physical left click on the widget outside edit mode.
+    /// </summary>
+    async Task HandleRequestNotifications(JsonNode msg)
+    {
+        var reply = new JsonObject { ["type"] = "requestNotificationsResult", ["id"] = msg["id"]?.DeepClone() };
+        try
+        {
+            if (!(Alive && Ws.Enabled)) throw new NotifyConsentException("The widget is disabled");
+            var consent = _app.NotificationConsent;
+            var ask = consent.Begin(Manifest, Ws, _app.Settings.General, RecentLeftClick());
+            bool allowed;
+            if (ask == NotifyAsk.Prompt)
+            {
+                NotifyChoice? choice = null;
+                try { choice = await Dialogs.AskNotificationsAsync(Manifest.Name); }
+                finally { allowed = consent.End(_app.Settings, Manifest.Id, choice); }
+                Log.Write($"[{Instance}] notification prompt: {choice?.ToString() ?? "no answer"}");
+                if (choice is NotifyChoice.Allow or NotifyChoice.Never)
+                {
+                    _app.SaveSettings();
+                    _app.SettingsChangedElsewhere();
+                }
+            }
+            else allowed = ask == NotifyAsk.Allowed;
+            reply["ok"] = true;
+            reply["data"] = allowed;
+        }
+        catch (NotifyConsentException ex)
+        {
+            reply["ok"] = false;
+            reply["error"] = ex.Message;
+        }
+        Post(reply);
+    }
+
+    /// <summary>A button on one of this widget's notifications was clicked: tell the page (umbra.onNotificationAction).</summary>
+    public void NotificationAction(string? tag, string action)
+    {
+        if (!Alive || !Ws.Enabled || !Manifest.Permissions.Notifications) return;
+        Post(new JsonObject { ["type"] = "notificationAction", ["action"] = action, ["tag"] = tag });
     }
 
     /// <summary>Requests that expect an answer get a clean failure, so a widget's promise settles instead of hanging.</summary>

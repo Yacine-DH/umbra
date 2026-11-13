@@ -10,6 +10,7 @@ namespace Umbra;
 sealed partial class WidgetWindow
 {
     long _pressedAt = long.MinValue / 2;      // last physical mouse press on this view
+    long _leftPressAt = long.MinValue / 2;    // last physical left press outside edit mode (the prompts' click gate)
     long _ctrlScrollAt = long.MinValue / 2;   // last physical wheel turn on this view with Ctrl held
     long _escapeAt = long.MinValue / 2;       // last physical Esc press while this window had the focus
     readonly Dictionary<string, long> _arrowAt = new(); // last physical press of each arrow key
@@ -26,7 +27,12 @@ sealed partial class WidgetWindow
         var press = Gtk.GestureClick.New();
         press.SetButton(0);
         press.SetPropagationPhase(Gtk.PropagationPhase.Capture);
-        press.OnPressed += (_, _) => _pressedAt = Environment.TickCount64;
+        press.OnPressed += (g, _) =>
+        {
+            _pressedAt = Environment.TickCount64;
+            // The click gate of the host prompts (notifications, later camera and pictures): a left press outside edit mode.
+            if (g.GetCurrentButton() == 1 && !_app.EditMode) _leftPressAt = _pressedAt;
+        };
         _view.AddController(press);
 
         var scroll = Gtk.EventControllerScroll.New(Gtk.EventControllerScrollFlags.Vertical);
@@ -65,6 +71,9 @@ sealed partial class WidgetWindow
             if (e.Pspec.GetName() == "is-active" && !_window.IsActive && !_closed) _app.Pin.SetFocusable(_window, false);
         };
     }
+
+    /// <summary>A physical left click on this widget in the last 2 s, outside edit mode: the only thing that may open a host prompt.</summary>
+    bool RecentLeftClick() => !_app.EditMode && Environment.TickCount64 - _leftPressAt is >= 0 and <= 2000;
 
     /// <summary>A mouse button is physically down right now and GTK delivered its press to this view in the last few seconds.</summary>
     bool PressedOnThisWindow() =>
