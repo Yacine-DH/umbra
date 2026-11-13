@@ -46,8 +46,25 @@ public sealed class HotkeyTests
     public void Caps_lock_and_num_lock_do_not_change_the_match()
     {
         var mask = HotkeyRules.ControlMask | HotkeyRules.Mod1Mask;
-        foreach (var v in HotkeyRules.LockVariants) Assert.Equal(mask, HotkeyRules.CleanState(mask | v));
-        Assert.Equal(4, HotkeyRules.LockVariants.Distinct().Count());
+        foreach (var numLock in new uint[] { HotkeyRules.Mod2Mask, 32 /* Mod3 */ })
+        {
+            var variants = HotkeyRules.LockVariants(numLock);
+            Assert.Equal(4, variants.Distinct().Count());
+            foreach (var v in variants) Assert.Equal(mask, HotkeyRules.CleanState(mask | v));
+        }
+        Assert.Equal([0u, HotkeyRules.LockMask], HotkeyRules.LockVariants(0)); // no Num Lock on this keyboard: Caps Lock only
+    }
+
+    [Fact]
+    public void Num_lock_is_found_in_the_modifier_map_whatever_bit_it_is_on()
+    {
+        // 8 rows (Shift, Lock, Control, Mod1..Mod5) of 2 keycodes each; Num_Lock = keycode 77.
+        byte[] map = [50, 62, 66, 0, 37, 105, 64, 108, 0, 0, 77, 0, 133, 134, 92, 0];
+        Assert.Equal(32u, HotkeyRules.ModifierBit(map, 2, 77)); // Mod3
+        map[10] = 0; map[8] = 77;
+        Assert.Equal(HotkeyRules.Mod2Mask, HotkeyRules.ModifierBit(map, 2, 77));
+        Assert.Equal(0u, HotkeyRules.ModifierBit(map, 2, 200));
+        Assert.Equal(0u, HotkeyRules.ModifierBit(map, 2, 0));
     }
 
     [Theory]

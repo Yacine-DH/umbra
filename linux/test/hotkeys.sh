@@ -50,6 +50,16 @@ press ctrl+alt+shift+F9
 check 'and shows them again' '[ "$(hidden)" = false ]'
 xdotool windowfocus --sync "$app"
 
+# A keyboard layout change (MappingNotify): "e" moves to another key, and the grab follows it.
+if command -v xmodmap >/dev/null; then
+  xmodmap -e "keycode 26 = q Q" -e "keycode 24 = e E"; sleep 1
+  before=$(edit_mode)
+  press ctrl+alt+e
+  check "after a layout change Ctrl+Alt+E still works ($before -> $(edit_mode))" '[ "$(edit_mode)" != "$before" ]'
+  press ctrl+alt+e
+  xmodmap -e "keycode 24 = q Q" -e "keycode 26 = e E"; sleep 1
+else echo "skip  layout change (xmodmap is not installed)"; fi
+
 hk edit-mode off >/dev/null; sleep 0.3
 before=$(edit_mode)
 press ctrl+alt+e
@@ -112,6 +122,8 @@ check "Activated runs the action ($before -> $(edit_mode))" '[ "$(edit_mode)" !=
 $UMBRACTL edit-mode off >/dev/null
 hk toggle-widgets Ctrl+Alt+T >/dev/null; sleep 1
 check 'a change closes the old session and binds both in a new one' '[ "$(grep -c CreateSession "$portal")" = 2 ] && grep -q "\"Close\"" "$portal" && grep BindShortcuts "$portal" | tail -1 | grep -q toggle-widgets'
+hk toggle-widgets Ctrl+Alt+T >/dev/null; sleep 1
+check 'setting the same hotkey again does not bind again' '[ "$(grep -c CreateSession "$portal")" = 2 ]'
 echo cancel > "$portal.answer"; sleep 1
 check 'a cancelled dialog is reported' 'hk | field toggle-widgets | grep -q "Notconfirmed"'
 before=$(hidden)

@@ -609,7 +609,7 @@ sealed class App : IUmbraHost
         SettingsChangedElsewhere();
     }
 
-    public void Peek() => throw new Control.CommandException("Peek is not available on Linux yet (#183)");
+    public void Peek() => throw new Control.CommandException("Peek is not available on Linux yet (#361)");
 
     public void QuitSoon() => _ = Task.Delay(300).ContinueWith(_ => _ui.Post(_ => Quit(), null));
 
@@ -638,7 +638,7 @@ sealed class App : IUmbraHost
             case "edit-mode": SetEditMode(!EditMode); break;
             case "refresh-all": foreach (var w in _windows.Values) w.RefreshData(); break;
             case "toggle-widgets": ToggleHidden(); break;
-            case "peek": Log.Write("Peek is not available on Linux yet (#183)"); break;
+            case "peek": Log.Write("Peek is not available on Linux yet (#361)"); break;
             case "open-settings": ShowSettings(); break;
         }
     }

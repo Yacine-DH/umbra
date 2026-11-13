@@ -224,6 +224,8 @@ sealed class App : ApplicationContext, IUmbraHost
     public System.Text.Json.Nodes.JsonObject DescribeHotkeys() => new()
     {
         ["hotkeys"] = _hotkeys.Describe(Settings.Hotkeys),
+        ["backend"] = "win32",
+        ["supported"] = true,
         ["widgetsHidden"] = WidgetsHidden,
     };
 

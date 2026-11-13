@@ -32,10 +32,23 @@ static class HotkeyRules
         return portalVersion >= 1 ? HotkeyBackend.Portal : HotkeyBackend.None;
     }
 
-    public const uint ShiftMask = 1, LockMask = 2, ControlMask = 4, Mod1Mask = 8 /* Alt */, Mod2Mask = 16 /* NumLock */, Mod4Mask = 64 /* Super */;
+    public const uint ShiftMask = 1, LockMask = 2, ControlMask = 4, Mod1Mask = 8 /* Alt */, Mod2Mask = 16 /* NumLock on most layouts */, Mod4Mask = 64 /* Super */;
 
-    /// <summary>The modifier bits a grab ignores: Caps Lock and Num Lock (each grab is repeated for every combination of them).</summary>
-    public static readonly uint[] LockVariants = { 0, LockMask, Mod2Mask, LockMask | Mod2Mask };
+    /// <summary>
+    /// The modifier bit a key is mapped to in an X modifier map (XGetModifierMapping: 8 rows of <paramref name="perModifier"/>
+    /// keycodes, Shift..Mod5), or 0 when it is not a modifier. Used to find Num Lock instead of assuming Mod2.
+    /// </summary>
+    public static uint ModifierBit(ReadOnlySpan<byte> map, int perModifier, byte keycode)
+    {
+        if (keycode == 0 || perModifier <= 0) return 0;
+        for (var i = 0; i < Math.Min(map.Length, 8 * perModifier); i++)
+            if (map[i] == keycode) return 1u << (i / perModifier);
+        return 0;
+    }
+
+    /// <summary>The modifier combinations a grab is repeated for, so Caps Lock and Num Lock (bit <paramref name="numLock"/>, 0 when unmapped) don't matter.</summary>
+    public static uint[] LockVariants(uint numLock) =>
+        numLock == 0 || numLock == LockMask ? [0, LockMask] : [0, LockMask, numLock, LockMask | numLock];
 
     // Hotkey's virtual keys for the named keys, and their X keysym names.
     static readonly Dictionary<uint, string> NamedKeysyms = new()

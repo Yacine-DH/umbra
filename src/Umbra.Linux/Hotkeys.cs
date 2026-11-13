@@ -42,8 +42,18 @@ sealed class LinuxHotkeys : IDisposable
             : $"Global hotkeys: {HotkeyRules.Name(Backend)}{(portal > 0 ? $" (GlobalShortcuts portal v{portal})" : "")}");
     }
 
-    /// <summary>Drops every registration and registers the given combinations.</summary>
-    public void Apply(IReadOnlyDictionary<string, string> map) => _impl?.Apply(map);
+    Dictionary<string, string>? _applied;
+
+    /// <summary>
+    /// Drops every registration and registers the given combinations. An unchanged map is skipped: on the portal a re-bind closes
+    /// the session and can ask the user again.
+    /// </summary>
+    public void Apply(IReadOnlyDictionary<string, string> map)
+    {
+        if (_applied is not null && _applied.Count == map.Count && !_applied.Except(map).Any()) return;
+        _applied = new Dictionary<string, string>(map);
+        _impl?.Apply(map);
+    }
 
     public JsonArray Describe(IReadOnlyDictionary<string, string> map) =>
         HotkeyRules.Describe(map, Backend, _impl?.States ?? new Dictionary<string, HotkeyRules.ActionState>());
@@ -66,7 +76,7 @@ sealed unsafe partial class X11Hotkeys : IHotkeyBackend
 {
     const string X11 = "libX11.so.6";
     const string GLibLib = "libglib-2.0.so.0";
-    const int KeyPress = 2, KeyRelease = 3, GrabModeAsync = 1, BadAccess = 10;
+    const int KeyPress = 2, KeyRelease = 3, MappingNotify = 34, GrabModeAsync = 1, BadAccess = 10;
 
     [LibraryImport(X11)] private static partial IntPtr XOpenDisplay(IntPtr name);
     [LibraryImport(X11)] private static partial int XCloseDisplay(IntPtr dpy);
@@ -81,6 +91,13 @@ sealed unsafe partial class X11Hotkeys : IHotkeyBackend
     [LibraryImport(X11)] private static partial int XNextEvent(IntPtr dpy, XKeyEvent* ev);
     [LibraryImport(X11)] private static partial IntPtr XSetErrorHandler(IntPtr handler);
     [LibraryImport(X11)] private static partial int XkbSetDetectableAutoRepeat(IntPtr dpy, int detectable, out int supported);
+    [LibraryImport(X11)] private static partial XModifierKeymap* XGetModifierMapping(IntPtr dpy);
+    [LibraryImport(X11)] private static partial int XFreeModifiermap(XModifierKeymap* map);
+    [LibraryImport(X11)] private static partial int XRefreshKeyboardMapping(XKeyEvent* ev);
+
+#pragma warning disable CS0649 // filled in by Xlib
+    struct XModifierKeymap { public int MaxKeyPerMod; public byte* ModifierMap; }
+#pragma warning restore CS0649
     [LibraryImport(GLibLib)] private static partial uint g_unix_fd_add(int fd, int condition, delegate* unmanaged<int, int, IntPtr, int> func, IntPtr data);
     [LibraryImport(GLibLib)] private static partial int g_source_remove(uint id);
 
@@ -100,6 +117,9 @@ sealed unsafe partial class X11Hotkeys : IHotkeyBackend
     readonly uint _source;
     GCHandle _self;
     readonly Dictionary<(uint Keycode, uint Mask), string> _grabs = new();
+    uint[] _variants = HotkeyRules.LockVariants(HotkeyRules.Mod2Mask);
+    IReadOnlyDictionary<string, string> _map = new Dictionary<string, string>();
+    bool _remapPosted;
     readonly HashSet<uint> _down = new();
     readonly Dictionary<string, HotkeyRules.ActionState> _states = new();
     public IReadOnlyDictionary<string, HotkeyRules.ActionState> States => _states;
@@ -135,15 +155,30 @@ sealed unsafe partial class X11Hotkeys : IHotkeyBackend
     void UngrabAll()
     {
         foreach (var (keycode, mask) in _grabs.Keys)
-            foreach (var v in HotkeyRules.LockVariants) XUngrabKey(_dpy, (int)keycode, mask | v, _root);
+            foreach (var v in _variants) XUngrabKey(_dpy, (int)keycode, mask | v, _root);
         _grabs.Clear();
         _down.Clear();
         XSync(_dpy, 0);
     }
 
+    /// <summary>The bit Num Lock is on in the current modifier map (Mod2 on most layouts), 0 when it has none.</summary>
+    uint NumLockBit()
+    {
+        var map = XGetModifierMapping(_dpy);
+        if (map == null) return HotkeyRules.Mod2Mask;
+        try
+        {
+            var per = map->MaxKeyPerMod;
+            return HotkeyRules.ModifierBit(new ReadOnlySpan<byte>(map->ModifierMap, 8 * per), per, XKeysymToKeycode(_dpy, XStringToKeysym("Num_Lock")));
+        }
+        finally { XFreeModifiermap(map); }
+    }
+
     public void Apply(IReadOnlyDictionary<string, string> map)
     {
         UngrabAll();
+        _map = map;
+        _variants = HotkeyRules.LockVariants(NumLockBit());
         _states.Clear();
         var problems = Hotkey.Validate(map);
         foreach (var (action, keys) in map)
@@ -156,11 +191,11 @@ sealed unsafe partial class X11Hotkeys : IHotkeyBackend
             // without disturbing GTK's own handler, which is back in place before the main loop runs again.
             _lastError = 0;
             var previous = XSetErrorHandler((IntPtr)(delegate* unmanaged<IntPtr, IntPtr, int>)&OnError);
-            foreach (var v in HotkeyRules.LockVariants)
+            foreach (var v in _variants)
                 XGrabKey(_dpy, keycode, grab.Mask | v, _root, 0, GrabModeAsync, GrabModeAsync);
             XSync(_dpy, 0);
             var error = _lastError;
-            if (error != 0) foreach (var v in HotkeyRules.LockVariants) XUngrabKey(_dpy, keycode, grab.Mask | v, _root);
+            if (error != 0) foreach (var v in _variants) XUngrabKey(_dpy, keycode, grab.Mask | v, _root);
             XSync(_dpy, 0);
             XSetErrorHandler(previous);
             if (error != 0) { Fail(action, error == BadAccess ? $"{norm} is already in use by another app" : $"The X server refused {norm} (error {error})"); continue; }
@@ -190,6 +225,18 @@ sealed unsafe partial class X11Hotkeys : IHotkeyBackend
         while (XPending(_dpy) > 0)
         {
             XNextEvent(_dpy, &ev);
+            if (ev.Type == MappingNotify)
+            {
+                // The keyboard layout or modifier map changed: keycodes and the Num Lock bit may differ now, so grab again
+                // (after this callback, since Apply drains events itself).
+                XRefreshKeyboardMapping(&ev);
+                if (!_remapPosted)
+                {
+                    _remapPosted = true;
+                    _ui.Post(_ => { _remapPosted = false; Log.Verbose("Keyboard mapping changed: hotkeys grabbed again"); Apply(_map); }, null);
+                }
+                continue;
+            }
             if (ev.Type == KeyRelease) { _down.Remove(ev.Keycode); continue; }
             if (ev.Type != KeyPress || !_down.Add(ev.Keycode)) continue; // held down: auto-repeat, run once
             // Run after this X callback returns: an action can open windows and spin the main loop.
@@ -218,6 +265,7 @@ sealed class PortalHotkeys : IHotkeyBackend
 
     readonly Action<string> _run;
     readonly Action _changed;
+    readonly SynchronizationContext _ui = SynchronizationContext.Current ?? new SynchronizationContext();
     readonly IntPtr _bus = DBus.Session;
     readonly Dictionary<string, HotkeyRules.ActionState> _states = new();
     string? _session;
@@ -254,14 +302,17 @@ sealed class PortalHotkeys : IHotkeyBackend
             using var session = v[0];
             using var id = v[1];
             // Only this session's shortcuts, and only those the desktop reported as bound.
-            if (session.Str == _session && _states.TryGetValue(id.Str, out var s) && s.Status == "active") _run(id.Str);
+            var action = id.Str;
+            if (session.Str == _session && _states.TryGetValue(action, out var s) && s.Status == "active") _ui.Post(_ => _run(action), null);
         });
         DBus.Subscribe(_bus, Dest, Iface, "ShortcutsChanged", ObjPath, (_, v) =>
         {
             using var session = v[0];
             if (session.Str != _session) return;
             using var list = v[1];
-            foreach (var (id, trigger) in Shortcuts(list)) if (_states.ContainsKey(id)) _states[id] = Active(trigger);
+            var listed = Shortcuts(list).ToDictionary(s => s.Id, s => s.Trigger);
+            foreach (var id in _states.Keys.ToList())
+                _states[id] = listed.TryGetValue(id, out var trigger) ? Active(trigger) : new("failed", "Removed in your desktop's settings");
             _changed();
         });
     }
@@ -279,7 +330,7 @@ sealed class PortalHotkeys : IHotkeyBackend
         try
         {
             var created = await RequestAsync("CreateSession", t => $"({{'handle_token': <{V.Str(t)}>, 'session_handle_token': <{V.Str("umbra" + t)}>}},)");
-            if (gen != _generation) return;
+            if (gen != _generation) { Close(created.Session); return; } // a newer Apply took over: don't leave this one open
             if (created.Code != 0 || created.Session is null) { FailAll(shortcuts, "The desktop did not open a shortcuts session"); return; }
             _session = created.Session;
             var list = string.Join(", ", shortcuts.Select(s =>
@@ -332,7 +383,7 @@ sealed class PortalHotkeys : IHotkeyBackend
         var token = $"u{Environment.ProcessId}_{++_tokens}";
         var path = HotkeyRules.RequestPath(DBus.UniqueName(_bus) ?? "", token);
         var tcs = new TaskCompletionSource<Response>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var sub = DBus.Subscribe(_bus, Dest, "org.freedesktop.portal.Request", "Response", path, (_, v) =>
+        void OnResponse(string _, DBus.Value v)
         {
             using var code = v[0];
             using var results = v[1];
@@ -340,10 +391,18 @@ sealed class PortalHotkeys : IHotkeyBackend
             var bound = new Dictionary<string, string?>();
             if (d.TryGetValue("shortcuts", out var list)) foreach (var (id, trigger) in Shortcuts(list)) bound[id] = trigger;
             tcs.TrySetResult(new(code.UInt, d.TryGetValue("session_handle", out var s) ? s.AsString : null, bound));
-        });
+        }
+        var sub = DBus.Subscribe(_bus, Dest, "org.freedesktop.portal.Request", "Response", path, OnResponse);
         try
         {
-            using (await DBus.CallAsync(_bus, Dest, ObjPath, Iface, method, args(token), 10000)) { }
+            using (var reply = await DBus.CallAsync(_bus, Dest, ObjPath, Iface, method, args(token), 10000))
+            using (var handle = reply[0])
+                if (handle.Str != path)
+                {
+                    // An older portal can pick its own path: follow the handle it returned (the spec's advice).
+                    DBus.Unsubscribe(_bus, sub);
+                    sub = DBus.Subscribe(_bus, Dest, "org.freedesktop.portal.Request", "Response", handle.Str, OnResponse);
+                }
             // The dialog waits for the user; a request nobody answers in 10 minutes is dropped.
             var done = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromMinutes(10)));
             return done == tcs.Task ? tcs.Task.Result : new Response(2, null, new());
@@ -353,9 +412,14 @@ sealed class PortalHotkeys : IHotkeyBackend
 
     void CloseSession()
     {
-        if (_session is null) return;
         var s = _session;
         _session = null;
+        Close(s);
+    }
+
+    void Close(string? s)
+    {
+        if (s is null) return;
         _ = DBus.CallAsync(_bus, Dest, s, "org.freedesktop.portal.Session", "Close").ContinueWith(t =>
         {
             if (t.IsFaulted) Log.Verbose($"Closing the shortcuts session failed: {t.Exception?.GetBaseException().Message}");
