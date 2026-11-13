@@ -22,7 +22,9 @@ sealed class App : IUmbraHost
     /// <summary>Runs widget-declared commands and the user's own scripts behind the approval gate (prompt: <see cref="Dialogs.AskCommandAsync"/>).</summary>
     public CommandService Commands { get; } = new(CommandApprovals.Shared, Dialogs.AskCommandAsync, scripts: UserScripts.Shared);
 
-    public IUpdater Updater { get; } = new LinuxUpdater();
+    /// <summary>The daily, notify-only update check (#197): Settings and the tray say when a newer release exists.</summary>
+    public IUpdater Updater => _updater;
+    readonly LinuxUpdater _updater;
 
     /// <summary>Sleep/resume, lock, power profile, clock and accent from the desktop session (#193).</summary>
     public LinuxSession Session { get; private set; } = null!;
@@ -71,6 +73,7 @@ sealed class App : IUmbraHost
         Settings = Settings.Load();
         try { WidgetTrash.Purge(); } catch (Exception ex) { Log.Write($"Trash purge failed: {ex.Message}"); }
         Prefs.Configure(Settings.General);
+        _updater = LinuxUpdater.Create(() => Settings.General.CheckForUpdates, () => _ui.Post(_ => SettingsChangedElsewhere(), null));
         Manifests = WidgetManifest.DiscoverAll();
         WebHost.Manifests = () => Manifests;
         if (!WebHost.SandboxAvailable)
@@ -97,6 +100,7 @@ sealed class App : IUmbraHost
         Session.TimeChanged += () => { foreach (var w in _windows.Values) w.NotifyTimeChanged(); };
         Session.AccentChanged += () => { PushAll(); SettingsChangedElsewhere(); };
         Session.Start();
+        _updater.Start();
         SyncWindows();
         if (EditMode) _ui.Post(_ => UpdateEditPills(), null); // left unlocked last time: show the Done pill again
         UiThread.Every(250, () => { TickGroups(); return true; });
@@ -820,12 +824,4 @@ sealed class App : IUmbraHost
         SaveSettings();
         SyncWindows();
     }
-}
-
-/// <summary>The update check on Linux: nothing yet. It will only ever notify (open the release page), never install (#197).</summary>
-sealed class LinuxUpdater : IUpdater
-{
-    public ReleaseInfo? Available => null;
-    public Task CheckAsync(bool manual, bool download = false) => Task.CompletedTask;
-    public JsonObject ToJson() => new() { ["current"] = AppInfo.Version, ["available"] = null, ["supported"] = false };
 }

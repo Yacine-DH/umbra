@@ -1,6 +1,8 @@
 # Builds the Umbra installer: dist\UmbraSetup-<version>.exe
 #   powershell -ExecutionPolicy Bypass -File build.ps1
 # Needs the .NET 10 SDK, Node and Inno Setup 6 (winget install JRSoftware.InnoSetup).
+# -Linux also builds the Linux tarballs in Docker (scripts/linux-package.ps1): dist\umbra-<version>-linux-<x64|arm64>.tar.gz + .sha256.
+param([switch]$Linux)
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $proj = Join-Path $root 'src\Umbra\Umbra.csproj'
@@ -65,3 +67,5 @@ Write-Host "Built $zip ($([math]::Round((Get-Item $zip).Length / 1MB, 1)) MB, $c
 
 $setup = Join-Path $root "dist\UmbraSetup-$version.exe"
 Write-Host "Built $setup ($([math]::Round((Get-Item $setup).Length / 1MB, 1)) MB)" -ForegroundColor Green
+
+if ($Linux) { & (Join-Path $root 'scripts\linux-package.ps1') }

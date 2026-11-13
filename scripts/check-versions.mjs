@@ -1,7 +1,7 @@
 // Fails when the app version differs between Directory.Build.props, the installer default and the winget manifests.
 // winget files may use the {{VERSION}} placeholder (filled by scripts/winget.ps1) or a literal that must match.
 //   node scripts/check-versions.mjs
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const root = join(import.meta.dirname, "..");
@@ -21,6 +21,14 @@ for (const f of readdirSync(join(root, "winget")).filter((n) => n.endsWith(".yam
   for (const m of text.matchAll(/(?:download\/v|UmbraSetup-|tag\/v)(\d[\w.]*)/g)) {
     if (m[1] !== props) errors.push(`winget/${f} hardcodes version ${m[1]}, expected ${props} or {{VERSION}}`);
   }
+}
+
+// The Linux AppStream metainfo (Flatpak/Flathub, #196): its newest <release> must be this version. The file doesn't exist
+// yet (TODO #196: the Flatpak half), so this only runs once it lands; release.mjs must then add the new <release> entry.
+const metainfo = "linux/io.github.aminechr54.Umbra.metainfo.xml";
+if (existsSync(join(root, metainfo))) {
+  const rel = /<release\b[^>]*\bversion="([^"]+)"/.exec(read(metainfo))?.[1];
+  if (rel !== props) errors.push(`${metainfo} newest <release> is ${rel ?? "missing"}, Directory.Build.props is ${props}`);
 }
 
 if (errors.length) { console.error("Version mismatch:\n  " + errors.join("\n  ")); process.exit(1); }

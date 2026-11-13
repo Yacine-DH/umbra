@@ -234,6 +234,7 @@ function renderUpdate() {
     : a ? `Umbra v${a.version} is available.`
     : u.error ? "Couldn't check for updates right now."
     : u.lastChecked ? "You're up to date."
+    : u.flatpak ? "Flatpak keeps Umbra up to date (flatpak update)."
     : u.enabled === false ? "Update checks are turned off in General."
     : u.supported === false ? "This version doesn't check for updates yet. New releases are on GitHub." : "Checking for updates...";
   $("#update").classList.toggle("has-update", !!a);

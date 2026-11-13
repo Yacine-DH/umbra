@@ -23,13 +23,19 @@ merge commit of the release PR), never from a hand-pushed tag.
 5. **Run CI on this PC** (`powershell -File scripts/ci-local.ps1 -Pr <N> -Status`), then merge the PR
    (`gh pr merge <N> --squash --delete-branch`; the `local-ci` status is the required check).
 6. **Build and publish on this PC.** GitHub Actions is off, so `release.yml` doesn't run. On the updated `main`:
-   `powershell -File build.ps1`, check the portable zip runs (unzip it to a temp folder, start `Umbra.exe --background`,
+   `powershell -File build.ps1 -Linux` (Docker Desktop must be running: `-Linux` runs `scripts/linux-package.ps1`, which builds
+   `dist/umbra-X.Y.Z-linux-x64.tar.gz` and `-arm64.tar.gz`, each with a `.sha256`, in an Ubuntu 24.04 container; arm64 runs
+   under QEMU and takes several minutes. Without Docker, drop `-Linux` and the Linux assets, or build them later on a Linux
+   machine with `linux/container-package.sh . dist x64` and `gh release upload`). Check the portable zip runs (unzip it to a temp folder, start `Umbra.exe --background`,
    `umbractl status` shows the version and `portable: true`, then `umbractl quit`), and create the release on the merge commit
    with the notes above `<!-- end of release notes -->`:
-   `gh release create vX.Y.Z dist/UmbraSetup-X.Y.Z.exe dist/Umbra-X.Y.Z-portable.zip --target <merge sha> --title "Umbra X.Y.Z" --notes-file <notes> --latest`.
-   The installer is unsigned (no signing secrets here).
-7. **Verify:** `gh release view vX.Y.Z --json assets -q ".assets[].name"` lists `UmbraSetup-X.Y.Z.exe` (about 90 MB) and
-   `Umbra-X.Y.Z-portable.zip`. For winget, fill the manifests from the *released* installer:
+   `gh release create vX.Y.Z dist/UmbraSetup-X.Y.Z.exe dist/Umbra-X.Y.Z-portable.zip dist/umbra-X.Y.Z-linux-x64.tar.gz dist/umbra-X.Y.Z-linux-x64.tar.gz.sha256 dist/umbra-X.Y.Z-linux-arm64.tar.gz dist/umbra-X.Y.Z-linux-arm64.tar.gz.sha256 --target <merge sha> --title "Umbra X.Y.Z" --notes-file <notes> --latest`.
+   The installer is unsigned (no signing secrets here). Linux copies only notify: once the release has their arch's tarball,
+   Settings > About and the tray say "Update available" and open the release page (`LinuxUpdater`); a release without the
+   tarballs is never announced to Linux. TODO(#196): the Flatpak bundle joins these assets once the manifest and metainfo exist
+   (then `check-versions.mjs` also checks the metainfo `<release>`, and `release.mjs` must add that entry).
+7. **Verify:** `gh release view vX.Y.Z --json assets -q ".assets[].name"` lists `UmbraSetup-X.Y.Z.exe` (about 90 MB),
+   `Umbra-X.Y.Z-portable.zip` and the two Linux tarballs with their `.sha256` (about 70 MB each). For winget, fill the manifests from the *released* installer:
    `gh release download vX.Y.Z -p UmbraSetup-X.Y.Z.exe -D <temp>`, then `powershell -File scripts/winget.ps1 -Installer <temp>/UmbraSetup-X.Y.Z.exe`
    (writes `dist/winget/X.Y.Z`; check with `winget validate --manifest`).
 

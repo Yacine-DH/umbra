@@ -242,4 +242,53 @@ public class UpdatesTests
         s.General.LastSeenVersion = "1.5.0";
         Assert.Equal("1.5.0", Settings.FromJson(s.ToJson()).General.LastSeenVersion);
     }
+
+    static string LinuxRelease(string tag = "v1.3.0", string name = "umbra-1.3.0-linux-x64.tar.gz", string? url = null,
+        string page = "https://github.com/AmineChr54/umbra/releases/tag/v1.3.0", bool draft = false, bool pre = false) =>
+        $$"""
+        { "tag_name": "{{tag}}", "draft": {{draft.ToString().ToLower()}}, "prerelease": {{pre.ToString().ToLower()}},
+          "html_url": "{{page}}", "body": "notes",
+          "assets": [ { "name": "UmbraSetup-1.3.0.exe", "browser_download_url": "https://github.com/AmineChr54/umbra/releases/download/{{tag}}/UmbraSetup-1.3.0.exe" },
+                      { "name": "{{name}}", "browser_download_url": "{{url ?? $"https://github.com/AmineChr54/umbra/releases/download/{tag}/{name}"}}" } ] }
+        """;
+
+    [Fact]
+    public void ParseLinuxNotice_needs_this_architectures_tarball()
+    {
+        var r = Updates.ParseLinuxNotice(LinuxRelease(), "x64")!;
+        Assert.Equal("1.3.0", r.Version);
+        Assert.Equal("umbra-1.3.0-linux-x64.tar.gz", r.AssetName);
+        Assert.Equal("https://github.com/AmineChr54/umbra/releases/tag/v1.3.0", r.PageUrl);
+        Assert.Null(Updates.ParseLinuxNotice(LinuxRelease(), "arm64")); // only the x64 tarball is published
+        Assert.Null(Updates.ParseLinuxNotice(LinuxRelease(), "riscv64"));
+        Assert.Null(Updates.ParseLinuxNotice(LinuxRelease(name: "umbra-1.3.0-linux-x64.zip"), "x64")); // Windows-only release
+        Assert.NotNull(Updates.ParseRelease(LinuxRelease())); // the Windows updater still sees its installer
+    }
+
+    [Fact]
+    public void ParseLinuxNotice_ignores_drafts_prereleases_and_foreign_downloads()
+    {
+        Assert.Null(Updates.ParseLinuxNotice(LinuxRelease(draft: true), "x64"));
+        Assert.Null(Updates.ParseLinuxNotice(LinuxRelease(pre: true), "x64"));
+        Assert.Null(Updates.ParseLinuxNotice(LinuxRelease(tag: "v1.3.0-rc1"), "x64"));
+        Assert.Null(Updates.ParseLinuxNotice(LinuxRelease(name: "umbra-1.4.0-linux-x64.tar.gz"), "x64")); // other version
+        Assert.Null(Updates.ParseLinuxNotice(LinuxRelease(url: "https://evil.example/AmineChr54/umbra/releases/download/v1.3.0/umbra-1.3.0-linux-x64.tar.gz"), "x64"));
+        Assert.Null(Updates.ParseLinuxNotice(LinuxRelease(url: "http://github.com/AmineChr54/umbra/releases/download/v1.3.0/umbra-1.3.0-linux-x64.tar.gz"), "x64"));
+        Assert.Null(Updates.ParseLinuxNotice("not json", "x64"));
+        Assert.Null(Updates.ParseLinuxNotice("""{ "tag_name": "v1.3.0", "assets": [] }""", "x64"));
+    }
+
+    [Fact]
+    public void ParseLinuxNotice_never_takes_the_page_from_the_feed()
+    {
+        var r = Updates.ParseLinuxNotice(LinuxRelease(page: "https://evil.example/phish"), "x64")!;
+        Assert.Equal(Updates.ReleasePageUrl("1.3.0"), r.PageUrl);
+    }
+
+    [Theory]
+    [InlineData(System.Runtime.InteropServices.Architecture.X64, "x64")]
+    [InlineData(System.Runtime.InteropServices.Architecture.Arm64, "arm64")]
+    [InlineData(System.Runtime.InteropServices.Architecture.X86, null)]
+    public void LinuxArch_names_the_published_tarballs(System.Runtime.InteropServices.Architecture a, string? expected) =>
+        Assert.Equal(expected, Updates.LinuxArch(a));
 }
