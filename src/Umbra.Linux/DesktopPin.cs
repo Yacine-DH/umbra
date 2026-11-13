@@ -41,6 +41,18 @@ interface IDesktopPin
     /// <summary>Moves the window so its top-left corner is at this point (logical pixels, like the GDK monitor rectangles).</summary>
     void Move(Gtk.Window window, int x, int y);
 
+    /// <summary>
+    /// <see cref="Move"/> during a drag: a backend that would have to remap the window to change its monitor (layer-shell)
+    /// leaves it on its monitor until the drag ends with a plain <see cref="Move"/>.
+    /// </summary>
+    void MoveLive(Gtk.Window window, int x, int y) => Move(window, x, y);
+
+    /// <summary>
+    /// True when a widget window that maps again may end up above the overlays (layer-shell: the stacking inside a layer is
+    /// up to the compositor), so the host shows the visible overlays again after it.
+    /// </summary>
+    bool RestacksOverlays => false;
+
     /// <summary>The usable area of the primary monitor (without panels), or null when the session does not say.</summary>
     Rectangle? PrimaryWorkArea();
 }

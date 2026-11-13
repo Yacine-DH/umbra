@@ -44,10 +44,14 @@ static class LayerShellLayout
     /// coordinates, like the GDK monitor rectangles): the monitor that holds the most of the window, else the one holding its
     /// top-left corner, else the nearest. Margins are from that output's corner (exclusive zone -1, so panels do not shift it)
     /// and never negative: a layer surface cannot sit partly on a neighbouring output.
+    /// <paramref name="keep"/> (during a drag) keeps the surface on that output, with margins that may be negative or past
+    /// its edge: binding another output remaps the surface, which would end the drag's pointer grab. The surface moves to
+    /// the new output on the next placement without it (the drag's end). A kept output that is gone is ignored.
     /// </summary>
-    public static (int Monitor, int Left, int Top) Place(Point at, Size size, IReadOnlyList<Rectangle> monitors)
+    public static (int Monitor, int Left, int Top) Place(Point at, Size size, IReadOnlyList<Rectangle> monitors, int? keep = null)
     {
         if (monitors.Count == 0) return (-1, Math.Max(0, at.X), Math.Max(0, at.Y));
+        if (keep is int k && k >= 0 && k < monitors.Count) return (k, at.X - monitors[k].X, at.Y - monitors[k].Y);
         var rect = new Rectangle(at, size);
         var best = -1;
         long bestArea = 0;
@@ -75,6 +79,29 @@ static class LayerShellLayout
         }
         return best;
     }
+}
+
+/// <summary>
+/// The keyboard focus a physical press lends a layer surface (keyboard mode ON_DEMAND) is taken back after
+/// <see cref="Milliseconds"/> unless the surface really got the focus by then. Otherwise a compositor that later falls
+/// back to it (the active window closed) would hand a widget the keyboard with no press. A newer press supersedes the
+/// timer of an older one.
+/// </summary>
+sealed class FocusLease
+{
+    /// <summary>How long a press keeps the surface focusable without it becoming active.</summary>
+    public const uint Milliseconds = 1500;
+
+    long _generation;
+
+    /// <summary>Starts a lease; returns the token its timer passes back to <see cref="ShouldRevoke"/>.</summary>
+    public long Lend() => ++_generation;
+
+    /// <summary>True when the timer of lease <paramref name="token"/> must set keyboard mode NONE again.</summary>
+    public bool ShouldRevoke(long token, bool active) => token == _generation && !active;
+
+    /// <summary>Ends every lease (the mode was set back to NONE).</summary>
+    public void End() => _generation++;
 }
 
 /// <summary>

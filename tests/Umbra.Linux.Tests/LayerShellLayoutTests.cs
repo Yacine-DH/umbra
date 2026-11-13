@@ -80,4 +80,37 @@ public sealed class LayerShellLayoutTests
         Assert.Equal(new Point(505, 505), latch.Resolve(2, 5, 5, new Point(500, 500)));
         Assert.Equal(new Point(9, 10), latch.Resolve(2, 5.9, 5.2, new Point(4, 5)));
     }
+
+    [Fact]
+    public void During_a_drag_the_surface_keeps_its_output()
+    {
+        // Dragged onto the side monitor: still bound to the main one, margins past its edge, nothing clamped.
+        Assert.Equal((0, 2020, 40), LayerShellLayout.Place(new Point(2020, 40), Size, [Main, Side], keep: 0));
+        Assert.Equal((1, -100, -5), LayerShellLayout.Place(new Point(1820, -5), Size, [Main, Side], keep: 1));
+        // The drag's end puts it on the monitor that holds it.
+        Assert.Equal((1, 100, 40), LayerShellLayout.Place(new Point(2020, 40), Size, [Main, Side]));
+        // A kept monitor that is gone (unplugged) falls back to the normal choice.
+        Assert.Equal((0, 150, 200), LayerShellLayout.Place(new Point(150, 200), Size, [Main], keep: 1));
+    }
+
+    [Fact]
+    public void A_lent_focus_is_taken_back_unless_the_surface_became_active()
+    {
+        var lease = new FocusLease();
+        var t = lease.Lend();
+        Assert.True(lease.ShouldRevoke(t, active: false));
+        Assert.False(lease.ShouldRevoke(t, active: true));
+    }
+
+    [Fact]
+    public void A_newer_press_or_an_ended_lease_supersedes_the_old_timer()
+    {
+        var lease = new FocusLease();
+        var first = lease.Lend();
+        var second = lease.Lend();
+        Assert.False(lease.ShouldRevoke(first, active: false));
+        Assert.True(lease.ShouldRevoke(second, active: false));
+        lease.End();
+        Assert.False(lease.ShouldRevoke(second, active: false));
+    }
 }

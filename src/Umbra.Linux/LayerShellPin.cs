@@ -24,6 +24,9 @@ sealed unsafe partial class LayerShellPin : IDesktopPin
     [LibraryImport(Lib)] private static partial void gtk_layer_set_margin(IntPtr window, int edge, int margin);
     [LibraryImport(Lib)] private static partial void gtk_layer_set_exclusive_zone(IntPtr window, int zone);
     [LibraryImport(Lib)] private static partial void gtk_layer_set_keyboard_mode(IntPtr window, int mode);
+    [LibraryImport(Lib)] private static partial uint gtk_layer_get_major_version();
+    [LibraryImport(Lib)] private static partial uint gtk_layer_get_minor_version();
+    [LibraryImport(Lib)] private static partial void gtk_layer_set_respect_close(IntPtr window, int respect);
 
     [LibraryImport(Gtk4)] private static partial nuint gdk_wayland_display_get_type();
     [LibraryImport(Gtk4)] private static partial int gdk_surface_get_device_position(IntPtr surface, IntPtr device, out double x, out double y, out uint mask);
@@ -38,7 +41,7 @@ sealed unsafe partial class LayerShellPin : IDesktopPin
 
     /// <summary>Where the host last put each surface (the real origin, after clamping to its monitor), by GdkSurface handle.</summary>
     readonly Dictionary<IntPtr, Point> _origins = new();
-    readonly Dictionary<IntPtr, int> _monitorOf = new();
+    readonly Dictionary<IntPtr, IntPtr> _monitorOf = new(); // window -> the GdkMonitor it is bound to
     readonly PointerLatch _latch = new();
 
     LayerShellPin() { }
@@ -85,7 +88,21 @@ sealed unsafe partial class LayerShellPin : IDesktopPin
         // rectangle the placement uses); nothing is reserved either.
         gtk_layer_set_exclusive_zone(w, -1);
         gtk_layer_set_keyboard_mode(w, KeyboardNone);
+        // The compositor closes a layer surface whose output went away (zwlr_layer_surface_v1.closed). Before 1.3
+        // gtk4-layer-shell turns that into close-request, which would close the widget on unplug; the host never closes
+        // its windows that way (it destroys them), so that request is refused. 1.3+ does not forward it by default.
+        if (RespectCloseAvailable) gtk_layer_set_respect_close(w, 0);
+        else window.OnCloseRequest += (_, _) => { Log.Write("A layer surface was closed by the compositor (output removed?); kept."); return true; };
         window.OnUnrealize += (_, _) => Forget(window);
+    }
+
+    /// <summary>gtk4-layer-shell 1.3 or newer: has <c>gtk_layer_set_respect_close</c> and does not forward <c>closed</c> by default.</summary>
+    static readonly bool RespectCloseAvailable = Version() is var (major, minor) && (major > 1 || (major == 1 && minor >= 3));
+
+    static (uint, uint) Version()
+    {
+        try { return (gtk_layer_get_major_version(), gtk_layer_get_minor_version()); }
+        catch (EntryPointNotFoundException) { return (0, 0); }
     }
 
     public void Prepare(Gtk.Window window, bool overlay = false) { }
@@ -108,18 +125,28 @@ sealed unsafe partial class LayerShellPin : IDesktopPin
         return list;
     }
 
-    public void Move(Gtk.Window window, int x, int y)
+    public void Move(Gtk.Window window, int x, int y) => Place(window, x, y, live: false);
+
+    /// <summary>During a drag only the margins change: binding another output remaps the surface and ends the pointer grab.</summary>
+    public void MoveLive(Gtk.Window window, int x, int y) => Place(window, x, y, live: true);
+
+    public bool RestacksOverlays => true;
+
+    void Place(Gtk.Window window, int x, int y, bool live)
     {
         var monitors = GdkMonitors();
         var rects = monitors.Select(m => { m.GetGeometry(out var g); return new Rectangle(g.X, g.Y, g.Width, g.Height); }).ToList();
         var size = new Size(Math.Max(1, window.GetWidth()), Math.Max(1, window.GetHeight()));
-        var (index, left, top) = LayerShellLayout.Place(new Point(x, y), size, rects);
         var w = H(window);
-        // Moving to another monitor rebinds the surface to that output; the margins are then from its corner.
-        if (index >= 0 && (!_monitorOf.TryGetValue(w, out var was) || was != index))
+        // The output is remembered as the GdkMonitor itself, not its index: after a hotplug an index can name another output.
+        var bound = _monitorOf.TryGetValue(w, out var was) ? monitors.FindIndex(m => m.Handle.DangerousGetHandle() == was) : -1;
+        var (index, left, top) = LayerShellLayout.Place(new Point(x, y), size, rects, live && bound >= 0 ? bound : null);
+        // Moving to another monitor binds the surface to that output (a remap); the margins are then from its corner.
+        if (index >= 0 && index != bound)
         {
-            gtk_layer_set_monitor(w, monitors[index].Handle.DangerousGetHandle());
-            _monitorOf[w] = index;
+            var handle = monitors[index].Handle.DangerousGetHandle();
+            _monitorOf[w] = handle;
+            gtk_layer_set_monitor(w, handle);
         }
         gtk_layer_set_margin(w, EdgeLeft, left);
         gtk_layer_set_margin(w, EdgeTop, top);
@@ -145,9 +172,33 @@ sealed unsafe partial class LayerShellPin : IDesktopPin
 
     /// <summary>
     /// NONE (never focused) or ON_DEMAND (the compositor may give it the keyboard on a click), only right after a physical
-    /// press. The edit code turns it back to NONE once the window loses the focus. Fine-tuning per compositor is #188.
+    /// press. The edit code turns it back to NONE once the window loses the focus; if the compositor never focused it,
+    /// the <see cref="FocusLease"/> timer does, so a later focus fallback cannot hand it the keyboard. More is #188.
     /// </summary>
-    public void SetFocusable(Gtk.Window window, bool on) => gtk_layer_set_keyboard_mode(H(window), on ? KeyboardOnDemand : KeyboardNone);
+    public void SetFocusable(Gtk.Window window, bool on)
+    {
+        var w = H(window);
+        if (!_leases.TryGetValue(w, out var lease)) _leases[w] = lease = new FocusLease();
+        if (!on)
+        {
+            lease.End();
+            gtk_layer_set_keyboard_mode(w, KeyboardNone);
+            return;
+        }
+        gtk_layer_set_keyboard_mode(w, KeyboardOnDemand);
+        var token = lease.Lend();
+        UiThread.Every(FocusLease.Milliseconds, () =>
+        {
+            if (_leases.TryGetValue(w, out var l) && l == lease && lease.ShouldRevoke(token, window.IsActive))
+            {
+                lease.End();
+                gtk_layer_set_keyboard_mode(w, KeyboardNone);
+            }
+            return false;
+        });
+    }
+
+    readonly Dictionary<IntPtr, FocusLease> _leases = new();
 
     /// <summary>A layer surface cannot ask for the focus; with ON_DEMAND the compositor gives it on the user's click.</summary>
     public void Focus(Gtk.Window window) { }
@@ -161,6 +212,7 @@ sealed unsafe partial class LayerShellPin : IDesktopPin
         var w = H(window);
         _monitorOf.Remove(w);
         _pending.Remove(w);
+        if (_leases.Remove(w, out var lease)) { lease.End(); gtk_layer_set_keyboard_mode(w, KeyboardNone); }
         if (SurfaceOf(window) is var s && s != IntPtr.Zero) _origins.Remove(s);
     }
 }

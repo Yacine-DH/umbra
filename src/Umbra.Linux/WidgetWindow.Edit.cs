@@ -200,7 +200,7 @@ sealed partial class WidgetWindow
             if (rect.X != Left || rect.Y != Top)
             {
                 Left = rect.X; Top = rect.Y;
-                _app.Pin.Move(_window, Left, Top);
+                _app.Pin.MoveLive(_window, Left, Top);
             }
             return true;
         });
@@ -212,6 +212,7 @@ sealed partial class WidgetWindow
         _app.ShowGuides([]);
         if (!Alive) return;
         WidgetPlacement.Remember(Ws, Bounds, _app.Monitors());
+        _app.Pin.Move(_window, Left, Top); // a backend that kept the monitor during the drag moves it to the new one now
         _app.SaveSettings();
         _app.RefreshEditPills();
         Log.Verbose($"[{Instance}] moved to {Left},{Top}");
