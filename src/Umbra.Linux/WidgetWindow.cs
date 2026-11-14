@@ -50,8 +50,8 @@ sealed partial class WidgetWindow : IWidgetView
 
         _view = WebHost.NewView(out var content, devTools: Prefs.DeveloperMode, sandbox: manifest, label: instance);
         _view.SetBackgroundColor(new Gdk.RGBA { Red = 0, Green = 0, Blue = 0, Alpha = 0 });
-        // The default WebKit menu (Back, Reload, Inspect) never shows; the host-drawn menu comes with edit mode (#183).
-        _view.OnContextMenu += (_, _) => true;
+        // The default WebKit menu (Back, Reload, Inspect) never shows; a real right press gets the host-drawn menu (#360).
+        _view.OnContextMenu += (_, _) => OnContextMenuRequested();
         _view.OnWebProcessTerminated += (_, e) => OnProcessFailed(e.Reason);
         content.RegisterScriptMessageHandler("umbra", null);
         content.OnScriptMessageReceived += (_, e) => OnMessage(e.Value.ToJson(0));
@@ -174,6 +174,7 @@ sealed partial class WidgetWindow : IWidgetView
     {
         if (_closed) return;
         MarkClosed();
+        CloseMenu();
         _window.Destroy();
     }
 

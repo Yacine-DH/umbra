@@ -853,6 +853,14 @@ sealed class SettingsWindow : ISettingsView
         await Eval($"show('{page}')");
     }
 
+    /// <summary>My widgets, scrolled to this copy's card and highlighted (the widget menu's "Options...").</summary>
+    public async Task ShowWidgetAsync(string instance)
+    {
+        if (!InstanceId.IsValid(instance)) throw new ArgumentException($"Invalid widget id '{instance}'");
+        await _loaded.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        await Eval($"focusWidget({System.Text.Json.JsonSerializer.Serialize(instance)})");
+    }
+
     public async Task<byte[]> CaptureAsync(string page)
     {
         await ShowPageAsync(page);
