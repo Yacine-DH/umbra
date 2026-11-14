@@ -143,9 +143,12 @@ function applyPlatform() {
   if (updates) $(".row-sub", updates).textContent = "Once a day Umbra asks GitHub for a newer version and tells you. You download it yourself; Umbra never installs anything on its own.";
   const fullscreen = rowOf("hideFullscreen");
   if (fullscreen) fullscreen.hidden = !can("fullscreen");
-  text("#hotkeysIntro", can("hotkeys")
-    ? "System-wide shortcuts that work while any app has focus. Click a shortcut, then press the keys (at least one of Ctrl, Alt or Super). Esc cancels, Backspace turns it off."
-    : "Global shortcuts aren't available on Linux yet. You can set them now: they are kept and start working when a later version adds them.");
+  const via = state.capabilities && state.capabilities.hotkeysVia;
+  text("#hotkeysIntro", !can("hotkeys")
+    ? "Not supported on this desktop. Global shortcuts need KDE Plasma 6, GNOME 48 or later, or an X11 session. Shortcuts you set are kept and start working on a desktop that supports them."
+    : via === "portal"
+    ? "System-wide shortcuts that work while any app has focus. Click a shortcut, then press the keys (at least one of Ctrl, Alt or Super). Esc cancels, Backspace turns it off. Your desktop asks you to confirm new shortcuts in its own dialog, and you can change them later in its keyboard settings."
+    : "System-wide shortcuts that work while any app has focus. Click a shortcut, then press the keys (at least one of Ctrl, Alt or Super). Esc cancels, Backspace turns it off.");
 }
 
 // ---------- links ----------
@@ -394,13 +397,21 @@ function renderHotkeys() {
       sub.style.color = "#ff6b6b";
       sub.textContent = "Not active: " + h.error;
       text.append(sub);
+    } else if (h.note) {
+      // Linux only: the portal's state ("confirm it in your desktop's dialog", the shortcut the desktop chose).
+      const sub = document.createElement("div");
+      sub.className = "row-sub";
+      sub.textContent = h.note;
+      text.append(sub);
     }
     const btn = document.createElement("button");
     btn.className = "btn";
     btn.dataset.action = h.action;
-    btn.textContent = recording === h.action ? "Press keys..." : h.keys || "Off";
+    // Linux calls the Windows key Super; the stored text stays "Win" on both.
+    const shown = h.keys && onLinux() ? h.keys.replace(/\bWin\b/, "Super") : h.keys;
+    btn.textContent = recording === h.action ? "Press keys..." : shown || "Off";
     btn.setAttribute("aria-label", recording === h.action ? `${h.label}: press the new shortcut. Escape cancels, Backspace turns it off.`
-      : `${h.label}: ${h.keys || "off"}. Press Enter to change.`);
+      : `${h.label}: ${shown || "off"}. Press Enter to change.`);
     btn.addEventListener("click", () => { recording = h.action; renderHotkeys(); btn.focus(); });
     btn.addEventListener("blur", () => { if (recording === h.action) { recording = null; renderHotkeys(); } });
     btn.addEventListener("keydown", (e) => {

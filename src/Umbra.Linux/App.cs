@@ -91,6 +91,10 @@ sealed class App : IUmbraHost
         if (Gdk.Display.GetDefault() is { } iconDisplay)
             Gtk.IconTheme.GetForDisplay(iconDisplay).AddSearchPath(Path.Combine(AppPaths.AppDir, "icons"));
         _tray = LinuxTray.TryStart(_ui, TrayItems, () => ShowSettings());
+        // Before the session's portal calls: outside Flatpak the hotkey portal first registers the app id on this connection.
+        Hotkeys = new LinuxHotkeys(RunHotkey);
+        Hotkeys.Changed += SettingsChangedElsewhere;
+        Hotkeys.Apply(Settings.Hotkeys);
         Session = new LinuxSession(_ui);
         Session.PowerChanged += () => { foreach (var w in _windows.Values) w.PushPower(); };
         Session.RefreshNeeded += reason => { Log.Write($"Refreshing widgets after {reason}"); foreach (var w in _windows.Values) w.RefreshData(); };
@@ -277,7 +281,7 @@ sealed class App : IUmbraHost
         yield return new TrayItem { Label = "Quit", Click = Quit };
     }
 
-    /// <summary>Shows or hides every widget (tray, and the toggle-widgets hotkey once #192 lands).</summary>
+    /// <summary>Shows or hides every widget (tray and the toggle-widgets hotkey).</summary>
     public void ToggleHidden()
     {
         WidgetsHidden = !WidgetsHidden;
@@ -605,7 +609,7 @@ sealed class App : IUmbraHost
         SettingsChangedElsewhere();
     }
 
-    public void Peek() => throw new Control.CommandException("Peek is not available on Linux yet (#183)");
+    public void Peek() => throw new Control.CommandException("Peek is not available on Linux yet (#361)");
 
     public void QuitSoon() => _ = Task.Delay(300).ContinueWith(_ => _ui.Post(_ => Quit(), null));
 
@@ -617,21 +621,33 @@ sealed class App : IUmbraHost
         foreach (var t in _tabStrips.Values) t.Close();
         _snapGuides?.Close();
         _settings?.Close();
+        Hotkeys.Dispose();
         _gtk.Quit();
     }
 
-    // ---------- hotkeys (stored and validated; registering them is #192) ----------
+    // ---------- hotkeys (#192: X11 grabs, the GlobalShortcuts portal, or not supported) ----------
+
+    public LinuxHotkeys Hotkeys { get; }
+
+    /// <summary>Runs a hotkey action. Never activates a widget window; only Settings is brought forward, on request.</summary>
+    void RunHotkey(string action)
+    {
+        Log.Verbose($"Hotkey: {action}");
+        switch (action)
+        {
+            case "edit-mode": SetEditMode(!EditMode); break;
+            case "refresh-all": foreach (var w in _windows.Values) w.RefreshData(); break;
+            case "toggle-widgets": ToggleHidden(); break;
+            case "peek": Log.Write("Peek is not available on Linux yet (#361)"); break;
+            case "open-settings": ShowSettings(); break;
+        }
+    }
 
     public JsonObject DescribeHotkeys() => new()
     {
-        ["hotkeys"] = new JsonArray(Hotkey.Actions.Select(a => (JsonNode)new JsonObject
-        {
-            ["action"] = a.Id,
-            ["label"] = a.Label,
-            ["keys"] = Settings.Hotkeys.GetValueOrDefault(a.Id, ""),
-            ["status"] = Settings.Hotkeys.ContainsKey(a.Id) ? "failed" : "off",
-            ["error"] = Settings.Hotkeys.ContainsKey(a.Id) ? "Global hotkeys are not available on Linux yet" : null,
-        }).ToArray()),
+        ["hotkeys"] = Hotkeys.Describe(Settings.Hotkeys),
+        ["backend"] = HotkeyRules.Name(Hotkeys.Backend),
+        ["supported"] = Hotkeys.Backend != HotkeyBackend.None,
         ["widgetsHidden"] = WidgetsHidden,
     };
 
@@ -648,12 +664,14 @@ sealed class App : IUmbraHost
         }
         Settings.Hotkeys = next;
         SaveSettings();
+        Hotkeys.Apply(Settings.Hotkeys);
     }
 
     public void ResetHotkeys()
     {
         Settings.Hotkeys = new();
         SaveSettings();
+        Hotkeys.Apply(Settings.Hotkeys);
     }
 
     // ---------- layouts ----------
@@ -818,6 +836,7 @@ sealed class App : IUmbraHost
         s.SettingsPanel = Settings.SettingsPanel;
         Settings = s;
         SaveSettings();
+        Hotkeys.Apply(Settings.Hotkeys);
         SyncWindows();
     }
 }

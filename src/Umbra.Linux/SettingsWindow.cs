@@ -739,7 +739,8 @@ sealed class SettingsWindow : ISettingsView
             ["capabilities"] = new JsonObject
             {
                 ["tray"] = _app.TrayShown,
-                ["hotkeys"] = false,
+                ["hotkeys"] = _app.Hotkeys.Backend != Linux.HotkeyBackend.None,
+                ["hotkeysVia"] = Linux.HotkeyRules.Name(_app.Hotkeys.Backend),
                 ["autostart"] = !AppPaths.IsPortable,
                 ["updates"] = "notify",
                 ["accent"] = Prefs.SystemAccent is not null,
