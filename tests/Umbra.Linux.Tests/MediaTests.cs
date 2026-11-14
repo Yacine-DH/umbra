@@ -1,6 +1,9 @@
+using System.Buffers.Binary;
+using System.IO.Compression;
+
 namespace Umbra.Linux.Tests;
 
-/// <summary>umbra.media on Linux (#190): which MPRIS player counts, the answer's shape and the album-art policy.</summary>
+/// <summary>umbra.media on Linux (#190, #367): which MPRIS player counts, the answer's shape and the album-art policy.</summary>
 public sealed class MediaTests
 {
     [Fact]
@@ -27,7 +30,7 @@ public sealed class MediaTests
     }
 
     [Fact]
-    public void Only_small_local_images_become_art()
+    public void Only_local_images_within_source_bounds_become_art()
     {
         var dir = Directory.CreateTempSubdirectory();
         try
@@ -36,14 +39,109 @@ public sealed class MediaTests
             File.WriteAllBytes(png, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0]);
             var txt = Path.Combine(dir.FullName, "a.txt");
             File.WriteAllText(txt, "not an image");
-            var big = Path.Combine(dir.FullName, "big.png");
-            File.WriteAllBytes(big, new byte[MediaService.MaxArtBytes + 1]);
+            var svg = Path.Combine(dir.FullName, "a.svg");
+            File.WriteAllText(svg, "<svg onload=alert(1)>");
+            var bigJunk = Path.Combine(dir.FullName, "big.bin");
+            File.WriteAllBytes(bigJunk, new byte[MediaService.MaxArtBytes + 1]);
             Assert.StartsWith("data:image/png;base64,", LinuxMedia.ArtDataUrl(new Uri(png).AbsoluteUri));
             Assert.Null(LinuxMedia.ArtDataUrl(new Uri(txt).AbsoluteUri));
-            Assert.Null(LinuxMedia.ArtDataUrl(new Uri(big).AbsoluteUri));
+            Assert.Null(LinuxMedia.ArtDataUrl(new Uri(svg).AbsoluteUri));
+            Assert.Null(LinuxMedia.ScaleArt(svg));
+            Assert.Null(LinuxMedia.ArtDataUrl(new Uri(bigJunk).AbsoluteUri));
             Assert.Null(LinuxMedia.ArtDataUrl("https://i.scdn.co/image/abc")); // never fetched: an undeclared request
             Assert.Null(LinuxMedia.ArtDataUrl(null));
         }
         finally { dir.Delete(true); }
+    }
+
+    [Fact]
+    public void Big_png_art_becomes_a_small_jpeg_of_the_same_shape()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        var dir = Directory.CreateTempSubdirectory();
+        try
+        {
+            var bigPng = Path.Combine(dir.FullName, "cover.png");
+            File.WriteAllBytes(bigPng, NoisyPng(1000, 600));
+            Assert.True(new FileInfo(bigPng).Length > MediaService.MaxArtBytes);
+
+            var dataUrl = LinuxMedia.ArtDataUrl(new Uri(bigPng).AbsoluteUri);
+            Assert.NotNull(dataUrl);
+            Assert.StartsWith("data:image/jpeg;base64,", dataUrl);
+            var jpeg = Convert.FromBase64String(dataUrl["data:image/jpeg;base64,".Length..]);
+            Assert.Equal("image/jpeg", MediaService.SniffImage(jpeg));
+            Assert.InRange(jpeg.Length, 1, MediaService.MaxArtBytes);
+            Assert.Equal((512, 307), JpegSize(jpeg));
+
+            // Small art keeps its dimensions when passed through ScaleArt.
+            var smallPng = Path.Combine(dir.FullName, "small.png");
+            File.WriteAllBytes(smallPng, NoisyPng(120, 120));
+            var smallJpeg = LinuxMedia.ScaleArt(smallPng);
+            Assert.NotNull(smallJpeg);
+            Assert.Equal((120, 120), JpegSize(smallJpeg));
+        }
+        finally { dir.Delete(true); }
+    }
+
+    static byte[] NoisyPng(int width, int height)
+    {
+        using var ms = new MemoryStream();
+        ms.Write([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+        var ihdr = new byte[13];
+        BinaryPrimitives.WriteInt32BigEndian(ihdr.AsSpan(0, 4), width);
+        BinaryPrimitives.WriteInt32BigEndian(ihdr.AsSpan(4, 4), height);
+        ihdr[8] = 8; // 8-bit
+        ihdr[9] = 6; // RGBA
+        WriteChunk(ms, "IHDR"u8, ihdr);
+
+        var raw = new byte[height * (1 + width * 4)];
+        new Random(7).NextBytes(raw);
+        for (var y = 0; y < height; y++)
+        {
+            var row = y * (1 + width * 4);
+            raw[row] = 0; // filter: None
+            for (var x = 0; x < width; x++) raw[row + 1 + x * 4 + 3] = 255;
+        }
+        using var idat = new MemoryStream();
+        using (var zlib = new ZLibStream(idat, CompressionLevel.NoCompression, leaveOpen: true))
+            zlib.Write(raw);
+        WriteChunk(ms, "IDAT"u8, idat.ToArray());
+        WriteChunk(ms, "IEND"u8, []);
+        return ms.ToArray();
+    }
+
+    static void WriteChunk(Stream s, ReadOnlySpan<byte> type, ReadOnlySpan<byte> data)
+    {
+        Span<byte> buf = stackalloc byte[4];
+        BinaryPrimitives.WriteInt32BigEndian(buf, data.Length);
+        s.Write(buf);
+        s.Write(type);
+        s.Write(data);
+        var crc = 0xFFFFFFFFu;
+        foreach (var b in type) crc = CrcStep(crc, b);
+        foreach (var b in data) crc = CrcStep(crc, b);
+        BinaryPrimitives.WriteUInt32BigEndian(buf, ~crc);
+        s.Write(buf);
+    }
+
+    static uint CrcStep(uint crc, byte b)
+    {
+        crc ^= b;
+        for (var i = 0; i < 8; i++) crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
+        return crc;
+    }
+
+    static (int Width, int Height) JpegSize(ReadOnlySpan<byte> b)
+    {
+        var i = 2;
+        while (i + 8 < b.Length && b[i] == 0xFF)
+        {
+            var marker = b[i + 1];
+            var len = BinaryPrimitives.ReadUInt16BigEndian(b[(i + 2)..]);
+            if (marker is 0xC0 or 0xC1 or 0xC2)
+                return (BinaryPrimitives.ReadUInt16BigEndian(b[(i + 7)..]), BinaryPrimitives.ReadUInt16BigEndian(b[(i + 5)..]));
+            i += 2 + len;
+        }
+        return (0, 0);
     }
 }

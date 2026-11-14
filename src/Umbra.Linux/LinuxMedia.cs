@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 
 namespace Umbra.Linux;
@@ -6,16 +7,58 @@ namespace Umbra.Linux;
 /// umbra.media on Linux: the MPRIS players on the session bus (<c>org.mpris.MediaPlayer2.*</c>: Firefox, Chromium,
 /// Spotify, Rhythmbox, VLC...), the counterpart of <c>WindowsMedia</c>. Same JSON shape and the same rules
 /// (<see cref="MediaService"/>, checked by the widget window). Album art is read only from <c>file://</c> URLs:
-/// fetching an <c>https://</c> art URL would be a network request the widget never declared, so none is passed.
+/// fetching an <c>https://</c> art URL (such as Spotify's CDN covers) would be a network request to a host the widget
+/// never declared in <c>permissions.network</c>, so <c>https://</c> art URLs are never fetched.
 /// </summary>
-static class LinuxMedia
+static partial class LinuxMedia
 {
     const string Prefix = "org.mpris.MediaPlayer2.";
     const string PlayerIface = "org.mpris.MediaPlayer2.Player";
     const string Path = "/org/mpris/MediaPlayer2";
+    const string PixbufLib = "libgdk_pixbuf-2.0.so.0";
+    const string GObjectLib = "libgobject-2.0.so.0";
+    const string GLibLib = "libglib-2.0.so.0";
+    const int GdkColorspaceRgb = 0;
+    const int GdkInterpBilinear = 2;
+
+    static readonly object Gate = new();
 
     /// <summary>The player that last reported Playing: preferred when nothing plays now (the "most recent" one).</summary>
     static string? _lastPlaying;
+    static string? _artKey, _art;
+
+    [LibraryImport(PixbufLib, StringMarshalling = StringMarshalling.Utf8)]
+    private static partial IntPtr gdk_pixbuf_new_from_file(string filename, ref IntPtr error);
+
+    [LibraryImport(PixbufLib)]
+    private static partial IntPtr gdk_pixbuf_apply_embedded_orientation(IntPtr src);
+
+    [LibraryImport(PixbufLib)]
+    private static partial int gdk_pixbuf_get_width(IntPtr pixbuf);
+
+    [LibraryImport(PixbufLib)]
+    private static partial int gdk_pixbuf_get_height(IntPtr pixbuf);
+
+    [LibraryImport(PixbufLib)]
+    private static partial IntPtr gdk_pixbuf_new(int colorspace, int hasAlpha, int bitsPerSample, int width, int height);
+
+    [LibraryImport(PixbufLib)]
+    private static partial void gdk_pixbuf_composite_color(IntPtr src, IntPtr dest, int destX, int destY, int destWidth, int destHeight,
+        double offsetX, double offsetY, double scaleX, double scaleY, int interpType, int overallAlpha,
+        int checkX, int checkY, int checkSize, uint color1, uint color2);
+
+    [LibraryImport(PixbufLib, StringMarshalling = StringMarshalling.Utf8)]
+    private static unsafe partial int gdk_pixbuf_save_to_bufferv(IntPtr pixbuf, out IntPtr buffer, out nuint bufferSize, string type,
+        IntPtr* optionKeys, IntPtr* optionValues, ref IntPtr error);
+
+    [LibraryImport(GObjectLib)]
+    private static partial void g_object_unref(IntPtr obj);
+
+    [LibraryImport(GLibLib)]
+    private static partial void g_free(IntPtr mem);
+
+    [LibraryImport(GLibLib)]
+    private static partial void g_error_free(IntPtr error);
 
     /// <summary>
     /// Which player counts: one that is playing (the last one seen playing first, if several are), else the last one seen
@@ -49,18 +92,89 @@ static class LinuxMedia
         ["canPrevious"] = canPrevious,
     };
 
-    /// <summary>A local art file as a data URL: only file:// (no network), at most <see cref="MediaService.MaxArtBytes"/>, a real image.</summary>
+    /// <summary>
+    /// A local art file as a data URL: only <c>file://</c> (no network), at most <see cref="MediaService.MaxArtBytes"/>, a real
+    /// image. Files already within <see cref="MediaService.MaxArtBytes"/> are passed as-is; larger files up to
+    /// <see cref="MediaService.MaxArtSourceBytes"/> (browsers hand out ~700 KB–2 MB PNGs) are scaled down to at most
+    /// <see cref="MediaService.ArtEdge"/> px on the long side and encoded as JPEG, cached per file so polling does not re-encode.
+    /// </summary>
     public static string? ArtDataUrl(string? artUrl)
     {
         if (artUrl is null || !Uri.TryCreate(artUrl, UriKind.Absolute, out var u) || !u.IsFile) return null;
         try
         {
             var info = new FileInfo(u.LocalPath);
-            if (!info.Exists || info.Length is 0 or > MediaService.MaxArtBytes || info.LinkTarget is not null) return null;
-            var bytes = File.ReadAllBytes(info.FullName);
-            return MediaService.SniffImage(bytes) is { } mime ? $"data:{mime};base64,{Convert.ToBase64String(bytes)}" : null;
+            if (!info.Exists || info.Length is 0 or > MediaService.MaxArtSourceBytes || info.LinkTarget is not null) return null;
+            var key = $"{info.FullName}\n{info.Length}\n{info.LastWriteTimeUtc.Ticks}";
+            lock (Gate) if (key == _artKey) return _art;
+            string? art = null;
+            if (info.Length <= MediaService.MaxArtBytes)
+            {
+                var bytes = File.ReadAllBytes(info.FullName);
+                if (MediaService.SniffImage(bytes) is { } mime)
+                    art = $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
+            }
+            else if (ScaleArt(info.FullName) is { } jpeg)
+            {
+                art = $"data:image/jpeg;base64,{Convert.ToBase64String(jpeg)}";
+            }
+            if (art is not null) lock (Gate) { _artKey = key; _art = art; }
+            return art;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
+    }
+
+    /// <summary>
+    /// Any local PNG or JPEG <c>GdkPixbuf</c> can decode, scaled to at most <see cref="MediaService.ArtEdge"/> on its long side and
+    /// flattened to opaque RGB JPEG within <see cref="MediaService.MaxArtBytes"/>; null when it is not a PNG/JPEG or cannot be decoded.
+    /// </summary>
+    internal static unsafe byte[]? ScaleArt(string path)
+    {
+        if (!OperatingSystem.IsLinux()) return null;
+        Span<byte> header = stackalloc byte[12];
+        using (var fs = File.OpenRead(path))
+            if (fs.Read(header) < header.Length || MediaService.SniffImage(header) is null) return null;
+        var err = IntPtr.Zero;
+        var raw = gdk_pixbuf_new_from_file(path, ref err);
+        if (err != IntPtr.Zero) g_error_free(err);
+        if (raw == IntPtr.Zero) return null;
+        var oriented = gdk_pixbuf_apply_embedded_orientation(raw);
+        g_object_unref(raw);
+        if (oriented == IntPtr.Zero) return null;
+        try
+        {
+            var srcW = gdk_pixbuf_get_width(oriented);
+            var srcH = gdk_pixbuf_get_height(oriented);
+            if (srcW <= 0 || srcH <= 0) return null;
+            var (w, h) = MediaService.ArtSize((uint)srcW, (uint)srcH);
+            if (w == 0 || h == 0) return null;
+            var rgb = gdk_pixbuf_new(GdkColorspaceRgb, 0, 8, (int)w, (int)h);
+            if (rgb == IntPtr.Zero) return null;
+            try
+            {
+                gdk_pixbuf_composite_color(oriented, rgb, 0, 0, (int)w, (int)h, 0, 0,
+                    (double)w / srcW, (double)h / srcH, GdkInterpBilinear, 255, 0, 0, 16, 0, 0);
+                fixed (byte* k = "quality\0"u8, v = "88\0"u8)
+                {
+                    var keys = stackalloc IntPtr[2] { (IntPtr)k, IntPtr.Zero };
+                    var vals = stackalloc IntPtr[2] { (IntPtr)v, IntPtr.Zero };
+                    var saveErr = IntPtr.Zero;
+                    var ok = gdk_pixbuf_save_to_bufferv(rgb, out var buf, out var size, "jpeg", keys, vals, ref saveErr);
+                    if (saveErr != IntPtr.Zero) g_error_free(saveErr);
+                    if (ok == 0 || buf == IntPtr.Zero) return null;
+                    try
+                    {
+                        if (size is 0 or > (nuint)MediaService.MaxArtBytes) return null;
+                        var bytes = new byte[(int)size];
+                        Marshal.Copy(buf, bytes, 0, bytes.Length);
+                        return MediaService.SniffImage(bytes) == "image/jpeg" ? bytes : null;
+                    }
+                    finally { g_free(buf); }
+                }
+            }
+            finally { g_object_unref(rgb); }
+        }
+        finally { g_object_unref(oriented); }
     }
 
     static async Task<List<(string Name, string Status)>> PlayersAsync(IntPtr bus)
