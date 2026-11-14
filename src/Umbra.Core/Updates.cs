@@ -112,6 +112,46 @@ public static partial class Updates
         return null;
     }
 
+    /// <summary>The Linux release asset name for one version and architecture ("x64" or "arm64"), as <c>linux/package.sh</c> writes it.</summary>
+    public static string LinuxTarballName(string version, string arch) => $"umbra-{version}-linux-{arch}.tar.gz";
+
+    /// <summary>"x64" or "arm64" for the Linux tarball of this machine, null for an architecture Umbra doesn't publish.</summary>
+    public static string? LinuxArch(System.Runtime.InteropServices.Architecture a) => a switch
+    {
+        System.Runtime.InteropServices.Architecture.X64 => "x64",
+        System.Runtime.InteropServices.Architecture.Arm64 => "arm64",
+        _ => null,
+    };
+
+    /// <summary>
+    /// Reads GitHub's "latest release" JSON for the Linux update notice (notify only, nothing is downloaded): a stable release that
+    /// has this architecture's tarball, so Linux is never told about a release without a Linux build. The page URL is always
+    /// built from the version (never taken from the feed), because it is what the notice opens in the browser.
+    /// </summary>
+    public static ReleaseInfo? ParseLinuxNotice(string json, string arch)
+    {
+        if (arch is not ("x64" or "arm64")) return null;
+        JsonNode? root;
+        try { root = JsonNode.Parse(json); } catch (JsonException) { return null; }
+        if (root is not JsonObject o) return null;
+        if (o["draft"] is JsonValue d && d.TryGetValue<bool>(out var isDraft) && isDraft) return null;
+        if (o["prerelease"] is JsonValue p && p.TryGetValue<bool>(out var isPre) && isPre) return null;
+        var tag = Str(o["tag_name"]);
+        var m = tag is null ? null : SemVer().Match(tag);
+        if (m is not { Success: true } || m.Groups[4].Success) return null;
+        var version = $"{m.Groups[1].Value}.{m.Groups[2].Value}.{m.Groups[3].Value}";
+        var want = LinuxTarballName(version, arch);
+        foreach (var asset in o["assets"] as JsonArray ?? new JsonArray())
+        {
+            var name = Str(asset?["name"]);
+            var url = Str(asset?["browser_download_url"]);
+            if (name != want || url is null || !IsReleaseDownload(url, name)) continue;
+            var body = Str(o["body"]) ?? "";
+            return new ReleaseInfo(version, ReleasePageUrl(version), name, url, body.Length > 2000 ? body[..2000] : body, Str(asset?["digest"]));
+        }
+        return null;
+    }
+
     public const long MaxDownloadBytes = 200L * 1024 * 1024;
 
     /// <summary>Hosts the download may end up on after GitHub's redirects.</summary>
@@ -148,6 +188,12 @@ public static partial class Updates
     {
         var nm = InstallerName().Match(name);
         if (!nm.Success || nm.Groups[1].Value != version) return false;
+        return IsReleaseDownload(url, name);
+    }
+
+    /// <summary>HTTPS from github.com's release downloads for this repo, ending in <paramref name="name"/>.</summary>
+    static bool IsReleaseDownload(string url, string name)
+    {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
         return uri.Scheme == Uri.UriSchemeHttps && uri.Host == "github.com" && uri.IsDefaultPort && uri.UserInfo.Length == 0
             && uri.AbsolutePath.StartsWith(DownloadPrefix, StringComparison.Ordinal)

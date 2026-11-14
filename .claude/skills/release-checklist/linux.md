@@ -12,13 +12,17 @@ A failure in a **release blocker** (sandbox parity, focus gating, command approv
 
 - [ ] `dotnet build Umbra.Linux.slnf -c Release -warnaserror` is 0 warnings (#176)
 - [ ] `dotnet test Umbra.Linux.slnf -c Release` passes (#174, #176)
-- [ ] `node scripts/catalog.mjs --check` and `node scripts/check-versions.mjs` pass; the metainfo `<release>` matches `Directory.Build.props` (#197)
+- [ ] `node scripts/catalog.mjs --check` and `node scripts/check-versions.mjs` pass; once the metainfo exists (#196), its `<release>` must match `Directory.Build.props`, which `check-versions.mjs` enforces (#197)
 - [ ] The Linux CI job is green, including the web-extension build (#176, #180)
 - [ ] `linux/test/smoke.sh` is green under `xvfb-run` + openbox and under a headless `mutter` (or `kwin_wayland --virtual`) session, captures inspected (#181, #198)
 - [ ] The hostile-widget suite (`linux/test/hostile-widget/`) blocks every vector in CI, and breaking the sandbox makes CI fail (#180, #198)
 - [ ] `appstreamcli validate` and `desktop-file-validate` pass (#178, #196)
 - [ ] `gnome-extensions pack` produces a valid zip (#187)
-- [ ] Assets next to `UmbraSetup-<ver>.exe` in `gh release view v<ver> --json assets -q ".assets[].name"`: `umbra-<ver>-linux-x64.tar.gz`, `umbra-<ver>-linux-arm64.tar.gz`, the `.flatpak` bundle (#196, #197)
+- [ ] `linux/test/update.sh` passes (notify-only update check against a fake feed; About capture inspected) (#197)
+- [ ] `powershell -File build.ps1 -Linux` (Docker) wrote `dist/umbra-<ver>-linux-x64.tar.gz` and `-arm64.tar.gz`, each with a `.sha256` that matches (#197)
+- [ ] The arm64 tarball's binaries are aarch64: `tar -xOzf dist/umbra-<ver>-linux-arm64.tar.gz umbra-<ver>-linux-arm64/umbra/umbra | file -` (#197)
+- [ ] Assets next to `UmbraSetup-<ver>.exe` in `gh release view v<ver> --json assets -q ".assets[].name"`: `umbra-<ver>-linux-x64.tar.gz`, `umbra-<ver>-linux-arm64.tar.gz` and their `.sha256`, the `.flatpak` bundle once #196's Flatpak half lands (#196, #197)
+- [ ] After publishing, an older Linux install (or `umbractl check-update` on one) reports the new version and the tray item opens the release page (#197)
 
 ## Configurations (fill in what you actually used)
 

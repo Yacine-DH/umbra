@@ -6,6 +6,10 @@ static class TestEnv
     public static readonly string DataDir = Path.Combine(Path.GetTempPath(), $"umbra-tests-{Guid.NewGuid():N}");
     static TestEnv() => Environment.SetEnvironmentVariable("UMBRA_DATA_DIR", DataDir);
     public static void Init() { _ = DataDir; }
+
+    /// <summary>Before any test runs, so a test that forgets <see cref="Init"/> still never logs into the real profile.</summary>
+    [System.Runtime.CompilerServices.ModuleInitializer]
+    internal static void InitModule() => Init();
 }
 
 /// <summary>A test of Windows-only behaviour (Windows paths, the Windows updater): skipped on other systems.</summary>
