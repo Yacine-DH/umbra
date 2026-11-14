@@ -27,9 +27,10 @@ sealed partial class WidgetWindow
         var press = Gtk.GestureClick.New();
         press.SetButton(0);
         press.SetPropagationPhase(Gtk.PropagationPhase.Capture);
-        press.OnPressed += (g, _) =>
+        press.OnPressed += (g, e) =>
         {
             _pressedAt = Environment.TickCount64;
+            if (g.GetCurrentButton() == 3) NoteRightPress(e.X, e.Y);
             // The click gate of the host prompts (notifications, later camera and pictures): a left press outside edit mode.
             if (g.GetCurrentButton() == 1 && !_app.EditMode) _leftPressAt = _pressedAt;
         };
