@@ -7,13 +7,38 @@
 </head>
 <body>
   <main id="app">
-    <div class="k" id="kind"></div>
-    <div class="main" id="main"></div>
-    <div class="sub" id="sub"></div>
-    <div class="date num" id="date"></div>
+    <div class="body" id="body">
+      <div class="inner" id="inner">
+        <div class="main" id="main" title="Double-click for another one"></div>
+        <div class="meta" id="meta"></div>
+        <div class="sub" id="sub"></div>
+        <div class="ex" id="ex"></div>
+      </div>
+    </div>
+
+    <div class="top">
+      <span class="greet" id="greet"></span>
+      <nav class="bar">
+        <button id="back" data-no-drag title="Previous">←</button>
+        <button id="next" data-no-drag title="Another one">↻</button>
+        <button id="fav" data-no-drag title="Add to favorites">♡</button>
+        <button id="copy" data-no-drag title="Copy">⧉</button>
+        <button id="list" data-no-drag title="Your favorites" class="num">♥ 0</button>
+      </nav>
+    </div>
+
+    <section class="panel" id="panel" hidden>
+      <header>
+        <button id="close" data-no-drag title="Close">←</button>
+        <span>Favorites</span>
+      </header>
+      <ol id="favs"></ol>
+      <p class="empty" id="empty">Nothing here yet. Tap ♡ on a quote or word you like.</p>
+    </section>
   </main>
   <script src="https://umbra.local/shared/umbra.js"></script>
-  <script src="data.js"></script>
+  <script src="quotes.js"></script>
+  <script src="words.js"></script>
   <script src="main.js"></script>
 </body>
 </html>

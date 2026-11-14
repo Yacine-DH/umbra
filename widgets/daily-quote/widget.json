@@ -1,28 +1,163 @@
 {
   "$schema": "https://raw.githubusercontent.com/AmineChr54/umbra/main/schemas/widget.schema.json",
   "id": "daily-quote",
-  "name": "Quote or word of the day",
-  "description": "A calm daily quote or word, in English or German. Built-in list, works offline.",
+  "name": "Daily quote",
+  "description": "A quote or word of the day from 550+ quotes and 1,200+ words, shuffled just for you. Favorites, topics, a greeting, works offline.",
   "author": "AmineChr54",
-  "version": "1.0.4",
+  "version": "1.1.0",
+  "changelog": "Now 550+ quotes and 1,200+ words in three levels, in your own shuffled order with no repeats. A minimal look: just the quote and its author; hover for a greeting and buttons for next, back, favorites (with a list) and copy. Topics, word levels with pronunciation and examples, and a click on an author opens Wikipedia. English only.",
   "category": "info",
   "manifestVersion": 1,
   "entry": "index.html",
   "preview": "preview.png",
   "icon": "icon.png",
-  "width": 340,
-  "height": 190,
-  "defaultPosition": { "x": 400, "y": 460 },
-  "permissions": { "hosts": [] },
+  "width": 360,
+  "height": 140,
+  "defaultPosition": {
+    "x": 400,
+    "y": 460
+  },
+  "permissions": {
+    "hosts": []
+  },
   "options": {
     "mode": {
-      "label": "Show", "type": "select", "default": "quote",
-      "choices": [{ "value": "quote", "label": "Quote of the day" }, { "value": "word", "label": "Word of the day" }]
+      "label": "Show",
+      "type": "select",
+      "default": "quote",
+      "choices": [
+        {
+          "value": "quote",
+          "label": "Quote of the day"
+        },
+        {
+          "value": "word",
+          "label": "Word of the day"
+        }
+      ]
     },
-    "language": {
-      "label": "Language", "type": "select", "default": "en",
-      "choices": [{ "value": "en", "label": "English" }, { "value": "de", "label": "Deutsch" }]
+    "change": {
+      "label": "New one",
+      "type": "select",
+      "default": "daily",
+      "choices": [
+        {
+          "value": "daily",
+          "label": "Every day"
+        },
+        {
+          "value": "start",
+          "label": "Each time Umbra starts"
+        }
+      ],
+      "hint": "↻ or a double-click always shows another one"
     },
-    "dayStart": { "label": "Day starts at (hour)", "type": "number", "default": 0, "min": 0, "max": 23, "step": 1, "hint": "The entry changes at this local hour, e.g. 4 keeps yesterday's until 04:00" }
+    "dayStart": {
+      "label": "Day starts at (hour)",
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "max": 23,
+      "step": 1,
+      "hint": "With Every day: a new one comes at this local hour, e.g. 4 keeps yesterday's until 04:00"
+    },
+    "name": {
+      "label": "Your name",
+      "type": "text",
+      "default": "",
+      "hint": "For the greeting, e.g. Good morning, Sam",
+      "group": "Greeting"
+    },
+    "greeting": {
+      "label": "Show greeting",
+      "type": "toggle",
+      "default": true,
+      "group": "Greeting"
+    },
+    "topicDiscipline": {
+      "label": "Discipline",
+      "type": "toggle",
+      "default": true,
+      "group": "Topics",
+      "hint": "Quote of the day shows only quotes from the topics left on"
+    },
+    "topicFocus": {
+      "label": "Focus",
+      "type": "toggle",
+      "default": true,
+      "group": "Topics"
+    },
+    "topicCalm": {
+      "label": "Calm",
+      "type": "toggle",
+      "default": true,
+      "group": "Topics"
+    },
+    "topicCourage": {
+      "label": "Courage",
+      "type": "toggle",
+      "default": true,
+      "group": "Topics"
+    },
+    "topicGrowth": {
+      "label": "Growth",
+      "type": "toggle",
+      "default": true,
+      "group": "Topics"
+    },
+    "topicResilience": {
+      "label": "Resilience",
+      "type": "toggle",
+      "default": true,
+      "group": "Topics"
+    },
+    "topicKindness": {
+      "label": "Kindness",
+      "type": "toggle",
+      "default": true,
+      "group": "Topics"
+    },
+    "topicWisdom": {
+      "label": "Wisdom",
+      "type": "toggle",
+      "default": true,
+      "group": "Topics"
+    },
+    "level": {
+      "label": "Word level",
+      "type": "select",
+      "default": "any",
+      "choices": [
+        {
+          "value": "any",
+          "label": "Any"
+        },
+        {
+          "value": "everyday",
+          "label": "Everyday"
+        },
+        {
+          "value": "advanced",
+          "label": "Advanced"
+        },
+        {
+          "value": "rare",
+          "label": "Rare"
+        }
+      ],
+      "group": "Word of the day"
+    },
+    "pronunciation": {
+      "label": "Show pronunciation",
+      "type": "toggle",
+      "default": true,
+      "group": "Word of the day"
+    },
+    "example": {
+      "label": "Show example sentence",
+      "type": "toggle",
+      "default": true,
+      "group": "Word of the day"
+    }
   }
 }

@@ -1,7 +1,47 @@
 html,body{margin:0;background:var(--bg);height:100%;overflow:hidden}
-#app{box-sizing:border-box;height:100%;padding:18px 22px 14px;display:flex;flex-direction:column;color:var(--text)}
-.k{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
-.main{flex:1;display:flex;flex-direction:column;justify-content:center;font-size:18px;line-height:1.4;font-weight:400}
-.main.word{font-size:28px;font-weight:600;letter-spacing:.01em}
-.sub{font-size:13px;color:var(--text-2);line-height:1.4}
-.date{font-size:11px;color:var(--text-3);margin-top:8px}
+#app{position:relative;box-sizing:border-box;height:100%;padding:12px 16px;color:var(--text)}
+
+/* The text block; main.js shrinks its font-size (everything below is in em) until it fits the window. */
+.body{box-sizing:border-box;height:100%;display:flex;flex-direction:column;justify-content:center;font-size:18px;
+  transition:padding-top calc(150ms * var(--motion-scale,1))}
+/* Make room for the hover strip so it never covers the text (main.js refits on the size change). */
+#app:hover .body{padding-top:22px}
+.main{font-size:1em;line-height:1.4;font-weight:400;user-select:none;cursor:default}
+.main.word{font-size:1.55em;font-weight:600;letter-spacing:.01em;line-height:1.2}
+.meta{font-size:.667em;color:var(--text-3);margin-top:.15em}
+.sub{font-size:.722em;color:var(--text-2);line-height:1.4;margin-top:.35em}
+.ex{font-size:.694em;color:var(--text-3);font-style:italic;line-height:1.4;margin-top:.35em}
+.meta:empty,.ex:empty,.sub:empty{display:none}
+
+a.link{color:inherit;text-decoration:none;border-bottom:1px solid transparent;cursor:pointer;transition:border-color calc(150ms * var(--motion-scale,1)),color calc(150ms * var(--motion-scale,1))}
+a.link:hover{color:var(--text);border-bottom-color:var(--line-strong)}
+a.link:hover::after{content:" ↗";font-size:.85em;color:var(--text-3)}
+
+/* Greeting and buttons: a strip over the top edge, only while the mouse is over the widget. */
+.top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:8px;padding:5px 6px 10px 16px;
+  background:linear-gradient(var(--bg) 70%,transparent);opacity:0;pointer-events:none;transition:opacity calc(150ms * var(--motion-scale,1))}
+#app:hover .top{opacity:1;pointer-events:auto}
+.greet{flex:1;min-width:0;font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar{display:flex;gap:2px;margin-left:auto}
+.bar button,.panel button{font:inherit;font-size:13px;line-height:1;color:var(--text-2);background:none;border:0;border-radius:var(--radius-s);min-width:24px;height:24px;padding:0 6px;cursor:pointer}
+.bar button:hover:not(:disabled),.panel button:hover{background:var(--surface-3);color:var(--text)}
+.bar button:disabled{opacity:.35;cursor:default}
+#fav.on{color:var(--accent)}
+#list{font-size:11px}
+.bar .flash{color:var(--accent)}
+
+/* Favorites panel: covers the widget. */
+.panel{position:absolute;inset:0;background:var(--bg);display:flex;flex-direction:column;padding:6px 8px 8px 12px;box-sizing:border-box}
+.panel[hidden]{display:none}
+.panel header{display:flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:4px}
+.panel ol{list-style:none;margin:0;padding:0 4px 0 0;overflow-y:auto;flex:1;min-height:0}
+.panel li{display:flex;gap:6px;align-items:flex-start;padding:6px;border-radius:var(--radius-s);cursor:pointer}
+.panel li:hover{background:var(--surface-1)}
+.panel li .t{flex:1;min-width:0;font-size:12.5px;line-height:1.35}
+.panel li .t small{display:block;color:var(--text-3);font-size:11px;margin-top:2px}
+.panel li .x{opacity:0;min-width:20px;height:20px;padding:0 4px;color:var(--text-3)}
+.panel li:hover .x{opacity:1}
+.panel .empty{font-size:12.5px;color:var(--text-3);margin:auto 0;text-align:center}
+.panel .empty[hidden]{display:none}
+.panel ol::-webkit-scrollbar{width:6px}
+.panel ol::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:3px}
