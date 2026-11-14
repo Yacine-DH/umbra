@@ -5,7 +5,8 @@
 .DESCRIPTION
   GitHub Actions isn't used for CI any more: this script is the CI. It checks out the commit in a throwaway git worktree
   (your working tree and your installed Umbra are never touched) and runs, in parallel where it can:
-    linux    Docker mcr.microsoft.com/dotnet/sdk:10.0: build Umbra.Linux.slnf -c Release -warnaserror, then test it
+    linux    Docker mcr.microsoft.com/dotnet/sdk:10.0: build Umbra.Linux.slnf -c Release -warnaserror, test it, then
+             linux/test/ci.sh (smoke under Xvfb + openbox, sandbox, catalog; captures and umbra.log in linux\)
     node     Docker node:22: widget/SDK/release tests, relay tests, check-versions, catalog --check
     windows  this PC: build Umbra.slnx -c Release -warnaserror, then test it (WinForms/WebView2 can't run in a Linux container)
     bump     this PC: check-bump.mjs against origin/main (changed widgets and themes bump their version)
@@ -114,7 +115,14 @@ try {
         # src/Umbra.Linux compiles its sandbox web-process extension (native/umbra-webext.c) with gcc against WebKitGTK 6.
         'apt-get update -qq && apt-get install -y -qq --no-install-recommends gcc pkg-config libwebkitgtk-6.0-dev >/dev/null',
         'dotnet build Umbra.Linux.slnf -c Release -warnaserror',
-        'dotnet test Umbra.Linux.slnf -c Release --no-build --logger "console;verbosity=normal"'
+        'dotnet test Umbra.Linux.slnf -c Release --no-build --logger "console;verbosity=normal"',
+        # The headless harness (#198): smoke under Xvfb + openbox, the hostile-widget sandbox suite, every catalog widget.
+        # Captures and umbra.log go to $OutDir\linux (mounted at /out). linux/test/ci.sh holds the logic.
+        'if [ -f linux/test/ci.sh ]; then',
+        '  chmod +x linux/test/*.sh # a Windows checkout may not carry the executable bit',
+        '  apt-get install -y -qq --no-install-recommends xvfb xauth openbox dbus dbus-x11 python3 xdotool bubblewrap fonts-dejavu-core >/dev/null',
+        "  UMBRA_CI_SHA=$short UMBRA_CI_CONTAINER=1 linux/test/ci.sh /out",
+        'fi'
     ) -join "`n"
     $nodeSh = @(
         'set -e', $copy, 'echo "node $(node -v)"',
@@ -128,8 +136,11 @@ try {
 
     $jobs = @()
     if ($docker) {
+        $linuxOut = New-Item -ItemType Directory -Force (Join-Path $OutDir 'linux')
         foreach ($j in @(@('linux', 'mcr.microsoft.com/dotnet/sdk:10.0'), @('node', 'node:22'))) {
-            $jobs += Start-Logged $j[0] 'docker' @('run', '--rm', '-v', "${wt}:/src:ro", '-v', "${OutDir}:/ci:ro", $j[1], 'bash', "/ci/$($j[0]).sh") $wt
+            $mounts = @('-v', "${wt}:/src:ro", '-v', "${OutDir}:/ci:ro")
+            if ($j[0] -eq 'linux') { $mounts += @('-v', "$($linuxOut.FullName):/out") }
+            $jobs += Start-Logged $j[0] 'docker' (@('run', '--rm') + $mounts + @($j[1], 'bash', "/ci/$($j[0]).sh")) $wt
         }
     } else {
         Write-Host 'Docker is not running: start Docker Desktop. The linux and node jobs are marked FAIL.' -ForegroundColor Red
@@ -166,7 +177,7 @@ try {
         Finish $smoke 'FAIL|SKIPPED|passed\.'
     } else { $results['smoke'] = @{ Ok = $false; Lines = @('not run: the Windows build failed'); Secs = 0 } }
 
-    foreach ($j in $jobs) { Finish $j '^image:|^node v|Warning\(s\)|Error\(s\)|^(Passed|Failed)!|^\s+Failed |^# (pass|fail) |^not ok|^Versions|^OK:|^ERROR|error:' }
+    foreach ($j in $jobs) { Finish $j '^(PASS|FAIL|SKIPPED)  |^Linux CI|^image:|^node v|Warning\(s\)|Error\(s\)|^(Passed|Failed)!|^\s+Failed |^# (pass|fail) |^not ok|^Versions|^OK:|^ERROR|error:' }
     Finish $bump '\S'
 
     # Captures for review: the commit's widgets in a throwaway data folder, then settings:<page> and widget ids.
