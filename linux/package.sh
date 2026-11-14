@@ -28,7 +28,7 @@ got=$(od -An -tu2 -j18 -N2 "$so" | tr -d ' ')
   echo "the sandbox extension is not a linux-$arch library (ELF machine ${got:-?}, expected $machine): set WEBEXT_CC for a cross build" >&2
   rm -rf "$out"; exit 1; }
 echo "$ver" > "$out/umbra/VERSION"
-cp "$repo/linux/install.sh" "$repo/linux/io.github.aminechr54.Umbra.desktop" "$out/"
+cp "$repo/linux/install.sh" "$repo/linux/io.github.aminechr54.Umbra.desktop" "$repo/linux/io.github.aminechr54.Umbra.xml" "$out/"
 cp "$repo/LICENSE" "$out/" 2>/dev/null || true
 cp "$repo/linux/io.github.aminechr54.Umbra.metainfo.xml" "$out/" # AppStream (#196)
 chmod +x "$out/install.sh" "$out/umbra/umbra" "$out/umbractl/umbractl"

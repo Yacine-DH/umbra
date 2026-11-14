@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The .umbrawidget package type (a zip with widget.json at its top), so file managers open it with Umbra (#365).
+     install.sh copies it to $XDG_DATA_HOME/mime/packages and runs update-mime-database there. -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-umbra-widget">
+    <comment>Umbra widget</comment>
+    <sub-class-of type="application/zip"/>
+    <generic-icon name="package-x-generic"/>
+    <glob pattern="*.umbrawidget"/>
+  </mime-type>
+</mime-info>
