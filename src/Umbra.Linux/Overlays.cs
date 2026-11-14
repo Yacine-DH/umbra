@@ -65,7 +65,14 @@ abstract class OverlayWindow
     }
 
     /// <summary>Every live overlay, for <see cref="Relayout"/> after a display change.</summary>
-    public static void RelayoutAll() { foreach (var o in Live.ToList()) o.Relayout(); }
+    public static void RelayoutAll()
+    {
+        foreach (var o in Live.ToList())
+        {
+            try { o.Relayout(); }
+            catch (Exception ex) { Log.Write($"Overlay relayout failed: {ex.Message}"); }
+        }
+    }
 
     public void Show() { if (!_closed && !Window.GetVisible()) Window.SetVisible(true); }
     public void Hide() { if (!_closed && Window.GetVisible()) Window.SetVisible(false); }

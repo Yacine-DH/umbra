@@ -104,12 +104,12 @@ sealed class App : IUmbraHost
         {
             Log.Write($"Refreshing widgets after {reason}");
             foreach (var w in _windows.Values) w.RefreshData();
-            // The monitors may have changed while asleep without every signal arriving: lay out again in any case.
-            if (reason == "resume") ScheduleRelayout("resume", force: true);
+            // The monitors may have changed while asleep without every signal arriving: check the layout in any case.
+            if (reason == "resume") ScheduleRelayout("resume", resume: true);
         };
         Session.TimeChanged += () => { foreach (var w in _windows.Values) w.NotifyTimeChanged(); };
         Session.AccentChanged += () => { PushAll(); SettingsChangedElsewhere(); };
-        StartSessionAfterHotkeys();
+        _ = StartSessionAfterHotkeys();
         _updater.Start();
         SyncWindows();
         if (EditMode) _ui.Post(_ => UpdateEditPills(), null); // left unlocked last time: show the Done pill again
@@ -127,26 +127,40 @@ sealed class App : IUmbraHost
     /// Starts the session watchers once the hotkeys are set up: right away on X11; on Wayland after the portal registered the
     /// app id (it must come before any other portal call on the connection), without holding up the UI thread meanwhile.
     /// </summary>
-    async void StartSessionAfterHotkeys()
+    async Task StartSessionAfterHotkeys()
     {
-        try { await Hotkeys.Ready; }
-        catch (Exception ex) { Log.Write($"Global hotkeys could not start: {ex.Message}"); }
-        Session.Start();
+        try
+        {
+            try { await Hotkeys.Ready; }
+            catch (Exception ex) { Log.Write($"Global hotkeys could not start: {ex.Message}"); }
+            if (_quitting) return; // Quit ran during the portal probe: subscribe to nothing after shutdown
+            Session.Start();
+        }
+        catch (Exception ex) { Log.Write($"Session watchers could not start: {ex.Message}"); }
     }
 
     // ---------- display changes (monitors, scale, resume) ----------
 
     string _layoutKey = "";
-    bool _relayoutQueued, _relayoutForced;
-    readonly HashSet<IntPtr> _watchedMonitors = new();
+    bool _relayoutQueued, _relayoutResume, _quitting;
+    readonly Dictionary<IntPtr, Gdk.Monitor> _watchedMonitors = new();
 
-    /// <summary>Follows each monitor's geometry and scale: GDK keeps the same monitor object when only those change.</summary>
+    /// <summary>
+    /// Follows each monitor's geometry and scale: GDK keeps the same monitor object when only those change. Rebuilt from the
+    /// current list on every change; the objects are kept (so a watched address is never reused by another monitor) and
+    /// let go when their monitor is gone.
+    /// </summary>
     void WatchMonitors()
     {
         if (Gdk.Display.GetDefault()?.GetMonitors() is not { } monitors) return;
+        var current = new Dictionary<IntPtr, Gdk.Monitor>();
         for (uint i = 0; i < monitors.GetNItems(); i++)
+            if (monitors.GetObject(i) is Gdk.Monitor m) current[m.Handle.DangerousGetHandle()] = m;
+        foreach (var gone in _watchedMonitors.Keys.Where(k => !current.ContainsKey(k)).ToList()) _watchedMonitors.Remove(gone);
+        foreach (var (handle, m) in current)
         {
-            if (monitors.GetObject(i) is not Gdk.Monitor m || !_watchedMonitors.Add(m.Handle.DangerousGetHandle())) continue;
+            if (_watchedMonitors.ContainsKey(handle)) continue;
+            _watchedMonitors[handle] = m;
             m.OnNotify += (_, e) =>
             {
                 if (e.Pspec.GetName() is "geometry" or "scale-factor" or "scale") ScheduleRelayout("monitor geometry or scale");
@@ -168,27 +182,45 @@ sealed class App : IUmbraHost
 
     /// <summary>
     /// Lays every widget window and overlay out again shortly (the signals of one change arrive in a burst: the monitor list,
-    /// then geometry, then the X11 scale). Nothing happens when the layout key did not change, unless <paramref name="force"/>.
+    /// then geometry, then the X11 scale). Nothing happens when the layout key did not change; after a <paramref name="resume"/>
+    /// with an unchanged key the windows are only moved back to their spot (no hide/show, so no flicker and no lost focus).
     /// </summary>
-    public void ScheduleRelayout(string reason, bool force = false)
+    public void ScheduleRelayout(string reason, bool resume = false)
     {
-        _relayoutForced |= force;
+        _relayoutResume |= resume;
         if (_relayoutQueued) return;
         _relayoutQueued = true;
         UiThread.Every(300, () =>
         {
-            _relayoutQueued = false;
-            var key = LayoutKey();
-            if (key == _layoutKey && !_relayoutForced) return false;
-            _relayoutForced = false;
-            Log.Write($"Display changed ({reason}): laying widgets out again on {key}");
-            _layoutKey = key;
-            foreach (var w in _windows.Values) w.Relayout();
-            OverlayWindow.RelayoutAll();
-            TickGroups(); // tab strips follow their widget
-            if (EditMode) UpdateEditPills(); // one pill per monitor that has widgets
-            return false;
+            try { Relayout(reason); }
+            catch (Exception ex) { Log.Write($"Laying widgets out after a display change failed: {ex.Message}"); }
+            finally { _relayoutQueued = false; _relayoutResume = false; }
+            return false; // never repeats, even after an exception
         });
+    }
+
+    void Relayout(string reason)
+    {
+        if (_quitting) return;
+        var key = LayoutKey();
+        if (key == _layoutKey)
+        {
+            if (_relayoutResume) foreach (var w in _windows.Values.ToList()) Safely(w, w.ReapplyPlacement);
+            return;
+        }
+        Log.Write($"Display changed ({reason}): laying widgets out again on {key}");
+        _layoutKey = key;
+        foreach (var w in _windows.Values.ToList()) Safely(w, w.Relayout);
+        // Overlays last, at the spots their widgets now give them; then each is asked for its size in the new pixels.
+        TickGroups(); // tab strips follow their widget
+        if (EditMode) UpdateEditPills(); // one pill per monitor that has widgets
+        OverlayWindow.RelayoutAll();
+
+        static void Safely(WidgetWindow w, Action step)
+        {
+            try { step(); }
+            catch (Exception ex) { Log.Write($"[{w.Instance}] relayout failed: {ex.Message}"); }
+        }
     }
 
     /// <summary>Runs work on the UI thread (socket requests arrive on worker threads) and returns its result.</summary>
@@ -698,6 +730,7 @@ sealed class App : IUmbraHost
     /// <summary>Closes every widget and ends the main loop.</summary>
     public void Quit()
     {
+        _quitting = true;
         foreach (var id in _windows.Keys.ToList()) CloseWidget(id);
         foreach (var p in _pills) p.Close();
         foreach (var t in _tabStrips.Values) t.Close();
@@ -729,7 +762,7 @@ sealed class App : IUmbraHost
     {
         ["hotkeys"] = Hotkeys.Describe(Settings.Hotkeys),
         ["backend"] = HotkeyRules.Name(Hotkeys.Backend),
-        ["supported"] = Hotkeys.Backend != HotkeyBackend.None,
+        ["supported"] = Hotkeys.Supported,
         ["widgetsHidden"] = WidgetsHidden,
     };
 

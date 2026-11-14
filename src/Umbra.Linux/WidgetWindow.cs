@@ -126,8 +126,16 @@ sealed partial class WidgetWindow : IWidgetView
         _app.Pin.Move(_window, at.X, at.Y);
     }
 
-    /// <summary>Re-places the window from its saved monitor and offset (monitors were added, removed or rearranged).</summary>
-    public void ReapplyPlacement() => Place();
+    /// <summary>
+    /// Re-places the window from its saved monitor and offset (monitors were added, removed or rearranged). Not during a hand
+    /// move or resize: the window follows the pointer then, and its end saves and places it.
+    /// </summary>
+    public void ReapplyPlacement() { if (!_moving && !_resizing) Place(); }
+
+    /// <summary>A display change arrived during a hand move or resize: <see cref="Relayout"/> runs when it ends.</summary>
+    bool _relayoutPending;
+
+    void RunPendingRelayout() { if (_relayoutPending) Relayout(); }
 
     /// <summary>
     /// The monitors or their scale changed (unplugged, docked, resumed with the lid closed): size the window again from its
@@ -138,6 +146,9 @@ sealed partial class WidgetWindow : IWidgetView
     public void Relayout()
     {
         if (_closed) return;
+        // Mid-drag or mid-resize the window follows the pointer: lay it out once the hand move or resize ends.
+        if (_moving || _resizing) { _relayoutPending = true; return; }
+        _relayoutPending = false;
         SetWindowSize(SavedSize());
         var r = WidgetPlacement.Layout(Ws, Manifest.DefaultPosition, new Size(Width, Height), _app.Monitors());
         Left = r.X; Top = r.Y;

@@ -90,8 +90,18 @@ sealed class LinuxHotkeys : IDisposable
         _impl?.Apply(map);
     }
 
-    public JsonArray Describe(IReadOnlyDictionary<string, string> map) =>
-        HotkeyRules.Describe(map, Backend, _impl?.States ?? new Dictionary<string, HotkeyRules.ActionState>());
+    /// <summary>True while the portal is still being asked (Wayland, right after startup): nothing is reported unsupported yet.</summary>
+    public bool Checking => !Ready.IsCompleted;
+
+    /// <summary>Whether Settings offers hotkeys: a working backend, or one still being checked.</summary>
+    public bool Supported => Checking || Backend != HotkeyBackend.None;
+
+    public JsonArray Describe(IReadOnlyDictionary<string, string> map)
+    {
+        if (!Checking) return HotkeyRules.Describe(map, Backend, _impl?.States ?? new Dictionary<string, HotkeyRules.ActionState>());
+        var pending = Hotkey.Actions.ToDictionary(a => a.Id, _ => new HotkeyRules.ActionState("pending", Note: "Checking what your desktop supports"));
+        return HotkeyRules.Describe(map, HotkeyBackend.Portal, pending);
+    }
 
     public void Dispose()
     {
