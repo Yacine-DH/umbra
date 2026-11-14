@@ -27,6 +27,34 @@ public class LinuxLiveTests
     }
 
     [LinuxFact]
+    public void Gpu_and_disk_read_the_live_proc_and_sys_files()
+    {
+        var clock = Stopwatch.StartNew();
+        var metrics = new LinuxMetrics(new FileProcSource(), () => clock.ElapsedMilliseconds + 1);
+        metrics.Read(["gpu", "disk"]);
+        Thread.Sleep(600);
+        var o = metrics.Read(["gpu", "disk"]);
+
+        if (ProcParsers.ParseDiskStats(File.ReadAllText("/proc/diskstats")).Count > 0)
+        {
+            Assert.InRange(o["disk"]!["activePercent"]!.GetValue<double>(), 0, 100);
+            Assert.True(o["disk"]!["readBytesPerSec"]!.GetValue<long>() >= 0);
+            Assert.True(o["disk"]!["writeBytesPerSec"]!.GetValue<long>() >= 0);
+        }
+        var drives = o["disk"]!["drives"]!.AsArray();
+        Assert.Contains(drives, d => d!["name"]!.GetValue<string>() == "/"); // the root file system is always a drive
+        Assert.DoesNotContain(drives, d => d!["name"]!.GetValue<string>().StartsWith("/snap/", StringComparison.Ordinal));
+        Assert.All(drives, d =>
+        {
+            Assert.InRange(d!["freeBytes"]!.GetValue<long>(), 0, d["totalBytes"]!.GetValue<long>());
+            Assert.InRange(d["usedPercent"]!.GetValue<double>(), 0, 100);
+        });
+        Assert.True(o["gpu"]!.AsObject().ContainsKey("percent"));
+        if (o["gpu"]!["percent"] is { } p) Assert.InRange(p.GetValue<double>(), 0, 100);
+        Assert.Null(new FileProcSource().FileSystemSpace("/umbra-does-not-exist"));
+    }
+
+    [LinuxFact]
     public void Missing_files_read_as_nothing()
     {
         var source = new FileProcSource();
