@@ -1330,7 +1330,9 @@ function groupHeader(g) {
 }
 
 // ---------- Tab icon picker ----------
-const ICON_BASE = "https://umbra.local/shared/tabicons/";
+// Relative, so it stays same-origin: on Linux the page is umbra://umbra.local/settings/, and a fetch() of an https://umbra.local
+// URL is a cross-origin request the rewritten umbra:// answer can't satisfy ("Could not load the icon list"). Same file on Windows.
+const ICON_BASE = "../shared/tabicons/";
 let iconIndex = null;
 
 async function openIconPicker(inst, anchor) {
