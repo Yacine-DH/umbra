@@ -37,10 +37,12 @@ if [ "${UMBRA_GNOME_INSIDE:-}" = "" ]; then
   [ "$mode" = fallback ] || cp -r "$repo/linux/gnome-extension/$uuid" "$tmp/data/gnome-shell/extensions/"
   cp -r "$here/edit-widget" "$tmp/profile/widgets/edit-widget"
   printf '#!/bin/sh\nprintf "%%s\\n" "$1" >> "%s"\n' "$tmp/opened.txt" > "$tmp/bin/xdg-open"; chmod +x "$tmp/bin/xdg-open"
+  # The update check reads a local old-release feed instead of api.github.com (UMBRA_RELEASE_URL, Debug builds).
+  printf '{ "tag_name": "v0.0.1", "draft": false, "prerelease": false, "body": "", "assets": [] }\n' > "$tmp/no-update.json"
   env -i PATH="$tmp/bin:$PATH" HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/config" XDG_DATA_HOME="$tmp/data" XDG_CACHE_HOME="$tmp/cache" \
     XDG_STATE_HOME="$tmp/state" XDG_RUNTIME_DIR="$tmp/run" XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_TYPE=wayland LANG=C.UTF-8 \
     ${DOTNET_ROOT:+DOTNET_ROOT="$DOTNET_ROOT"} DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 \
-    UMBRA_GNOME_HOLD="${UMBRA_GNOME_HOLD:-}" UMBRA_GNOME_INSIDE=1 UMBRA_TMP="$tmp" TMPDIR="$tmp" UMBRA_DATA_DIR="$tmp/profile" UMBRA_BIN="$bin" UMBRACTL="dotnet $ctl" UMBRA_OUT="${UMBRA_OUT:-}" \
+    UMBRA_RELEASE_URL="$tmp/no-update.json" UMBRA_GNOME_HOLD="${UMBRA_GNOME_HOLD:-}" UMBRA_GNOME_INSIDE=1 UMBRA_TMP="$tmp" TMPDIR="$tmp" UMBRA_DATA_DIR="$tmp/profile" UMBRA_BIN="$bin" UMBRACTL="dotnet $ctl" UMBRA_OUT="${UMBRA_OUT:-}" \
     dbus-run-session -- "$0" "$mode"
   code=$?
   if [ $code -ne 0 ]; then
