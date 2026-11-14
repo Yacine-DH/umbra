@@ -55,6 +55,24 @@ interface IDesktopPin
 
     /// <summary>The usable area of the primary monitor (without panels), or null when the session does not say.</summary>
     Rectangle? PrimaryWorkArea();
+
+    /// <summary>
+    /// Whether this backend can tell that the active window is fullscreen (<see cref="FullscreenAppActive"/>); false where only
+    /// the compositor knows (native Wayland), so Settings hides "Hide during fullscreen apps".
+    /// </summary>
+    bool CanSeeFullscreen => false;
+
+    /// <summary>The focused window of another app covers its screen (a game, a video, a presentation).</summary>
+    bool FullscreenAppActive() => false;
+
+    /// <summary>Whether <see cref="SetPeeking"/> can lift widgets above other windows on this backend.</summary>
+    bool CanPeek => false;
+
+    /// <summary>
+    /// Peek on or off: while on, a widget window that maps is put above normal windows (never activated); the host remaps the
+    /// visible widgets after each change so the window manager reads the new type.
+    /// </summary>
+    void SetPeeking(bool on) { }
 }
 
 /// <summary>The pointer as the display server reports it (logical pixels).</summary>
@@ -86,6 +104,8 @@ sealed unsafe partial class X11Pin : IDesktopPin
     [LibraryImport(Gtk4)] private static partial nuint gdk_x11_surface_get_xid(IntPtr surface);
     [LibraryImport(Gtk4)] private static partial nuint gdk_x11_display_get_xrootwindow(IntPtr display);
     [LibraryImport(Gtk4)] private static partial nuint gdk_x11_display_get_type();
+    [LibraryImport(Gtk4)] private static partial void gdk_x11_display_error_trap_push(IntPtr display);
+    [LibraryImport(Gtk4)] private static partial void gdk_x11_display_error_trap_pop_ignored(IntPtr display);
     [LibraryImport("libgobject-2.0.so.0")] private static partial int g_type_check_instance_is_a(IntPtr instance, nuint type);
 
     [LibraryImport(X11, StringMarshalling = StringMarshalling.Utf8)] private static partial nuint XInternAtom(IntPtr display, string name, int onlyIfExists);
@@ -128,16 +148,52 @@ sealed unsafe partial class X11Pin : IDesktopPin
     const int PropModeReplace = 0, ClientMessage = 33;
     const nint SubstructureRedirectMask = 1 << 20, SubstructureNotifyMask = 1 << 19;
     const nint InputHint = 1, USPosition = 1, PPosition = 4;
-    const nuint XaAtom = 4, XaCardinal = 6;
+    const nuint XaAtom = 4, XaCardinal = 6, XaWindow = 33;
     const nuint AllDesktops = 0xFFFFFFFF;
 
-    readonly IntPtr _display;
+    readonly IntPtr _display, _gdkDisplay;
     readonly nuint _root;
     readonly bool _utility;
 
-    X11Pin(IntPtr display, nuint root, bool utility) { _display = display; _root = root; _utility = utility; }
+    X11Pin(IntPtr gdkDisplay, IntPtr display, nuint root, bool utility) { _gdkDisplay = gdkDisplay; _display = display; _root = root; _utility = utility; }
 
     public string Name => _utility ? "x11 (utility, below)" : "x11";
+
+    bool _peeking;
+
+    public bool CanSeeFullscreen => true;
+    public bool CanPeek => true;
+    public void SetPeeking(bool on) => _peeking = on;
+
+    /// <summary>
+    /// <c>_NET_ACTIVE_WINDOW</c> of the root has <c>_NET_WM_STATE_FULLSCREEN</c> in its <c>_NET_WM_STATE</c> (EWMH). Under XWayland
+    /// this sees X11 apps only; a native Wayland app going fullscreen is not visible to an X client.
+    /// </summary>
+    public bool FullscreenAppActive()
+    {
+        if (XGetWindowProperty(_display, _root, Atom("_NET_ACTIVE_WINDOW"), 0, 1, 0, XaWindow, out _, out var format, out var items, out _, out var data) != 0
+            || data == IntPtr.Zero) return false;
+        nuint active;
+        try { if (format != 32 || items < 1) return false; active = *(nuint*)data; }
+        finally { XFree(data); }
+        if (active == 0) return false;
+        // Another app's window, which may already be gone (_NET_ACTIVE_WINDOW still names a closed window until something else
+        // gets the focus): its BadWindow error must be trapped, or GDK's default X error handler ends the process.
+        int status;
+        gdk_x11_display_error_trap_push(_gdkDisplay);
+        try { status = XGetWindowProperty(_display, active, Atom("_NET_WM_STATE"), 0, 32, 0, XaAtom, out _, out format, out items, out _, out data); }
+        finally { gdk_x11_display_error_trap_pop_ignored(_gdkDisplay); }
+        if (status != 0 || data == IntPtr.Zero) return false;
+        try
+        {
+            if (format != 32) return false;
+            var full = Atom("_NET_WM_STATE_FULLSCREEN");
+            var states = (nuint*)data;
+            for (nuint i = 0; i < items; i++) if (states[i] == full) return true;
+            return false;
+        }
+        finally { XFree(data); }
+    }
 
     /// <summary>
     /// The X11 backend when GDK runs on X11 (a real X session or XWayland), else null.
@@ -151,7 +207,7 @@ sealed unsafe partial class X11Pin : IDesktopPin
         try { if (g_type_check_instance_is_a(handle, gdk_x11_display_get_type()) == 0) return null; }
         catch (EntryPointNotFoundException) { return null; } // a GTK built without the X11 backend
         var utility = string.Equals(Environment.GetEnvironmentVariable("UMBRA_X11_WINDOW_TYPE"), "utility", StringComparison.OrdinalIgnoreCase);
-        return new X11Pin(gdk_x11_display_get_xdisplay(handle), gdk_x11_display_get_xrootwindow(handle), utility);
+        return new X11Pin(handle, gdk_x11_display_get_xdisplay(handle), gdk_x11_display_get_xrootwindow(handle), utility);
     }
 
     nuint Atom(string name) => XInternAtom(_display, name, 0);
@@ -163,7 +219,9 @@ sealed unsafe partial class X11Pin : IDesktopPin
     static int Scale(Gtk.Window window) => Math.Max(1, window.GetSurface()?.GetScaleFactor() ?? 1);
 
     /// <summary>A widget is a DESKTOP window (or UTILITY kept BELOW); an overlay is always UTILITY kept BELOW, so it is above the desktop layer.</summary>
-    string[] StatesFor(bool overlay) => _utility || overlay
+    string[] StatesFor(bool overlay) => _peeking && !overlay
+        ? ["_NET_WM_STATE_ABOVE", "_NET_WM_STATE_STICKY", "_NET_WM_STATE_SKIP_TASKBAR", "_NET_WM_STATE_SKIP_PAGER"]
+        : _utility || overlay
         ? ["_NET_WM_STATE_BELOW", "_NET_WM_STATE_STICKY", "_NET_WM_STATE_SKIP_TASKBAR", "_NET_WM_STATE_SKIP_PAGER"]
         : ["_NET_WM_STATE_STICKY", "_NET_WM_STATE_SKIP_TASKBAR", "_NET_WM_STATE_SKIP_PAGER"];
 
@@ -183,7 +241,7 @@ sealed unsafe partial class X11Pin : IDesktopPin
 
     void SetType(nuint xid, bool overlay)
     {
-        var type = Atom(_utility || overlay ? "_NET_WM_WINDOW_TYPE_UTILITY" : "_NET_WM_WINDOW_TYPE_DESKTOP");
+        var type = Atom(_utility || overlay || _peeking ? "_NET_WM_WINDOW_TYPE_UTILITY" : "_NET_WM_WINDOW_TYPE_DESKTOP");
         XChangeProperty(_display, xid, Atom("_NET_WM_WINDOW_TYPE"), XaAtom, 32, PropModeReplace, &type, 1);
     }
 
@@ -207,7 +265,7 @@ sealed unsafe partial class X11Pin : IDesktopPin
             SendRoot(xid, "_NET_WM_STATE", 1 /* _NET_WM_STATE_ADD */, (nint)add[i], i + 1 < add.Length ? (nint)add[i + 1] : 0, 1);
         SendRoot(xid, "_NET_WM_DESKTOP", unchecked((nint)AllDesktops), 1, 0, 0);
         NoInput(xid);
-        if (overlay) XRaiseWindow(_display, xid); // above the widgets when both are in the "below" layer
+        if (overlay || _peeking) XRaiseWindow(_display, xid); // overlays: above the widgets in the "below" layer; peek: above windows
         else XLowerWindow(_display, xid);
         XFlush(_display);
     }

@@ -59,8 +59,15 @@ sealed class App : IUmbraHost
     public string? EditSelection { get; private set; }
     public bool SafeMode { get; private set; }
     public bool WidgetsHidden { get; private set; }
-    public bool HiddenByFullscreen => false;
-    public bool Peeking => false;
+    /// <summary>True while a fullscreen app hides the widgets (only with General.HideOnFullscreen, on a backend that can see it). Not saved.</summary>
+    public bool HiddenByFullscreen { get; private set; }
+    public bool Peeking { get; private set; }
+    long _peekUntil;
+
+    bool ShouldHide => WidgetsHidden || HiddenByFullscreen;
+
+    /// <summary>Copies with "start hidden" the user has not revealed yet (the toggle-widgets hotkey or tray item shows them). Not saved.</summary>
+    readonly HashSet<string> _startHidden = new();
     public bool SettingsOpen => _settings is { IsClosed: false };
 
     SettingsWindow? _settings;
@@ -103,14 +110,19 @@ sealed class App : IUmbraHost
         Session.RefreshNeeded += reason => { Log.Write($"Refreshing widgets after {reason}"); foreach (var w in _windows.Values) w.RefreshData(); };
         Session.TimeChanged += () => { foreach (var w in _windows.Values) w.NotifyTimeChanged(); };
         Session.AccentChanged += () => { PushAll(); SettingsChangedElsewhere(); };
+        Session.AcChanged += ApplyVisibility;
         Session.Start();
         _updater.Start();
+        foreach (var (k, ws) in Settings.Widgets) if (ws.StartHidden) _startHidden.Add(k);
         SyncWindows();
+        // Show-when rules (time window) are re-checked every 15 s; fullscreen every 750 ms while that option is on; peek ends on time.
+        UiThread.Every(15000, () => { ApplyVisibility(); return true; });
+        UiThread.Every(750, () => { CheckFullscreen(); if (Peeking && Environment.TickCount64 >= _peekUntil) EndPeek(); return true; });
         if (EditMode) _ui.Post(_ => UpdateEditPills(), null); // left unlocked last time: show the Done pill again
         UiThread.Every(250, () => { TickGroups(); return true; });
         // A monitor was added, removed or rearranged: put every widget back where its saved monitor and offset say.
         if (Gdk.Display.GetDefault() is { } d)
-            d.GetMonitors().OnItemsChanged += (_, _) => _ui.Post(_ => { foreach (var w in _windows.Values) w.ReapplyPlacement(); }, null);
+            d.GetMonitors().OnItemsChanged += (_, _) => _ui.Post(_ => { foreach (var w in _windows.Values) w.ReapplyPlacement(); ApplyVisibility(); }, null);
     }
 
     /// <summary>Runs work on the UI thread (socket requests arrive on worker threads) and returns its result.</summary>
@@ -289,7 +301,9 @@ sealed class App : IUmbraHost
     public void ToggleHidden()
     {
         WidgetsHidden = !WidgetsHidden;
-        foreach (var (inst, w) in _windows) w.Visible = WantVisible(inst);
+        if (!WidgetsHidden) _startHidden.Clear(); // showing all again reveals the "start hidden" ones too, as on Windows
+        if (WidgetsHidden) EndPeek();
+        ApplyVisibility();
         RefreshEditPills();
         RefreshTray();
         SettingsChangedElsewhere();
@@ -307,7 +321,39 @@ sealed class App : IUmbraHost
         catch (Exception ex) { Log.Write($"Open {path} failed: {ex.Message}"); }
     }
 
-    bool WantVisible(string inst) => !WidgetsHidden && Groups.IsShownTab(Settings, inst);
+    /// <summary>Whether this widget copy may be on screen: the global hide states, start hidden, its tab, and its "show only when" rules.</summary>
+    bool WantVisible(string inst)
+    {
+        if (ShouldHide || _startHidden.Contains(inst) || !Groups.IsShownTab(Settings, inst)) return false;
+        var rules = Settings.Widgets.TryGetValue(inst, out var ws) ? ws.ShowWhen : null;
+        if (rules is null) return true;
+        var monitors = Monitors();
+        return Prefs.RulesAllow(rules, DateTime.Now.TimeOfDay, Session.OnAc,
+            name => monitors.Any(m => m.Name.Equals(name, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>Shows or hides each widget window from the states above; only windows whose state differs change, so nothing flickers.</summary>
+    void ApplyVisibility()
+    {
+        var changed = false;
+        foreach (var (inst, w) in _windows)
+        {
+            var want = WantVisible(inst);
+            if (w.Visible != want) { w.Visible = want; changed = true; }
+        }
+        if (changed) RefreshEditPills();
+    }
+
+    void CheckFullscreen()
+    {
+        var hide = Settings.General.HideOnFullscreen && Pin.CanSeeFullscreen && Pin.FullscreenAppActive();
+        if (hide == HiddenByFullscreen) return;
+        HiddenByFullscreen = hide;
+        Log.Write(hide ? "A fullscreen app is active: widgets hidden" : "Fullscreen app gone: widgets back");
+        if (hide) EndPeek();
+        ApplyVisibility();
+        RefreshTray();
+    }
 
     /// <summary>Opens a window for each enabled widget copy and closes the ones that were disabled or removed.</summary>
     public void SyncWindows()
@@ -341,6 +387,7 @@ sealed class App : IUmbraHost
             }
         var live = Manifests.SelectMany(m => Settings.Instances(m.Id)).ToHashSet();
         foreach (var inst in _windows.Keys.Where(k => !live.Contains(k)).ToList()) CloseWidget(inst);
+        _startHidden.RemoveWhere(k => !Settings.Widgets.TryGetValue(k, out var s) || !s.StartHidden);
         foreach (var (inst, w) in _windows) w.Visible = WantVisible(inst);
         RefreshEditPills();
     }
@@ -613,7 +660,37 @@ sealed class App : IUmbraHost
         SettingsChangedElsewhere();
     }
 
-    public void Peek() => throw new Control.CommandException("Peek is not available on Linux yet (#361)");
+    /// <summary>
+    /// Lifts the visible widgets above other windows for General.PeekSeconds (never activating them), then puts them back on the
+    /// desktop. X11/XWayland only: the window manager reads the new window type when each window maps again.
+    /// </summary>
+    public void Peek()
+    {
+        if (!Pin.CanPeek) throw new Control.CommandException($"Peek is not available with the {Pin.Name} desktop backend on Linux yet");
+        if (ShouldHide) return;
+        _peekUntil = Environment.TickCount64 + Math.Clamp(Settings.General.PeekSeconds, 1, 60) * 1000L;
+        if (Peeking) return; // already up: only the time is extended
+        Peeking = true;
+        Pin.SetPeeking(true);
+        Remap();
+        Log.Write("Peek: widgets above windows");
+    }
+
+    void EndPeek()
+    {
+        if (!Peeking) return;
+        Peeking = false;
+        Pin.SetPeeking(false);
+        Remap();
+        Log.Write("Peek ended");
+    }
+
+    /// <summary>Unmaps and maps the visible widget windows so the pin backend's new window type and stacking apply.</summary>
+    void Remap()
+    {
+        foreach (var w in _windows.Values.Where(w => w.Visible).ToList()) { w.Visible = false; w.Visible = true; }
+        RefreshEditPills();
+    }
 
     public void QuitSoon() => _ = Task.Delay(300).ContinueWith(_ => _ui.Post(_ => Quit(), null));
 
@@ -642,7 +719,9 @@ sealed class App : IUmbraHost
             case "edit-mode": SetEditMode(!EditMode); break;
             case "refresh-all": foreach (var w in _windows.Values) w.RefreshData(); break;
             case "toggle-widgets": ToggleHidden(); break;
-            case "peek": Log.Write("Peek is not available on Linux yet (#361)"); break;
+            case "peek":
+                try { Peek(); } catch (Control.CommandException ex) { Log.Write(ex.Message); }
+                break;
             case "open-settings": ShowSettings(); break;
         }
     }
