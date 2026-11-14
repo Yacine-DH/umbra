@@ -100,6 +100,8 @@ export default class UmbraExtension extends Extension {
             global.display.connect('restacked', () => this._checkStackingSoon()),
         ];
         this._layoutSignal = Main.layoutManager.connect('monitors-changed', () => this._monitorsChanged());
+        // Every window is looked at again when it maps, so one that the waiting cap left out is still pinned and gated.
+        this._mapSignal = global.window_manager.connect('map', (_wm, actor) => this._watch(actor.meta_window));
 
         for (const actor of global.get_window_actors()) this._watch(actor.meta_window);
         if (!NATIVE) this._patchShell();
@@ -109,12 +111,16 @@ export default class UmbraExtension extends Extension {
         for (const id of this._displaySignals) global.display.disconnect(id);
         if (this._stackTimer) { GLib.source_remove(this._stackTimer); this._stackTimer = 0; }
         Main.layoutManager.disconnect(this._layoutSignal);
+        global.window_manager.disconnect(this._mapSignal);
         for (const [w, ids] of this._watched) for (const id of ids) w.disconnect(id);
         for (const w of [...this._waiting.keys()]) this._stopWaiting(w);
         // Not restored to normal windows: the host hides them at once and restarts on XWayland (#187 review), and a
         // desktop window left behind for a moment stays below the user's apps.
         for (const entry of this._entries.values()) this._detach(entry);
-        for (const client of this._clients.values()) Gio.bus_unwatch_name(client.watch);
+        for (const client of this._clients.values()) {
+            Gio.bus_unwatch_name(client.watch);
+            for (const inv of client.waiting.splice(0)) inv.return_dbus_error('org.freedesktop.DBus.Error.Failed', 'extension disabled');
+        }
         for (const [obj, name, old] of this._patches) obj[name] = old;
         Gio.bus_unown_name(this._nameId);
         this._dbus.unexport();
@@ -145,7 +151,10 @@ export default class UmbraExtension extends Extension {
             client.tokens.add(token);
         }
         this._rescan();
-        invocation.return_value(null);
+        // Answered once the caller's pid is known: the host shows a window only after this returns, so the window is
+        // recognised (and gated) from its first frame, never a plain window Mutter could focus.
+        if (client.pid !== null) invocation.return_value(null);
+        else client.waiting.push(invocation);
     }
 
     RemoveWindowAsync([token], invocation) {
@@ -213,7 +222,7 @@ export default class UmbraExtension extends Extension {
     _client(sender) {
         let client = this._clients.get(sender);
         if (client) return client;
-        client = {pid: null, tokens: new Set(), grab: false, watch: 0};
+        client = {pid: null, tokens: new Set(), grab: false, watch: 0, waiting: []};
         this._clients.set(sender, client);
         client.watch = Gio.bus_watch_name_on_connection(Gio.DBus.session, sender, Gio.BusNameWatcherFlags.NONE, null,
             () => this._dropClient(sender));
@@ -223,8 +232,11 @@ export default class UmbraExtension extends Extension {
                 try {
                     const [pid] = bus.call_finish(result).deepUnpack();
                     if (this._clients?.get(sender) === client) { client.pid = pid; this._rescan(); }
+                    for (const inv of client.waiting.splice(0)) inv.return_value(null);
                 } catch (e) {
                     console.warn(`Umbra: no pid for ${sender}: ${e.message}`);
+                    for (const inv of client.waiting.splice(0))
+                        inv.return_dbus_error('org.freedesktop.DBus.Error.Failed', 'caller pid unknown');
                 }
             });
         return client;
@@ -431,7 +443,7 @@ export default class UmbraExtension extends Extension {
         for (const e of this._byWindow.values())
             if (e.focusable && e.hadFocus && e.window !== focused) { e.focusable = false; e.hadFocus = false; }
         const entry = focused ? this._byWindow.get(focused) : null;
-        if (!entry) { if (focused) this._lastOther = focused; return; }
+        if (!entry) { if (focused && !this._isUmbraWindow(focused)) this._lastOther = focused; return; }
         if (entry.focusable) { entry.hadFocus = true; return; }
         // A physical press on the window (button down, the window topmost under the pointer) is what click-to-focus
         // looks like; the focus falling back when a window closes is not, and never counts as a press.
@@ -454,12 +466,22 @@ export default class UmbraExtension extends Extension {
         return actor?.get_meta_window() ?? null;
     }
 
-    /** Back to the window the user had, or to nothing. */
+    /**
+     * Any window with Umbra's app id and an Umbra title, attached or not (one mapped before its caller's pid was known
+     * looks like a plain window for a moment). Never a window to hand the focus back to.
+     */
+    _isUmbraWindow(window) {
+        return this._byWindow.has(window) || ((window.get_wm_class() === APP_ID || window.get_gtk_application_id() === APP_ID) &&
+            TITLE.test(window.get_title() ?? ''));
+    }
+
+    /** Back to the window the user had (never an Umbra window), or to nothing. */
     _giveBack() {
         const time = global.display.get_current_time_roundtrip();
         const other = this._lastOther;
         const workspace = global.workspace_manager.get_active_workspace();
-        if (other && !other.minimized && global.display.list_all_windows().includes(other) && other.located_on_workspace(workspace))
+        if (other && !this._isUmbraWindow(other) && !other.minimized && global.display.list_all_windows().includes(other) &&
+            other.located_on_workspace(workspace))
             other.focus(time);
         else global.display.unset_input_focus(time);
     }

@@ -35,6 +35,8 @@ sealed class GnomeExtensionPin : IDesktopPin
         public string Token { get; set; } = token;
         public bool Overlay { get; } = overlay;
         public Point? At { get; set; }
+        /// <summary>AddWindow returned (the extension knows the token and the caller's pid): the window may be shown.</summary>
+        public bool Registered { get; set; }
     }
 
     GnomeExtensionPin(IntPtr bus)
@@ -45,14 +47,42 @@ sealed class GnomeExtensionPin : IDesktopPin
         DBus.Watch(bus, GnomeShell.BusName, present =>
         {
             if (present == _present) return;
-            _present = present;
-            if (!present) { OnGone(); return; }
-            Log.Write("The Umbra GNOME Shell extension is back: registering the windows again.");
-            ReadMonitors();
-            foreach (var e in _windows.Values.ToList()) { Register(e); if (e.At is { } at) SendMove(e, at); }
-            foreach (var w in _hidden.ToList()) w.SetVisible(true);
-            _hidden.Clear();
+            if (!present) { _present = false; OnGone(); return; }
+            OnBack();
         });
+    }
+
+    bool _lostFired;
+
+    void FireLost(string why)
+    {
+        if (_lostFired) return;
+        _lostFired = true;
+        Log.Write($"{why}: restarting on XWayland.");
+        Lost?.Invoke();
+    }
+
+    /// <summary>
+    /// The bus name has an owner again. It counts as the extension only when it answers this host's protocol version and
+    /// takes every window back (AddWindow returns once it knows this process's pid); only then are the hidden windows
+    /// shown. Any other owner (a process that grabbed the free name) gets nothing: the windows stay hidden, and the host
+    /// restarts on XWayland.
+    /// </summary>
+    void OnBack()
+    {
+        if (_lostFired) return;
+        if (!ProbeVersion(_bus)) { FireLost("The Umbra GNOME Shell bus name came back, but not as this Umbra's extension"); return; }
+        _present = true;
+        Log.Write("The Umbra GNOME Shell extension is back: registering the windows again.");
+        ReadMonitors();
+        foreach (var e in _windows.Values) e.Registered = false;
+        foreach (var e in _windows.Values.ToList())
+        {
+            if (!Register(e)) { _present = false; FireLost("The Umbra GNOME Shell extension did not take a window back"); return; }
+            if (e.At is { } at) SendMove(e, at);
+        }
+        foreach (var w in _hidden.ToList()) w.SetVisible(true);
+        _hidden.Clear();
     }
 
     public string Name => "gnome-extension";
@@ -65,11 +95,7 @@ sealed class GnomeExtensionPin : IDesktopPin
         var lostAt = _lostAt = Environment.TickCount64;
         UiThread.Every(ReturnMs, () =>
         {
-            if (!_present && _lostAt == lostAt)
-            {
-                Log.Write("The Umbra GNOME Shell extension did not come back: restarting on XWayland.");
-                Lost?.Invoke();
-            }
+            if (!_present && _lostAt == lostAt) FireLost("The Umbra GNOME Shell extension did not come back");
             return false;
         });
     }
@@ -85,10 +111,10 @@ sealed class GnomeExtensionPin : IDesktopPin
     /// True when the extension answers <c>GetVersion</c> with this host's protocol version. Runs before GTK opens the
     /// display (it decides between native Wayland and XWayland), so it is one short blocking call.
     /// </summary>
-    public static bool Probe()
+    public static bool Probe() => DBus.Session is var bus && bus != IntPtr.Zero && ProbeVersion(bus);
+
+    static bool ProbeVersion(IntPtr bus)
     {
-        var bus = DBus.Session;
-        if (bus == IntPtr.Zero) return false;
         try
         {
             using var reply = DBus.Call(bus, GnomeShell.BusName, GnomeShell.ObjectPath, GnomeShell.Interface, "GetVersion", null, 1000);
@@ -120,17 +146,33 @@ sealed class GnomeExtensionPin : IDesktopPin
     }
 
     /// <summary>
+    /// Shows a window only while the extension is there and has taken it (so no frame of it is ever a plain window the
+    /// compositor could focus); otherwise it is remembered and shown when the extension takes it. Hiding is always done,
+    /// and a window the host hides on purpose is not shown again when the extension comes back.
+    /// </summary>
+    public void SetVisible(Gtk.Window window, bool visible)
+    {
+        if (!visible) { _hidden.Remove(window); window.SetVisible(false); return; }
+        if (_windows.TryGetValue(H(window), out var e) && (!_present || (!e.Registered && !Register(e))))
+        {
+            _hidden.Add(window);
+            return;
+        }
+        window.SetVisible(true);
+    }
+
+    /// <summary>
     /// Registers the window's token. A token another caller already holds (it registered it while this host was away, e.g.
     /// after an extension reload) is replaced by a fresh one and a new title.
     /// </summary>
-    void Register(Entry e)
+    bool Register(Entry e)
     {
         for (var attempt = 0; attempt < 3 && _present; attempt++)
         {
             try
             {
-                DBus.Call(_bus, GnomeShell.BusName, GnomeShell.ObjectPath, GnomeShell.Interface, "AddWindow", GnomeShell.AddArgs(e.Token, e.Overlay), 1000).Dispose();
-                return;
+                DBus.Call(_bus, GnomeShell.BusName, GnomeShell.ObjectPath, GnomeShell.Interface, "AddWindow", GnomeShell.AddArgs(e.Token, e.Overlay), 3000).Dispose();
+                return e.Registered = true;
             }
             catch (DBusException ex) when (GnomeShell.TokenTaken(ex.Message))
             {
@@ -138,8 +180,9 @@ sealed class GnomeExtensionPin : IDesktopPin
                 e.Token = GnomeShell.NewToken();
                 e.Window.SetTitle(GnomeShell.Title(e.Token));
             }
-            catch (DBusException ex) { Log.Verbose($"GNOME extension AddWindow failed: {ex.Message}"); return; }
+            catch (DBusException ex) { Log.Write($"GNOME extension AddWindow failed: {ex.Message}"); return false; }
         }
+        return false;
     }
 
     void Forget(Gtk.Window window)
@@ -162,7 +205,7 @@ sealed class GnomeExtensionPin : IDesktopPin
     /// <summary>The extension places a window when it is shown; this repeats the position in case it was not known then.</summary>
     public void Mapped(Gtk.Window window, bool overlay = false)
     {
-        if (!_present) { Hide(window); return; } // never a plain window on the user's desktop
+        if (!_present) { Hide(window); return; } // a window shown around the pin (should not happen): never a plain window
         if (_windows.TryGetValue(H(window), out var e) && e.At is { } at) SendMove(e, at);
     }
 

@@ -81,7 +81,7 @@ sealed class SettingsWindow : ISettingsView
     public void Present()
     {
         if (_closed) return;
-        if (_background) _window.SetVisible(true);
+        if (_background) _app.Pin.SetVisible(_window, true);
         else _window.Present();
     }
 

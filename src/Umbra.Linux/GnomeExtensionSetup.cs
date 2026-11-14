@@ -51,12 +51,17 @@ static class GnomeExtensionSetup
             if (Directory.Exists(Target)) Directory.Delete(Target, recursive: true);
             Directory.CreateDirectory(Target);
             foreach (var file in Directory.GetFiles(Source)) File.Copy(file, Path.Combine(Target, Path.GetFileName(file)));
-            var enabled = Enable();
+            // gsettings talks to dconf: off the UI thread, each call bounded, so a hung dconf cannot freeze GTK.
+            var result = await Task.Run(EnableAsync);
             Dismiss();
-            Log.Write($"GNOME extension installed in {Target}{(enabled ? ", enabled for the next login" : "")}");
-            await Dialogs.InfoAsync(parent, enabled
-                ? "Installed. Log out and back in, and Umbra pins your widgets through the extension."
-                : $"Installed in {Target}. Turn it on in the Extensions app after you log out and back in.");
+            Log.Write($"GNOME extension installed in {Target} ({result})");
+            await Dialogs.InfoAsync(parent, result switch
+            {
+                EnableResult.Enabled => "Installed. Log out and back in, and Umbra pins your widgets through the extension.",
+                EnableResult.UserExtensionsOff =>
+                    $"Installed in {Target}, but user extensions are turned off on this computer. Turn on extensions in the Extensions app, then log out and back in.",
+                _ => $"Installed in {Target}. Turn it on in the Extensions app after you log out and back in.",
+            });
         }
         catch (Exception ex)
         {
@@ -65,18 +70,24 @@ static class GnomeExtensionSetup
         }
     }
 
-    /// <summary>Adds the extension to enabled-extensions (and takes it off disabled-extensions); false when gsettings failed.</summary>
-    static bool Enable()
+    enum EnableResult { Enabled, UserExtensionsOff, Failed }
+
+    /// <summary>
+    /// Adds the extension to enabled-extensions (and takes it off disabled-extensions). With user extensions turned off
+    /// (<c>disable-user-extensions</c>) it still is listed, but the user is told it will not run until they turn them on.
+    /// </summary>
+    static async Task<EnableResult> EnableAsync()
     {
-        if (Gsettings("get", "enabled-extensions") is not { } enabled) return false;
-        if (GnomeShell.EnabledWith(enabled) is { } list && Gsettings("set", "enabled-extensions", list) is null) return false;
-        if (Gsettings("get", "disabled-extensions") is { } disabled && GnomeShell.DisabledWithout(disabled) is { } rest)
-            Gsettings("set", "disabled-extensions", rest);
-        return GnomeShell.ParseStrings(Gsettings("get", "enabled-extensions") ?? "")?.Contains(GnomeShell.Uuid) == true;
+        if (await GsettingsAsync("get", "enabled-extensions") is not { } enabled) return EnableResult.Failed;
+        if (GnomeShell.EnabledWith(enabled) is { } list && await GsettingsAsync("set", "enabled-extensions", list) is null) return EnableResult.Failed;
+        if (await GsettingsAsync("get", "disabled-extensions") is { } disabled && GnomeShell.DisabledWithout(disabled) is { } rest)
+            await GsettingsAsync("set", "disabled-extensions", rest);
+        if (GnomeShell.ParseStrings(await GsettingsAsync("get", "enabled-extensions") ?? "")?.Contains(GnomeShell.Uuid) != true) return EnableResult.Failed;
+        return (await GsettingsAsync("get", "disable-user-extensions"))?.Trim() == "true" ? EnableResult.UserExtensionsOff : EnableResult.Enabled;
     }
 
-    /// <summary>One <c>gsettings</c> call on <c>org.gnome.shell</c>; its output, or null on failure.</summary>
-    static string? Gsettings(string verb, string key, string? value = null)
+    /// <summary>One <c>gsettings</c> call on <c>org.gnome.shell</c>, at most 5 s (then killed); its output, or null on failure.</summary>
+    static async Task<string?> GsettingsAsync(string verb, string key, string? value = null)
     {
         try
         {
@@ -84,9 +95,20 @@ static class GnomeExtensionSetup
             foreach (var a in value is null ? new[] { verb, "org.gnome.shell", key } : new[] { verb, "org.gnome.shell", key, value }) psi.ArgumentList.Add(a);
             using var p = System.Diagnostics.Process.Start(psi);
             if (p is null) return null;
-            var output = p.StandardOutput.ReadToEnd();
-            if (!p.WaitForExit(5000) || p.ExitCode != 0) return null;
-            return output;
+            using var cts = new CancellationTokenSource(5000);
+            try
+            {
+                var output = p.StandardOutput.ReadToEndAsync(cts.Token);
+                _ = p.StandardError.ReadToEndAsync(cts.Token);
+                await p.WaitForExitAsync(cts.Token);
+                return p.ExitCode == 0 ? await output : null;
+            }
+            catch (OperationCanceledException)
+            {
+                try { p.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                Log.Write($"gsettings {verb} {key} timed out");
+                return null;
+            }
         }
         catch (Exception ex) { Log.Verbose($"gsettings failed: {ex.Message}"); return null; }
     }
