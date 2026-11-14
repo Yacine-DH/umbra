@@ -62,13 +62,19 @@ sealed partial class WidgetWindow : IWidgetView
         _window.SetResizable(false);
         _window.AddCssClass("umbra-widget");
         _window.SetChild(_view);
+        _app.Pin.Init(_window); // before realize, and before our close-request handler (a backend may refuse that request)
         _window.OnCloseRequest += (_, _) => { MarkClosed(); return false; };
         InitInput();
         ApplySize();
         // Realize now, so the pin backend can mark the window (type, state, position) before it is first shown.
         ((Gtk.Widget)_window).Realize(); // the widget's realize (creates the surface), not Gtk.Native's
         _app.Pin.Prepare(_window);
-        _window.OnMap += (_, _) => { _app.Pin.Mapped(_window); Place(); };
+        _window.OnMap += (_, _) =>
+        {
+            _app.Pin.Mapped(_window);
+            Place();
+            if (_app.Pin.RestacksOverlays) OverlayWindow.RestackSoon();
+        };
         Place();
 
         _view.LoadUri(UmbraScheme.FromHttps(manifest.PageUrl));

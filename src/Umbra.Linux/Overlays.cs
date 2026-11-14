@@ -19,11 +19,13 @@ abstract class OverlayWindow
         Window.SetResizable(false);
         Window.SetFocusable(false);
         Window.AddCssClass(cssClass);
+        Live.Add(this);
     }
 
     /// <summary>Call from the subclass constructor once the content is set.</summary>
     protected void Finish()
     {
+        App.Pin.Init(Window, overlay: true);
         ((Gtk.Widget)Window).Realize();
         App.Pin.Prepare(Window, overlay: true);
         Window.OnMap += (_, _) => { App.Pin.Mapped(Window, overlay: true); App.Pin.Move(Window, X, Y); };
@@ -47,7 +49,27 @@ abstract class OverlayWindow
     {
         if (_closed) return;
         _closed = true;
+        Live.Remove(this);
         Window.Destroy();
+    }
+
+    static readonly List<OverlayWindow> Live = new();
+    static bool _restackQueued;
+
+    /// <summary>
+    /// Shows the visible overlays again, once, after the current main-loop turn: on layer-shell a widget that mapped again
+    /// may have landed above them in the shared BOTTOM layer, and a fresh map puts them back on top of it.
+    /// </summary>
+    public static void RestackSoon()
+    {
+        if (_restackQueued) return;
+        _restackQueued = true;
+        UiThread.Every(50, () =>
+        {
+            _restackQueued = false;
+            foreach (var o in Live.Where(o => o.Visible).ToList()) { o.Window.SetVisible(false); o.Window.SetVisible(true); }
+            return false;
+        });
     }
 
     /// <summary>The style of every overlay; loaded once by <c>App</c>. Colours follow the default theme's surfaces and accent.</summary>

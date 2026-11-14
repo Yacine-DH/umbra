@@ -33,6 +33,10 @@ if [ -n "$missing" ]; then
   echo "  Arch:          sudo pacman -S gtk4 webkitgtk-6.0"
   exit 1
 fi
+# Optional: native Wayland pinning on KDE Plasma, Sway, Hyprland (#186). Without it Umbra pins through XWayland.
+if ! ldconfig -p 2>/dev/null | grep -q libgtk4-layer-shell.so.0; then
+  echo "Optional: install gtk4-layer-shell for native Wayland pinning on KDE Plasma (Ubuntu: libgtk4-layer-shell0, Fedora/Arch: gtk4-layer-shell)."
+fi
 
 running=0
 if pgrep -u "$(id -u)" -x umbra >/dev/null 2>&1; then

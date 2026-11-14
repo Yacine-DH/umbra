@@ -8,18 +8,38 @@ static partial class Program
     private static partial int setenv(string name, string value, int overwrite);
 
     /// <summary>
-    /// Widgets are pinned through X11 window manager hints (#182), which GNOME and KDE also honour for XWayland windows. So on a
-    /// Wayland session with an X server (XWayland) GTK is told to use X11, until the native Wayland backends exist (#186, #187).
-    /// An explicit GDK_BACKEND is respected. Must run before GTK opens the display, and through libc: GTK reads the C environment.
+    /// Picks the desktop pin backend (<see cref="LayerShellLayout.Choose"/>) and the GDK backend it needs. On a Wayland
+    /// compositor with layer-shell (KWin, Sway, Hyprland) GTK stays on Wayland and widgets are layer surfaces (#186);
+    /// gtk4-layer-shell is loaded first, as it must be before libwayland-client. On a Wayland session without it (GNOME,
+    /// until #187) and with XWayland, GTK is told to use X11, whose window manager hints GNOME and KDE honour (#182).
+    /// <c>UMBRA_PIN_BACKEND=x11</c> forces the XWayland path. An explicit GDK_BACKEND is respected. Must run before GTK opens
+    /// the display, and through libc: GTK reads the C environment.
     /// </summary>
     static void ChooseDisplayBackend()
     {
-        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("GDK_BACKEND"))) return;
+        var gdk = Environment.GetEnvironmentVariable("GDK_BACKEND");
+        var pinOverride = Environment.GetEnvironmentVariable("UMBRA_PIN_BACKEND");
         var wayland = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY"));
         var x = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY"));
-        if (!wayland || !x) return; // a plain X session needs nothing; Wayland without XWayland stays on Wayland (no pinning)
-        setenv("GDK_BACKEND", "x11", 1);
-        Log.Write("Wayland session with XWayland: using the X11 backend so widgets can be pinned to the desktop.");
+        bool loaded = false, offered = false;
+        if (wayland && !LayerShellLayout.IsX11(pinOverride) && !LayerShellLayout.IsX11(gdk?.Split(',')[0]))
+        {
+            loaded = LayerShellPin.Preload();
+            offered = loaded && WaylandProbe.HasLayerShell();
+            if (!loaded) Log.Write("gtk4-layer-shell is not installed (libgtk4-layer-shell.so.0): no native Wayland pinning.");
+        }
+        var choice = LayerShellLayout.Choose(gdk, pinOverride, wayland, x, loaded, offered);
+        if (!string.IsNullOrEmpty(gdk)) return;
+        if (choice == PinBackend.LayerShell)
+        {
+            setenv("GDK_BACKEND", "wayland", 1);
+            Log.Write("Wayland compositor with layer-shell: widgets are pinned as layer surfaces.");
+        }
+        else if (choice == PinBackend.X11 && wayland)
+        {
+            setenv("GDK_BACKEND", "x11", 1);
+            Log.Write("Wayland session without layer-shell, with XWayland: using the X11 backend so widgets can be pinned to the desktop.");
+        }
     }
 
     /// <summary>The GApplication id (also the .desktop, metainfo and Flatpak id). The Windows AUMID stays <c>AmineChr54.Umbra</c>.</summary>
