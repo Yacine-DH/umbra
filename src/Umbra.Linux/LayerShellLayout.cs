@@ -89,29 +89,6 @@ static class LayerShellLayout
 }
 
 /// <summary>
-/// The keyboard focus a physical press lends a layer surface (keyboard mode ON_DEMAND) is taken back after
-/// <see cref="Milliseconds"/> unless the surface really got the focus by then. Otherwise a compositor that later falls
-/// back to it (the active window closed) would hand a widget the keyboard with no press. A newer press supersedes the
-/// timer of an older one.
-/// </summary>
-sealed class FocusLease
-{
-    /// <summary>How long a press keeps the surface focusable without it becoming active.</summary>
-    public const uint Milliseconds = 1500;
-
-    long _generation;
-
-    /// <summary>Starts a lease; returns the token its timer passes back to <see cref="ShouldRevoke"/>.</summary>
-    public long Lend() => ++_generation;
-
-    /// <summary>True when the timer of lease <paramref name="token"/> must set keyboard mode NONE again.</summary>
-    public bool ShouldRevoke(long token, bool active) => token == _generation && !active;
-
-    /// <summary>Ends every lease (the mode was set back to NONE).</summary>
-    public void End() => _generation++;
-}
-
-/// <summary>
 /// Turns the pointer position Wayland gives (relative to the surface under it) into a desktop position. A surface the host
 /// just moved reports the old relative position until the compositor sends the next motion, so adding it to the new origin
 /// would run away during a drag. A sample is therefore converted once, with the origin it arrived with, and reused until the

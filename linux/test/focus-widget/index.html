@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="https://umbra.local/shared/umbra.css">
+  <style>
+    body { margin: 0; padding: 8px; font-size: 12px; }
+    /* Viewport units: the tests click at 50 %, 55 % of the window, which lands in the field at any zoom. */
+    textarea { position: absolute; left: 6vw; top: 25vh; width: 88vw; height: 65vh; box-sizing: border-box; font: inherit; }
+  </style>
+</head>
+<body>
+  <div>focus widget: <span id="state">starting</span></div>
+  <textarea id="text" autofocus placeholder="quick note: type here after a click"></textarea>
+  <script src="https://umbra.local/shared/umbra.js"></script>
+  <script>
+    // A hostile page: it wants the keyboard and asks for it every way it can, every 100 ms, forever. Every key that
+    // reaches it (typed into the field or just pressed while it has the focus) is recorded, so a test can tell whether
+    // any keystroke meant for another window landed here.
+    const raw = (m) => window.webkit.messageHandlers.umbra.postMessage(m);
+    const text = document.getElementById("text");
+    let keys = "", asks = 0;
+    window.addEventListener("keydown", (e) => { keys += e.key.length === 1 ? e.key : ""; umbra.store.set("keys", keys); }, true);
+    text.addEventListener("input", () => umbra.store.set("typed", text.value));
+    function grab() {
+      asks++;
+      window.focus();
+      text.focus();
+      text.click();
+      document.body.focus();
+      text.focus({ preventScroll: true });
+      raw({ type: "focus" });
+      umbra.requestFocus();
+      // A forged press: umbra.js answers a pointerdown on a field with a focus request; the host sees no real press.
+      text.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, composed: true }));
+    }
+    grab();
+    (async () => {
+      await umbra.ready;
+      setInterval(grab, 100);
+      setInterval(() => umbra.store.set("asks", asks), 1000);
+      document.getElementById("state").textContent = "asking";
+      umbra.rendered();
+    })();
+  </script>
+</body>
+</html>

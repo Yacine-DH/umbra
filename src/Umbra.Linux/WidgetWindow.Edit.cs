@@ -3,7 +3,7 @@ using System.Text.Json.Nodes;
 
 namespace Umbra;
 
-// Edit mode and focus gating for a widget window (#183): drag, resize, zoom, nudge, Esc, keyboard focus.
+// Edit mode and focus gating for a widget window (#183, #188; the focus policy itself is FocusGate): drag, resize, zoom, nudge, Esc, keyboard focus.
 // Every one of them needs physical input the page cannot fake: a mouse press GTK delivered to this view, a button or
 // modifier key the display server reports as down, or a key GTK delivered while this window had the focus. A message
 // from the page alone never moves, resizes, zooms or focuses anything.
@@ -17,6 +17,8 @@ sealed partial class WidgetWindow
     bool _shiftAtKey;
     long _lastZoomAt = long.MinValue / 2;
     bool _moving, _resizing;
+    readonly FocusGate _focus = new();
+    bool _editModeSeen;
 
     /// <summary>Moving or changing the widget by hand needs the global lock off (edit mode).</summary>
     bool CanArrange => WidgetGeometry.CanArrange(_app.Settings.General);
@@ -30,6 +32,7 @@ sealed partial class WidgetWindow
         press.OnPressed += (g, _) =>
         {
             _pressedAt = Environment.TickCount64;
+            _focus.Pressed(_pressedAt);
             // The click gate of the host prompts (notifications, later camera and pictures): a left press outside edit mode.
             if (g.GetCurrentButton() == 1 && !_app.EditMode) _leftPressAt = _pressedAt;
         };
@@ -66,11 +69,38 @@ sealed partial class WidgetWindow
         _view.AddController(keys);
 
         // The focus is lent, not given: once the user moves on to another window, this one cannot take it back by itself.
+        _editModeSeen = _app.EditMode;
         _window.OnNotify += (_, e) =>
         {
-            if (e.Pspec.GetName() == "is-active" && !_window.IsActive && !_closed) _app.Pin.SetFocusable(_window, false);
+            if (_closed) return;
+            switch (e.Pspec.GetName())
+            {
+                case "is-active" when _window.IsActive:
+                    // Without a grant the backend already keeps the window unfocusable (the GNOME extension hands a
+                    // click-to-focus back by itself unless the grant follows); this is only worth a line in the log.
+                    if (!_focus.Activated()) Log.Verbose($"[{Instance}] became active without a focus grant");
+                    break;
+                case "is-active":
+                    _focus.Deactivated();
+                    _app.Pin.SetFocusable(_window, false);
+                    break;
+                case "visible" when !_window.GetVisible():
+                    if (_focus.Hidden()) _app.Pin.SetFocusable(_window, false);
+                    break;
+            }
         };
     }
+
+    /// <summary>Edit mode turned on or off (called with every settings push): an unused press or a pending grant ends.</summary>
+    void NoteEditMode()
+    {
+        if (_app.EditMode == _editModeSeen) return;
+        _editModeSeen = _app.EditMode;
+        if (_focus.EditModeChanged()) _app.Pin.SetFocusable(_window, false);
+    }
+
+    /// <summary>The window is going away: no grant after this.</summary>
+    void EndFocus() => _focus.Closed();
 
     /// <summary>Any physical mouse press on this widget in the last 2 s (the media controls' gate, as on Windows).</summary>
     bool RecentUserPress() => Environment.TickCount64 - _pressedAt is >= 0 and <= 2000;
@@ -141,19 +171,33 @@ sealed partial class WidgetWindow
 
     /// <summary>
     /// Widgets never take the keyboard on their own, so text fields cannot receive typing. Right after the user pressed the
-    /// mouse on this widget the page may ask for it; any other request is ignored, so a widget cannot pull the focus away
-    /// while the user types elsewhere.
+    /// mouse on this widget the page may ask for it, once per press; any other request is ignored, so a widget cannot pull
+    /// the focus away while the user types elsewhere (<see cref="FocusGate"/>). A grant not taken within the lease is
+    /// withdrawn, so a later focus fallback of the window manager or compositor cannot hand it the keyboard.
     /// </summary>
     void TakeKeyboardFocus()
     {
-        if (Environment.TickCount64 - _pressedAt > 1000)
+        switch (_focus.Request(Environment.TickCount64, _window.GetVisible(), out var token))
         {
-            Log.Verbose($"[{Instance}] focus ignored: no mouse press on the widget");
-            return;
+            case FocusDecision.Ignore:
+                Log.Verbose($"[{Instance}] focus ignored: no unused mouse press on the widget");
+                return;
+            case FocusDecision.Inside:
+                _view.GrabFocus();
+                return;
         }
         _app.Pin.SetFocusable(_window, true);
         _app.Pin.Focus(_window);
         _view.GrabFocus();
+        UiThread.Every(FocusGate.LeaseMs, () =>
+        {
+            if (!_closed && _focus.LeaseExpired(token))
+            {
+                Log.Verbose($"[{Instance}] focus lease ran out: the window never became active");
+                _app.Pin.SetFocusable(_window, false);
+            }
+            return false;
+        });
     }
 
     void SelectForEdit()

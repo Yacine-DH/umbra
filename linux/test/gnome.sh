@@ -37,6 +37,7 @@ if [ "${UMBRA_GNOME_INSIDE:-}" = "" ]; then
   cp -r "$here/gnome-eval-extension/umbra-test-eval@umbra.test" "$tmp/data/gnome-shell/extensions/"
   [ "$mode" = fallback ] || cp -r "$repo/linux/gnome-extension/$uuid" "$tmp/data/gnome-shell/extensions/"
   cp -r "$here/edit-widget" "$tmp/profile/widgets/edit-widget"
+  cp -r "$here/focus-widget" "$tmp/profile/widgets/focus-widget"
   printf '#!/bin/sh\nprintf "%%s\\n" "$1" >> "%s"\n' "$tmp/opened.txt" > "$tmp/bin/xdg-open"; chmod +x "$tmp/bin/xdg-open"
   env -i PATH="$tmp/bin:$PATH" HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/config" XDG_DATA_HOME="$tmp/data" XDG_CACHE_HOME="$tmp/cache" \
     XDG_STATE_HOME="$tmp/state" XDG_RUNTIME_DIR="$tmp/run" XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_TYPE=wayland LANG=C.UTF-8 \
@@ -103,8 +104,9 @@ if [ "$mode" = fallback ]; then
   [ -n "$UMBRA_OUT" ] && cp "$tmp/fallback-settings.png" "$UMBRA_OUT/" 2>/dev/null
 else
   check 'Umbra uses native Wayland + the extension' 'echo "$status" | grep -q "\"pinBackend\": \"gnome-extension\""'
-  $UMBRACTL configure edit-widget --x 300 --y 240 >/dev/null; sleep 1.5
-  q='const w = global.display.list_all_windows().find(w => /^umbra:[0-9a-f]{32}$/.test(w.get_title() ?? ""))'
+  $UMBRACTL configure edit-widget --x 300 --y 240 >/dev/null
+  $UMBRACTL configure focus-widget --x 300 --y 600 >/dev/null; sleep 1.5
+  q='const w = global.display.list_all_windows().find(w => /^umbra:[0-9a-f]{32}$/.test(w.get_title() ?? "") && w.get_frame_rect().y < 500)'
   info=$(js "$q; w ? JSON.stringify({cls: w.get_wm_class(), wayland: w.get_client_type() === imports.gi.Meta.WindowClientType.WAYLAND, desktop: w.get_window_type() === imports.gi.Meta.WindowType.DESKTOP, sticky: w.is_on_all_workspaces(), skip: w.is_skip_taskbar(), x: w.get_frame_rect().x, y: w.get_frame_rect().y}) : 'none'")
   echo "      widget window: $info"
   check 'the widget is a native Wayland window with the app id' 'echo "$info" | grep -q "\"cls\":\"io.github.aminechr54.Umbra\",\"wayland\":true"'
@@ -176,7 +178,7 @@ EOF
   click 500 250; sleep 1
   check "a click on the widget's label leaves the focus where it was (has: $(focus))" '[ "$(focus)" = "a normal window" ]'
   # A click into the widget's text field: the page asks right after the press, the host and the extension grant it.
-  click 360 280; sleep 1
+  click 360 300; sleep 1
   check "after a real click into the widget's text field it has the focus (has: $(focus))" 'focus_is umbra'
   type "hello"; sleep 1
   check "typing after the click reaches the widget ($(grep -o '"typed":"[^"]*"' "$data"))" 'grep -q "\"typed\":\"hello\"" "$data"'
@@ -184,6 +186,26 @@ EOF
   check "a click on the normal window takes the focus back (has: $(focus))" 'focus_is "a normal window"'
   type "xyz"; sleep 0.5
   check 'and typing goes there again, not to the widget' 'grep -q xyz "$tmp/other-typed.txt" && grep -q "\"typed\":\"hello\"" "$data"'
+  # The hostile page (focus-widget at 300,600): focus(), autofocus, element.focus() and focus messages every 100 ms.
+  fdata="$UMBRA_DATA_DIR/data/focus-widget.json"
+  fkeys() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("keys","") + "|" + d.get("typed",""))' "$fdata" 2>/dev/null; }
+  never_umbra() { for _ in $(seq 1 $(( $1 * 10 ))); do [ "$(focus)" = umbra ] && return 1; sleep 0.1; done; return 0; }
+  check "the hostile page is asking ($(grep -o '"asks":[0-9]*' "$fdata"))" 'grep -q "\"asks\":[1-9]" "$fdata"'
+  for c in t h e q u i c k f o x; do type $c; sleep 0.15; done; sleep 0.5
+  check "typing for 2.5 s while it asks goes to the normal window ($(cat "$tmp/other-typed.txt"))" 'grep -q "xyzthequickfox" "$tmp/other-typed.txt"'
+  check "no keystroke reached the hostile widget (keys|typed: $(fkeys))" '[ "$(fkeys)" = "|" ]'
+  check 'and the focus never moved to a widget over 2 s more of asking' 'never_umbra 2'
+  click 400 675; sleep 1
+  check "a click into its field lends it the keyboard (has: $(focus))" 'focus_is umbra'
+  type "hi"; sleep 0.8
+  check "typing after the click reaches it (keys|typed: $(fkeys))" '[ "$(fkeys)" = "hi|hi" ]'
+  clickon "a normal window"; sleep 0.5
+  check "a click back on the normal window takes the keyboard back (has: $(focus))" 'focus_is "a normal window"'
+  # Clicking the normal window 200 ms after the widget: the page asking meanwhile must not get the keyboard back.
+  click 400 675; sleep 0.2; clickon "a normal window"; sleep 0.3
+  check "clicked the widget and 200 ms later the normal window: it keeps the focus over 2 s of asking (has: $(focus))" 'focus_is "a normal window" && never_umbra 2'
+  type "q1"; sleep 0.5
+  check "typing goes to the normal window, not the widget (keys|typed: $(fkeys))" 'grep -q "q1" "$tmp/other-typed.txt" && [ "$(fkeys)" = "hi|hi" ]'
   # The focus falling back when the active window closes, with the pointer resting over the widget (no press). Every
   # other normal window is closed first, so the fallback has only the widget (or the stand-in desktop window) to go to:
   # the widget must not keep it, and the extension must not count that focus as a press.
@@ -233,7 +255,7 @@ EOF
   $UMBRACTL add-instance edit-widget >/dev/null 2>&1; sleep 1.5
   check 'a widget opened while it is away is not shown as a plain window' '[ "$(mapped)" = false ]'
   ext EnableExtension; sleep 3
-  check "enabled again within 3 s: both widgets registered and pinned (pinned: $(pinned))" '[ "$(pinned)" = 2 ]'
+  check "enabled again within 3 s: all three widgets registered and pinned (pinned: $(pinned))" '[ "$(pinned)" = 3 ]'
   check 'the first one is back at 300,240' '[ "$(js "String(global.display.list_all_windows().some(w => /^umbra:/.test(w.get_title() ?? \"\") && w.get_frame_rect().x === 300 && w.get_frame_rect().y === 240))")" = true ]'
   check "and neither took the focus after the reload (has: $(focus))" '[ "$(focus)" != umbra ]'
   # Disabled, and someone else takes the free bus name: it is not trusted (no protocol answer), the widgets stay

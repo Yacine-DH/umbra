@@ -193,11 +193,35 @@ sealed unsafe partial class X11Pin : IDesktopPin
         XChangeProperty(_display, xid, Atom("_NET_WM_WINDOW_TYPE"), XaAtom, 32, PropModeReplace, &type, 1);
     }
 
-    /// <summary>The window never takes keyboard focus on its own (the Linux <c>WS_EX_NOACTIVATE</c>); focus after a real click is #183.</summary>
+    /// <summary>
+    /// The window never takes keyboard focus on its own (the Linux <c>WS_EX_NOACTIVATE</c>): the ICCCM "No Input" model. The
+    /// input hint alone is not enough: GTK also lists <c>WM_TAKE_FOCUS</c>, so a window manager sends it on a click (the
+    /// "globally active" model) and GDK then focuses the window itself, page request or not. It is dropped from
+    /// <c>WM_PROTOCOLS</c>; a grant after a real press (<see cref="FocusGate"/>) sets the input hint and focuses the window.
+    /// </summary>
     void NoInput(nuint xid)
     {
         var hints = new XWMHints { Flags = InputHint, Input = 0 };
         XSetWMHints(_display, xid, &hints);
+        DropTakeFocus(xid);
+    }
+
+    void DropTakeFocus(nuint xid)
+    {
+        var protocols = Atom("WM_PROTOCOLS");
+        var takeFocus = Atom("WM_TAKE_FOCUS");
+        if (XGetWindowProperty(_display, xid, protocols, 0, 32, 0, XaAtom, out _, out var format, out var items, out _, out var data) != 0
+            || data == IntPtr.Zero) return;
+        nuint[] keep;
+        try
+        {
+            if (format != 32) return;
+            var all = new ReadOnlySpan<nuint>((void*)data, (int)items).ToArray(); // format 32 arrives as C longs
+            if (!all.Contains(takeFocus)) return;
+            keep = all.Where(a => a != takeFocus).ToArray();
+        }
+        finally { XFree(data); }
+        fixed (nuint* p = keep) XChangeProperty(_display, xid, protocols, XaAtom, 32, PropModeReplace, p, keep.Length);
     }
 
     public void Mapped(Gtk.Window window, bool overlay = false)
