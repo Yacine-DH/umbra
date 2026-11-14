@@ -26,6 +26,19 @@ public sealed class LayerShellLayoutTests
     public void The_backend_follows_the_session(string? gdk, string? pinOverride, bool wayland, bool x11, bool lib, bool offered, string expected) =>
         Assert.Equal(expected, LayerShellLayout.Choose(gdk, pinOverride, wayland, x11, lib, offered).ToString());
 
+    [Theory]
+    // gdkBackend, override, wayland, x11, library, compositor, extension -> backend (#187)
+    [InlineData(null, null, true, true, false, false, true, "GnomeExtension")]  // GNOME Wayland with the extension
+    [InlineData(null, null, true, true, true, false, true, "GnomeExtension")]   // layer-shell library installed, Mutter lacks it
+    [InlineData(null, null, true, true, false, false, false, "X11")]            // GNOME without the extension: XWayland
+    [InlineData(null, null, true, true, true, true, true, "LayerShell")]        // a layer-shell compositor wins
+    [InlineData(null, "x11", true, true, false, false, true, "X11")]            // UMBRA_PIN_BACKEND=x11
+    [InlineData("x11", null, true, true, false, false, true, "X11")]
+    [InlineData("wayland", null, true, true, false, false, true, "GnomeExtension")]
+    [InlineData(null, null, false, true, false, false, true, "X11")]            // not a Wayland session
+    public void GNOME_with_the_extension_stays_on_wayland(string? gdk, string? pinOverride, bool wayland, bool x11, bool lib, bool offered, bool extension, string expected) =>
+        Assert.Equal(expected, LayerShellLayout.Choose(gdk, pinOverride, wayland, x11, lib, offered, extension).ToString());
+
     [Fact]
     public void Margins_are_the_offset_from_the_monitor_corner()
     {

@@ -45,7 +45,9 @@ printf '#!/bin/sh\nprintf "%%s\\n" "$1" >> "%s"\n' "$profile/opened.txt" > "$pro
 chmod +x "$profile/bin/xdg-open"
 : > "$profile/opened.txt"
 
-export UMBRA_DATA_DIR="$profile" UMBRA_OPENED="$profile/opened.txt" UMBRACTL="dotnet $ctl"
+# TMPDIR: .NET puts the control socket (CoreFxPipe_Umbra-<user>) and the single-instance mutex under it, and their names
+# ignore UMBRA_DATA_DIR on Linux; a private TMPDIR keeps umbractl and the host away from an installed Umbra.
+export TMPDIR="$profile" UMBRA_DATA_DIR="$profile" UMBRA_OPENED="$profile/opened.txt" UMBRACTL="dotnet $ctl"
 export PATH="$profile/bin:$PATH" GDK_BACKEND=x11 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 export UMBRA_BIN="$bin" UMBRA_WAIT="$seconds"
 unset WAYLAND_DISPLAY

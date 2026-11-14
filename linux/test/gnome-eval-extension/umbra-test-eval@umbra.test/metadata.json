@@ -1,0 +1,6 @@
+{
+  "uuid": "umbra-test-eval@umbra.test",
+  "name": "Umbra test: allow Eval",
+  "description": "TEST ONLY, loaded by linux/test/gnome.sh into a throwaway headless GNOME Shell: turns on unsafe mode so the test can inspect windows with org.gnome.Shell.Eval. Never install it on a real desktop.",
+  "shell-version": ["46", "47", "48", "49", "50"]
+}

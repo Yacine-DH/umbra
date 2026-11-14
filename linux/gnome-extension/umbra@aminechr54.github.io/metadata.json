@@ -1,0 +1,9 @@
+{
+  "uuid": "umbra@aminechr54.github.io",
+  "name": "Umbra desktop widgets",
+  "description": "Pins Umbra's widgets to the desktop on GNOME Wayland: below every window and above the desktop icons, on all workspaces, out of Alt+Tab, the overview and the dock, and never focused unless you click one. Does nothing without Umbra running. It stays on at the lock screen so widgets keep their place when you unlock.",
+  "shell-version": ["46", "47", "48", "49", "50"],
+  "url": "https://github.com/AmineChr54/umbra",
+  "session-modes": ["user", "unlock-dialog"],
+  "version-name": "1"
+}

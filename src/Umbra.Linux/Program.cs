@@ -7,13 +7,21 @@ static partial class Program
     [System.Runtime.InteropServices.LibraryImport("libc", StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf8)]
     private static partial int setenv(string name, string value, int overwrite);
 
+    [System.Runtime.InteropServices.LibraryImport("libglib-2.0.so.0", StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf8)]
+    private static partial void g_set_prgname(string name);
+
+    /// <summary>The pin backend chosen before GTK opened the display (<see cref="ChooseDisplayBackend"/>).</summary>
+    public static PinBackend Backend { get; private set; } = PinBackend.None;
+
     /// <summary>
     /// Picks the desktop pin backend (<see cref="LayerShellLayout.Choose"/>) and the GDK backend it needs. On a Wayland
     /// compositor with layer-shell (KWin, Sway, Hyprland) GTK stays on Wayland and widgets are layer surfaces (#186);
-    /// gtk4-layer-shell is loaded first, as it must be before libwayland-client. On a Wayland session without it (GNOME,
-    /// until #187) and with XWayland, GTK is told to use X11, whose window manager hints GNOME and KDE honour (#182).
-    /// <c>UMBRA_PIN_BACKEND=x11</c> forces the XWayland path. An explicit GDK_BACKEND is respected. Must run before GTK opens
-    /// the display, and through libc: GTK reads the C environment.
+    /// gtk4-layer-shell is loaded first, as it must be before libwayland-client. On GNOME Wayland with Umbra's Shell
+    /// extension running (it answers on the session bus) GTK stays on Wayland too and the extension pins the windows (#187);
+    /// their Wayland app id is the program name, set here to the app id the extension checks. On a Wayland session without
+    /// either (GNOME without the extension) and with XWayland, GTK is told to use X11, whose window manager hints GNOME and
+    /// KDE honour (#182). <c>UMBRA_PIN_BACKEND=x11</c> forces the XWayland path. An explicit GDK_BACKEND is respected.
+    /// Must run before GTK opens the display, and through libc: GTK reads the C environment.
     /// </summary>
     static void ChooseDisplayBackend()
     {
@@ -21,24 +29,31 @@ static partial class Program
         var pinOverride = Environment.GetEnvironmentVariable("UMBRA_PIN_BACKEND");
         var wayland = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY"));
         var x = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY"));
-        bool loaded = false, offered = false;
+        bool loaded = false, offered = false, extension = false;
         if (wayland && !LayerShellLayout.IsX11(pinOverride) && !LayerShellLayout.IsX11(gdk?.Split(',')[0]))
         {
             loaded = LayerShellPin.Preload();
             offered = loaded && WaylandProbe.HasLayerShell();
-            if (!loaded) Log.Write("gtk4-layer-shell is not installed (libgtk4-layer-shell.so.0): no native Wayland pinning.");
+            if (!offered) extension = GnomeExtensionPin.Probe();
+            if (!loaded && !extension) Log.Write("gtk4-layer-shell is not installed (libgtk4-layer-shell.so.0): no native Wayland pinning.");
         }
-        var choice = LayerShellLayout.Choose(gdk, pinOverride, wayland, x, loaded, offered);
+        var choice = Backend = LayerShellLayout.Choose(gdk, pinOverride, wayland, x, loaded, offered, extension);
+        if (choice == PinBackend.GnomeExtension) g_set_prgname(AppId);
         if (!string.IsNullOrEmpty(gdk)) return;
         if (choice == PinBackend.LayerShell)
         {
             setenv("GDK_BACKEND", "wayland", 1);
             Log.Write("Wayland compositor with layer-shell: widgets are pinned as layer surfaces.");
         }
+        else if (choice == PinBackend.GnomeExtension)
+        {
+            setenv("GDK_BACKEND", "wayland", 1);
+            Log.Write("GNOME Wayland with the Umbra Shell extension: widgets are pinned by the extension.");
+        }
         else if (choice == PinBackend.X11 && wayland)
         {
             setenv("GDK_BACKEND", "x11", 1);
-            Log.Write("Wayland session without layer-shell, with XWayland: using the X11 backend so widgets can be pinned to the desktop.");
+            Log.Write("Wayland session without layer-shell or the Umbra GNOME extension, with XWayland: using the X11 backend so widgets can be pinned to the desktop.");
         }
     }
 

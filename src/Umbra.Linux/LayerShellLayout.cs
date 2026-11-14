@@ -5,6 +5,8 @@ enum PinBackend
 {
     /// <summary>Native Wayland through wlr-layer-shell (KWin, Sway, Hyprland...): <see cref="LayerShellPin"/>.</summary>
     LayerShell,
+    /// <summary>Native Wayland on GNOME, through Umbra's GNOME Shell extension (#187): <see cref="GnomeExtensionPin"/>.</summary>
+    GnomeExtension,
     /// <summary>X11 window manager hints, on an X session or under XWayland: <see cref="X11Pin"/>.</summary>
     X11,
     /// <summary>Wayland without layer-shell and without an X server: plain windows (<see cref="NoPin"/>).</summary>
@@ -21,18 +23,23 @@ static class LayerShellLayout
     /// The backend for this session, decided before GTK opens the display. An explicit <c>GDK_BACKEND</c> wins (x11 means X11,
     /// wayland means layer-shell if the compositor has it). <c>UMBRA_PIN_BACKEND=x11</c> keeps XWayland on a layer-shell
     /// compositor. Otherwise a Wayland session uses layer-shell when the library loaded and the compositor offers
-    /// <c>zwlr_layer_shell_v1</c>, else XWayland when there is an X server (GNOME until #187), else nothing.
+    /// <c>zwlr_layer_shell_v1</c>, else Umbra's GNOME Shell extension when it answers on the session bus (#187), else XWayland
+    /// when there is an X server (GNOME without the extension), else nothing.
     /// </summary>
-    public static PinBackend Choose(string? gdkBackend, string? pinOverride, bool wayland, bool x11, bool libraryLoaded, bool compositorHasLayerShell)
+    public static PinBackend Choose(string? gdkBackend, string? pinOverride, bool wayland, bool x11, bool libraryLoaded, bool compositorHasLayerShell,
+        bool gnomeExtension = false)
     {
-        var layerShell = wayland && libraryLoaded && compositorHasLayerShell;
+        var native = IsX11(pinOverride) || !wayland ? PinBackend.None
+            : libraryLoaded && compositorHasLayerShell ? PinBackend.LayerShell
+            : gnomeExtension ? PinBackend.GnomeExtension
+            : PinBackend.None;
         if (!string.IsNullOrEmpty(gdkBackend))
         {
             var first = gdkBackend.Split(',')[0].Trim().ToLowerInvariant();
             if (first == "x11") return x11 ? PinBackend.X11 : PinBackend.None;
-            if (first == "wayland") return layerShell && !IsX11(pinOverride) ? PinBackend.LayerShell : PinBackend.None;
+            if (first == "wayland") return native;
         }
-        if (layerShell && !IsX11(pinOverride)) return PinBackend.LayerShell;
+        if (native != PinBackend.None) return native;
         return x11 ? PinBackend.X11 : PinBackend.None;
     }
 

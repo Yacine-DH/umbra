@@ -45,7 +45,10 @@ public class SettingsPanelTests
         var general = Page("general");
         var fold = general.IndexOf("<details", StringComparison.Ordinal);
         Assert.True(fold > 0);
-        Assert.True(Regex.Matches(general[..fold], "class=\"row\"").Count <= 5, "keep General short (Zoom plus four): new settings go under Advanced or Customize");
+        // The GNOME extension hint (#187) is a hidden notice shown only on Linux GNOME Wayland, not a setting.
+        var everyday = Regex.Replace(general[..fold], "<div class=\"group\" id=\"gnomeHint\" hidden>.*?</button>\\s*</div>\\s*</div>", "", RegexOptions.Singleline);
+        Assert.DoesNotContain("gnomeHint", everyday);
+        Assert.True(Regex.Matches(everyday, "class=\"row\"").Count <= 5, "keep General short (Zoom plus four): new settings go under Advanced or Customize");
         Assert.Contains("id=\"advancedRows\"", general[fold..]);
         Assert.Contains("id=\"appearanceRows\"", Page("themes"));
         Assert.DoesNotContain(" open", Regex.Match(general, "<details[^>]*>").Value);
