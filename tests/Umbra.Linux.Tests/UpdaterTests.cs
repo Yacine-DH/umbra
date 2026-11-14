@@ -4,6 +4,7 @@ namespace Umbra.Linux.Tests;
 public sealed class UpdaterTests
 {
     const string Feed = "https://feed.test/latest";
+    static void Quiet(string line) { } // the real Log is also redirected (TestEnv), but these lines go nowhere at all
 
     static string Release(string version, string arch = "x64") => $$"""
         { "tag_name": "v{{version}}", "draft": false, "prerelease": false, "body": "Fixed things",
@@ -18,7 +19,7 @@ public sealed class UpdaterTests
         public int Changed;
         public bool Enabled = true;
         public LinuxUpdater Make(bool flatpak = false, string arch = "x64") =>
-            new(() => Enabled, () => Changed++, flatpak, (url, _) => { Asked.Add(url); return Task.FromResult(Json); }, Feed, "1.15.0", arch);
+            new(() => Enabled, () => Changed++, flatpak, (url, _) => { Asked.Add(url); return Task.FromResult(Json); }, Feed, "1.15.0", arch, Quiet);
     }
 
     [Fact]
@@ -81,7 +82,7 @@ public sealed class UpdaterTests
     {
         var gate = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var calls = 0;
-        var u = new LinuxUpdater(() => true, () => { }, false, (_, _) => { calls++; return gate.Task; }, Feed, "1.15.0", "x64");
+        var u = new LinuxUpdater(() => true, () => { }, false, (_, _) => { calls++; return gate.Task; }, Feed, "1.15.0", "x64", Quiet);
         var auto = u.CheckAsync(manual: false);
         var manual = u.CheckAsync(manual: true);
         Assert.False(manual.IsCompleted);
@@ -96,7 +97,7 @@ public sealed class UpdaterTests
     public async Task A_feed_over_one_megabyte_is_refused()
     {
         var huge = Release("2.0.0").Replace("Fixed things", new string('x', LinuxUpdater.MaxFeedBytes));
-        var u = new LinuxUpdater(() => true, () => { }, false, (_, _) => Task.FromResult(huge), Feed, "1.15.0", "x64");
+        var u = new LinuxUpdater(() => true, () => { }, false, (_, _) => Task.FromResult(huge), Feed, "1.15.0", "x64", Quiet);
         await u.CheckAsync(manual: true);
         Assert.Null(u.Available);
         Assert.NotNull(u.Error);
@@ -117,7 +118,7 @@ public sealed class UpdaterTests
     [Fact]
     public async Task A_failed_check_reports_the_error_and_keeps_nothing()
     {
-        var u = new LinuxUpdater(() => true, () => { }, false, (_, _) => throw new HttpRequestException("offline"), Feed, "1.15.0", "x64");
+        var u = new LinuxUpdater(() => true, () => { }, false, (_, _) => throw new HttpRequestException("offline"), Feed, "1.15.0", "x64", Quiet);
         await u.CheckAsync(manual: true);
         Assert.Null(u.Available);
         Assert.Equal("offline", (string?)u.ToJson()["error"]);

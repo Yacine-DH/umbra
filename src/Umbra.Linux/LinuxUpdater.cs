@@ -27,6 +27,7 @@ sealed class LinuxUpdater : IUpdater
     /// <summary>The largest feed read.</summary>
     public const int MaxFeedBytes = 1024 * 1024;
 
+    readonly Action<string> _log;
     readonly Func<bool> _enabled;
     readonly Action _changed;
     readonly Fetcher _fetch;
@@ -38,7 +39,7 @@ sealed class LinuxUpdater : IUpdater
     bool _lastFailed;
 
     public LinuxUpdater(Func<bool> enabled, Action changed, bool flatpak, Fetcher? fetch = null, string? feed = null,
-        string? current = null, string? arch = null)
+        string? current = null, string? arch = null, Action<string>? log = null)
     {
         _enabled = enabled;
         _changed = changed;
@@ -47,6 +48,7 @@ sealed class LinuxUpdater : IUpdater
         _feed = feed ?? Updates.ReleasesApi;
         _current = current ?? AppInfo.Version;
         _arch = arch ?? Updates.LinuxArch(RuntimeInformation.OSArchitecture);
+        _log = log ?? Log.Write;
     }
 
     /// <summary>The real one: GitHub's API, or in Debug builds only <c>UMBRA_RELEASE_URL</c> (an https URL, or a file path for the headless test).</summary>
@@ -75,7 +77,7 @@ sealed class LinuxUpdater : IUpdater
     /// </summary>
     public void Start()
     {
-        if (Flatpak) { Log.Write("Update check skipped: Flatpak updates Umbra"); return; }
+        if (Flatpak) { _log("Update check skipped: Flatpak updates Umbra"); return; }
         UiThread.Every(8_000, () => { _ = CheckAsync(manual: false); return false; });
         UiThread.Every((uint)TimeSpan.FromHours(1).TotalMilliseconds, () => { CheckIfDue(DateTime.UtcNow); return true; });
     }
@@ -117,13 +119,13 @@ sealed class LinuxUpdater : IUpdater
             Available = rel is not null && Updates.IsNewer(_current, rel.Version) ? rel : null;
             Error = null;
             _lastFailed = false;
-            if (Available is not null) Log.Write($"Update available: {Available.Version} ({Available.PageUrl})");
+            if (Available is not null) _log($"Update available: {Available.Version} ({Available.PageUrl})");
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             Error = ex.Message;
             _lastFailed = true;
-            Log.Write($"Update check failed: {ex.Message}");
+            _log($"Update check failed: {ex.Message}");
         }
         LastChecked = DateTime.Now;
         _changed();
