@@ -9,7 +9,7 @@ static class Dialogs
 {
     static bool _open;
 
-    /// <summary>A host dialog (approval, confirm, notifications, URL box) is open: callers that would add a second one wait or skip.</summary>
+    /// <summary>True while a host-drawn dialog is on screen.</summary>
     public static bool IsOpen => _open;
 
     /// <summary>Widget-controlled text for a dialog: control characters removed, at most <paramref name="max"/> characters.</summary>
@@ -227,15 +227,19 @@ static class Dialogs
             buttons.SetMarginTop(6);
             var allow = Gtk.Button.NewWithLabel("Allow");
             var deny = Gtk.Button.NewWithLabel("Deny");
-            allow.SetSensitive(false);
+            // Allow stays sensitive for GTK and only looks disabled until armed: a button that turns sensitive while the pointer rests
+            // on it is not re-picked by GTK, so a click without moving the mouse went nowhere (#368). The arming rule is ours, below.
+            allow.SetOpacity(0.45);
+            allow.SetFocusable(false); // never reached by Tab + Space: only a pointer that came onto it arms it
             buttons.Append(allow);
             buttons.Append(deny);
             box.Append(buttons);
             win.SetChild(box);
 
             var shownAt = Environment.TickCount64;
-            bool inside = false, sawOutside = false;
-            // Tracked on the window, not the button: a disabled (insensitive) GTK button gets no pointer events at all.
+            bool inside = false, sawOutside = false, armed = false;
+            long armedAt = long.MaxValue, allowPressAt = long.MinValue;
+            // Tracked on the window, so the rule doesn't depend on the button's own crossing events.
             void Track(double x, double y)
             {
                 inside = allow.ComputeBounds(win, out var b) && x >= b.GetX() && y >= b.GetY()
@@ -245,22 +249,33 @@ static class Dialogs
             var winMotion = Gtk.EventControllerMotion.New();
             winMotion.OnEnter += (_, e) => Track(e.X, e.Y);
             winMotion.OnMotion += (_, e) => Track(e.X, e.Y);
-            // No "leave" handler: pressing the button makes GTK grab the pointer, which sends a crossing event between press and
-            // release; reacting to it would disarm Allow in the middle of the user's click. Position alone decides.
-            winMotion.OnLeave += (_, _) => sawOutside = true;
+            // A leave (also the crossing GTK sends when a press on Allow grabs the pointer) means "not inside" until a motion says
+            // otherwise; arming is latched, so this never disarms a click in progress (review of #396).
+            winMotion.OnLeave += (_, _) => { inside = false; sawOutside = true; };
             win.AddController(winMotion);
             UiThread.Every(40, () =>
             {
                 if (tcs.Task.IsCompleted) return false;
                 // Once armed it stays armed: the press itself makes GTK send crossing and motion events that must not disarm it mid-click.
-                if (!allow.GetSensitive()) allow.SetSensitive(sawOutside && inside && Environment.TickCount64 - shownAt >= 900);
+                if (!armed && sawOutside && inside && Environment.TickCount64 - shownAt >= 900)
+                {
+                    armed = true;
+                    armedAt = Environment.TickCount64;
+                    allow.SetOpacity(1);
+                }
                 if (Environment.TickCount64 - shownAt >= 120_000) { tcs.TrySetResult(false); win.Destroy(); return false; }
                 return true;
             });
+            // When the press on Allow began (capture phase, before the button's own gesture): a click already in flight when Allow
+            // armed (pressed before, released after) must not count.
+            var allowPress = Gtk.GestureClick.New();
+            allowPress.SetButton(0);
+            allowPress.SetPropagationPhase(Gtk.PropagationPhase.Capture);
+            allowPress.OnPressed += (_, _) => allowPressAt = Environment.TickCount64;
+            allow.AddController(allowPress);
             allow.OnClicked += (_, _) =>
             {
-                // GTK only emits clicked for a sensitive button, and only the arming tick above makes it sensitive.
-                if (!allow.GetSensitive()) return;
+                if (!armed || allowPressAt < armedAt) return; // not armed yet, or pressed before it armed
                 tcs.TrySetResult(true); win.Destroy();
             };
             deny.OnClicked += (_, _) => { tcs.TrySetResult(false); win.Destroy(); };
