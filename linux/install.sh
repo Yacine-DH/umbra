@@ -21,6 +21,7 @@ if [ "${1:-}" = "--uninstall" ]; then
   rm -rf "$app"
   rm -f "$bin/umbra" "$bin/umbractl" "$share/applications/$id.desktop"
   find "$share/icons/hicolor" -name "$id*.png" -delete 2>/dev/null || true
+  rm -f "$share/metainfo/$id.metainfo.xml"
   rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/autostart/$id.desktop"
   if [ -d "$ext_dir" ]; then
     rm -rf "$ext_dir"
@@ -66,6 +67,8 @@ sed "s|^Exec=umbra$|Exec=$app/umbra/umbra|" "$here/$id.desktop" > "$share/applic
 cp -r "$app/umbra/icons/hicolor" "$share/icons/" 2>/dev/null || { mkdir -p "$share/icons"; cp -r "$app/umbra/icons/hicolor" "$share/icons/"; }
 rm -f "$share/icons/hicolor/index.theme" # the system theme's index wins; ours only lists our own folders
 command -v update-desktop-database >/dev/null && update-desktop-database -q "$share/applications" || true
+# AppStream metadata, so a software centre can show Umbra with its description and screenshots.
+[ -f "$here/$id.metainfo.xml" ] && mkdir -p "$share/metainfo" && cp "$here/$id.metainfo.xml" "$share/metainfo/"
 command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q -t "$share/icons/hicolor" 2>/dev/null || true
 
 echo "Umbra $(cat "$app/umbra/VERSION" 2>/dev/null) installed in $app"

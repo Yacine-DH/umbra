@@ -30,6 +30,7 @@ got=$(od -An -tu2 -j18 -N2 "$so" | tr -d ' ')
 echo "$ver" > "$out/umbra/VERSION"
 cp "$repo/linux/install.sh" "$repo/linux/io.github.aminechr54.Umbra.desktop" "$out/"
 cp "$repo/LICENSE" "$out/" 2>/dev/null || true
+cp "$repo/linux/io.github.aminechr54.Umbra.metainfo.xml" "$out/" # AppStream (#196)
 chmod +x "$out/install.sh" "$out/umbra/umbra" "$out/umbractl/umbractl"
 tar -C "$repo/dist" -czf "$repo/dist/$name.tar.gz" "$name"
 sha256sum "$repo/dist/$name.tar.gz" | sed "s|$repo/dist/||" > "$repo/dist/$name.tar.gz.sha256"
