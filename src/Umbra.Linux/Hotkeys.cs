@@ -11,23 +11,58 @@ namespace Umbra.Linux;
 /// </summary>
 sealed class LinuxHotkeys : IDisposable
 {
-    readonly IHotkeyBackend? _impl;
+    readonly Action<string> _run;
+    IHotkeyBackend? _impl;
+    bool _disposed;
 
-    public HotkeyBackend Backend { get; }
+    public HotkeyBackend Backend { get; private set; }
 
-    /// <summary>Raised on the UI thread when a state changes without a call to <see cref="Apply"/> (the portal's dialog was answered).</summary>
+    /// <summary>Raised on the UI thread when a state changes without a call to <see cref="Apply"/> (the portal's dialog was answered, or the backend became ready).</summary>
     public event Action? Changed;
 
+    /// <summary>
+    /// Completes once the backend is chosen and set up. Right away on an X11 session; on Wayland after the portal's version
+    /// was read and the app id registered, off the UI thread, so a slow or missing portal never delays startup. Portal calls
+    /// that must come after the app id registration (the session's) wait for it.
+    /// </summary>
+    public Task Ready { get; }
+
+    /// <summary>Call on the UI thread.</summary>
     public LinuxHotkeys(Action<string> run)
     {
-        uint portal = 0;
+        _run = run;
         // The portal is asked only where it would be used: a plain X11 session never wakes xdg-desktop-portal for this.
         if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")) || string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")))
-            portal = PortalHotkeys.Version();
+            Ready = StartAsync();
+        else
+        {
+            Start(0);
+            Ready = Task.CompletedTask;
+        }
+    }
+
+    async Task StartAsync()
+    {
+        // Both calls block up to 3 s each when the portal hangs: on a worker thread, then back on the UI thread to start.
+        var portal = await Task.Run(() =>
+        {
+            var v = PortalHotkeys.Version();
+            // Outside Flatpak the portal learns the app id from the first call that registers it on this connection.
+            if (HotkeyRules.Choose(Environment.GetEnvironmentVariable, v) == HotkeyBackend.Portal) PortalHotkeys.Register();
+            return v;
+        });
+        if (_disposed) return;
+        Start(portal);
+        if (_applied is not null) _impl?.Apply(_applied); // what Apply was given while the backend was not ready yet
+        Changed?.Invoke();
+    }
+
+    void Start(uint portal)
+    {
         Backend = HotkeyRules.Choose(Environment.GetEnvironmentVariable, portal);
         void Safe(string action)
         {
-            try { run(action); }
+            try { _run(action); }
             catch (Exception ex) { Log.Write($"Hotkey '{action}' failed: {ex.Message}"); }
         }
         _impl = Backend switch
@@ -46,7 +81,7 @@ sealed class LinuxHotkeys : IDisposable
 
     /// <summary>
     /// Drops every registration and registers the given combinations. An unchanged map is skipped: on the portal a re-bind closes
-    /// the session and can ask the user again.
+    /// the session and can ask the user again. Before <see cref="Ready"/> the map is kept and applied once the backend is up.
     /// </summary>
     public void Apply(IReadOnlyDictionary<string, string> map)
     {
@@ -58,7 +93,11 @@ sealed class LinuxHotkeys : IDisposable
     public JsonArray Describe(IReadOnlyDictionary<string, string> map) =>
         HotkeyRules.Describe(map, Backend, _impl?.States ?? new Dictionary<string, HotkeyRules.ActionState>());
 
-    public void Dispose() => _impl?.Dispose();
+    public void Dispose()
+    {
+        _disposed = true;
+        _impl?.Dispose();
+    }
 }
 
 interface IHotkeyBackend : IDisposable
@@ -288,15 +327,20 @@ sealed class PortalHotkeys : IHotkeyBackend
         }
     }
 
+    /// <summary>Registers Umbra's app id with the portal on the session connection (blocks up to 3 s: call it off the UI thread).</summary>
+    public static void Register()
+    {
+        try
+        {
+            using var _ = DBus.Call(DBus.Session, Dest, ObjPath, "org.freedesktop.host.portal.Registry", "Register", $"({V.Str(Program.AppId)}, @a{{sv}} {{}})", 3000);
+        }
+        catch (DBusException ex) { Log.Verbose($"Portal app id not registered: {ex.Message}"); }
+    }
+
     public PortalHotkeys(Action<string> run, Action changed)
     {
         _run = run;
         _changed = changed;
-        try
-        {
-            using var _ = DBus.Call(_bus, Dest, ObjPath, "org.freedesktop.host.portal.Registry", "Register", $"({V.Str(Program.AppId)}, @a{{sv}} {{}})", 3000);
-        }
-        catch (DBusException ex) { Log.Verbose($"Portal app id not registered: {ex.Message}"); }
         DBus.Subscribe(_bus, Dest, Iface, "Activated", ObjPath, (_, v) =>
         {
             using var session = v[0];

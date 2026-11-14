@@ -65,6 +65,8 @@ sealed partial class WidgetWindow : IWidgetView
         _app.Pin.Init(_window); // before realize, and before our close-request handler (a backend may refuse that request)
         _window.OnCloseRequest += (_, _) => { MarkClosed(); return false; };
         InitInput();
+        // The surface scale changed (on X11 all windows at once, e.g. XWayland's scale after a monitor went away).
+        _window.OnNotify += (_, e) => { if (e.Pspec.GetName() == "scale-factor") _app.ScheduleRelayout("scale change"); };
         ApplySize();
         // Realize now, so the pin backend can mark the window (type, state, position) before it is first shown.
         ((Gtk.Widget)_window).Realize(); // the widget's realize (creates the surface), not Gtk.Native's
@@ -119,13 +121,33 @@ sealed partial class WidgetWindow : IWidgetView
     void Place()
     {
         if (_closed) return;
-        var at = WidgetPlacement.Locate(Ws, Manifest.DefaultPosition, new Size(Width, Height), _app.Monitors());
+        var at = WidgetPlacement.Layout(Ws, Manifest.DefaultPosition, new Size(Width, Height), _app.Monitors());
         Left = at.X; Top = at.Y;
         _app.Pin.Move(_window, at.X, at.Y);
     }
 
     /// <summary>Re-places the window from its saved monitor and offset (monitors were added, removed or rearranged).</summary>
     public void ReapplyPlacement() => Place();
+
+    /// <summary>
+    /// The monitors or their scale changed (unplugged, docked, resumed with the lid closed): size the window again from its
+    /// settings (logical size x widget scale, the same on any monitor), put it on a connected monitor from its saved monitor
+    /// and offset (<see cref="WidgetPlacement.Layout"/>; the saved monitor stays, so the widget goes back when it returns),
+    /// ask the display server for those bounds in its current pixels, and draw it again.
+    /// </summary>
+    public void Relayout()
+    {
+        if (_closed) return;
+        SetWindowSize(SavedSize());
+        var r = WidgetPlacement.Layout(Ws, Manifest.DefaultPosition, new Size(Width, Height), _app.Monitors());
+        Left = r.X; Top = r.Y;
+        var remap = _app.Pin.RemapOnRelayout && _window.GetVisible();
+        if (remap) _window.SetVisible(false);
+        _app.Pin.Relayout(_window, r);
+        if (remap) _window.SetVisible(true); // OnMap re-asserts the pin hints and the position
+        _window.QueueResize();
+        _view.QueueDraw();
+    }
 
     public bool Visible
     {

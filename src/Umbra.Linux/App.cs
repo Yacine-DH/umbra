@@ -100,17 +100,95 @@ sealed class App : IUmbraHost
         Hotkeys.Apply(Settings.Hotkeys);
         Session = new LinuxSession(_ui);
         Session.PowerChanged += () => { foreach (var w in _windows.Values) w.PushPower(); };
-        Session.RefreshNeeded += reason => { Log.Write($"Refreshing widgets after {reason}"); foreach (var w in _windows.Values) w.RefreshData(); };
+        Session.RefreshNeeded += reason =>
+        {
+            Log.Write($"Refreshing widgets after {reason}");
+            foreach (var w in _windows.Values) w.RefreshData();
+            // The monitors may have changed while asleep without every signal arriving: lay out again in any case.
+            if (reason == "resume") ScheduleRelayout("resume", force: true);
+        };
         Session.TimeChanged += () => { foreach (var w in _windows.Values) w.NotifyTimeChanged(); };
         Session.AccentChanged += () => { PushAll(); SettingsChangedElsewhere(); };
-        Session.Start();
+        StartSessionAfterHotkeys();
         _updater.Start();
         SyncWindows();
         if (EditMode) _ui.Post(_ => UpdateEditPills(), null); // left unlocked last time: show the Done pill again
         UiThread.Every(250, () => { TickGroups(); return true; });
-        // A monitor was added, removed or rearranged: put every widget back where its saved monitor and offset say.
+        // A monitor was added, removed, rearranged or rescaled: lay every widget and overlay out again.
+        _layoutKey = LayoutKey();
         if (Gdk.Display.GetDefault() is { } d)
-            d.GetMonitors().OnItemsChanged += (_, _) => _ui.Post(_ => { foreach (var w in _windows.Values) w.ReapplyPlacement(); }, null);
+        {
+            d.GetMonitors().OnItemsChanged += (_, _) => { WatchMonitors(); ScheduleRelayout("monitors changed"); };
+            WatchMonitors();
+        }
+    }
+
+    /// <summary>
+    /// Starts the session watchers once the hotkeys are set up: right away on X11; on Wayland after the portal registered the
+    /// app id (it must come before any other portal call on the connection), without holding up the UI thread meanwhile.
+    /// </summary>
+    async void StartSessionAfterHotkeys()
+    {
+        try { await Hotkeys.Ready; }
+        catch (Exception ex) { Log.Write($"Global hotkeys could not start: {ex.Message}"); }
+        Session.Start();
+    }
+
+    // ---------- display changes (monitors, scale, resume) ----------
+
+    string _layoutKey = "";
+    bool _relayoutQueued, _relayoutForced;
+    readonly HashSet<IntPtr> _watchedMonitors = new();
+
+    /// <summary>Follows each monitor's geometry and scale: GDK keeps the same monitor object when only those change.</summary>
+    void WatchMonitors()
+    {
+        if (Gdk.Display.GetDefault()?.GetMonitors() is not { } monitors) return;
+        for (uint i = 0; i < monitors.GetNItems(); i++)
+        {
+            if (monitors.GetObject(i) is not Gdk.Monitor m || !_watchedMonitors.Add(m.Handle.DangerousGetHandle())) continue;
+            m.OnNotify += (_, e) =>
+            {
+                if (e.Pspec.GetName() is "geometry" or "scale-factor" or "scale") ScheduleRelayout("monitor geometry or scale");
+            };
+        }
+    }
+
+    /// <summary>The scale factor of every monitor (fractional where GDK knows it), with the X11 surface scale for XWayland.</summary>
+    List<double> Scales()
+    {
+        var list = new List<double>();
+        if (Gdk.Display.GetDefault()?.GetMonitors() is not { } monitors) return list;
+        for (uint i = 0; i < monitors.GetNItems(); i++)
+            if (monitors.GetObject(i) is Gdk.Monitor m) list.Add(Math.Max(m.GetScaleFactor(), m.GetScale()));
+        return list;
+    }
+
+    string LayoutKey() => WidgetPlacement.LayoutKey(Monitors(), Scales());
+
+    /// <summary>
+    /// Lays every widget window and overlay out again shortly (the signals of one change arrive in a burst: the monitor list,
+    /// then geometry, then the X11 scale). Nothing happens when the layout key did not change, unless <paramref name="force"/>.
+    /// </summary>
+    public void ScheduleRelayout(string reason, bool force = false)
+    {
+        _relayoutForced |= force;
+        if (_relayoutQueued) return;
+        _relayoutQueued = true;
+        UiThread.Every(300, () =>
+        {
+            _relayoutQueued = false;
+            var key = LayoutKey();
+            if (key == _layoutKey && !_relayoutForced) return false;
+            _relayoutForced = false;
+            Log.Write($"Display changed ({reason}): laying widgets out again on {key}");
+            _layoutKey = key;
+            foreach (var w in _windows.Values) w.Relayout();
+            OverlayWindow.RelayoutAll();
+            TickGroups(); // tab strips follow their widget
+            if (EditMode) UpdateEditPills(); // one pill per monitor that has widgets
+            return false;
+        });
     }
 
     /// <summary>Runs work on the UI thread (socket requests arrive on worker threads) and returns its result.</summary>

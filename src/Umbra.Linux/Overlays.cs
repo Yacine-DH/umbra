@@ -29,6 +29,7 @@ abstract class OverlayWindow
         ((Gtk.Widget)Window).Realize();
         App.Pin.Prepare(Window, overlay: true);
         Window.OnMap += (_, _) => { App.Pin.Mapped(Window, overlay: true); App.Pin.Move(Window, X, Y); };
+        Window.OnNotify += (_, e) => { if (e.Pspec.GetName() == "scale-factor") App.ScheduleRelayout("scale change"); };
     }
 
     public int X { get; private set; }
@@ -41,6 +42,30 @@ abstract class OverlayWindow
         X = x; Y = y;
         App.Pin.Move(Window, x, y);
     }
+
+    /// <summary>
+    /// The monitors or their scale changed: ask the display server again for this window's logical spot and size in its
+    /// current pixels (else an X11 window keeps its old device size and shows its old, larger frame), and draw it again.
+    /// </summary>
+    public void Relayout()
+    {
+        if (_closed) return;
+        // The size the window wants (its default size, grown to fit its content), not the allocation, which can still be
+        // the old scale's at this point.
+        Window.GetDefaultSize(out var w, out var h);
+        Window.Measure(Gtk.Orientation.Horizontal, -1, out _, out var natW, out _, out _);
+        Window.Measure(Gtk.Orientation.Vertical, Math.Max(w, natW), out _, out var natH, out _, out _);
+        w = Math.Max(w, natW); h = Math.Max(h, natH);
+        var remap = App.Pin.RemapOnRelayout && Window.GetVisible();
+        if (remap) Window.SetVisible(false);
+        App.Pin.Relayout(Window, new Rectangle(X, Y, Math.Max(1, w), Math.Max(1, h)));
+        if (remap) Window.SetVisible(true);
+        Window.QueueResize();
+        Window.QueueDraw();
+    }
+
+    /// <summary>Every live overlay, for <see cref="Relayout"/> after a display change.</summary>
+    public static void RelayoutAll() { foreach (var o in Live.ToList()) o.Relayout(); }
 
     public void Show() { if (!_closed && !Window.GetVisible()) Window.SetVisible(true); }
     public void Hide() { if (!_closed && Window.GetVisible()) Window.SetVisible(false); }
