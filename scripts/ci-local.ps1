@@ -5,7 +5,8 @@
 .DESCRIPTION
   GitHub Actions isn't used for CI any more: this script is the CI. It checks out the commit in a throwaway git worktree
   (your working tree and your installed Umbra are never touched) and runs, in parallel where it can:
-    linux    Docker mcr.microsoft.com/dotnet/sdk:10.0: build Umbra.Linux.slnf -c Release -warnaserror, then test it
+    linux    Docker mcr.microsoft.com/dotnet/sdk:10.0: build Umbra.Linux.slnf -c Release -warnaserror, test it, then
+             linux/test/ci.sh (smoke under Xvfb + openbox, sandbox, catalog; captures and umbra.log in linux\)
     node     Docker node:22: widget/SDK/release tests, relay tests, check-versions, catalog --check
     windows  this PC: build Umbra.slnx -c Release -warnaserror, then test it (WinForms/WebView2 can't run in a Linux container)
     bump     this PC: check-bump.mjs against origin/main (changed widgets and themes bump their version)
@@ -93,11 +94,26 @@ function Start-Logged([string]$name, [string]$exe, [string[]]$argv, [string]$cwd
 }
 
 $results = [ordered]@{}
+# A job with a Limit (seconds from its start) is killed when it runs over, its container too, and counts as failed.
 function Finish($job, [string]$pattern) {
+    $timedOut = $false
+    if ($job.Limit) {
+        $left = [Math]::Max(0, [int]($job.Limit * 1000 - ((Get-Date) - $job.Start).TotalMilliseconds))
+        if (-not $job.Proc.WaitForExit($left)) {
+            $timedOut = $true
+            if ($job.Container) {
+                $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+                & docker kill $job.Container *> $null
+                $ErrorActionPreference = $old
+            }
+            if (-not $job.Proc.WaitForExit(15000)) { $job.Proc.Kill() }
+        }
+    }
     $job.Proc.WaitForExit()
     if (Test-Path "$($job.Log).err") { Get-Content "$($job.Log).err" | Add-Content $job.Log; Remove-Item "$($job.Log).err" }
-    $ok = $job.Proc.ExitCode -eq 0
+    $ok = -not $timedOut -and $job.Proc.ExitCode -eq 0
     $lines = @(Get-Content $job.Log | Where-Object { $_ -cmatch $pattern } | ForEach-Object { $_.Trim() })
+    if ($timedOut) { $lines = @("timed out after $([int]($job.Limit / 60)) min, killed") + $lines }
     $secs = [int]((Get-Date) - $job.Start).TotalSeconds
     $results[$job.Name] = @{ Ok = $ok; Lines = $lines; Secs = $secs }
     $mark = if ($ok) { 'PASS' } else { 'FAIL' }
@@ -114,7 +130,16 @@ try {
         # src/Umbra.Linux compiles its sandbox web-process extension (native/umbra-webext.c) with gcc against WebKitGTK 6.
         'apt-get update -qq && apt-get install -y -qq --no-install-recommends gcc pkg-config libwebkitgtk-6.0-dev >/dev/null',
         'dotnet build Umbra.Linux.slnf -c Release -warnaserror',
-        'dotnet test Umbra.Linux.slnf -c Release --no-build --logger "console;verbosity=normal"'
+        'dotnet test Umbra.Linux.slnf -c Release --no-build --logger "console;verbosity=normal"',
+        # The headless harness (#198): smoke under Xvfb + openbox, the hostile-widget sandbox suite, every catalog widget.
+        # Captures and umbra.log go to $OutDir\linux (mounted at /out). linux/test/ci.sh holds the logic. It needs a Debug
+        # host (UMBRA_RELEASE_URL is a Debug-only hook): only the two apps it starts are built again, not the tests.
+        'if [ -f linux/test/ci.sh ]; then',
+        '  chmod +x linux/test/*.sh # a Windows checkout may not carry the executable bit',
+        '  apt-get install -y -qq --no-install-recommends xvfb xauth openbox dbus dbus-x11 python3 xdotool bubblewrap fonts-dejavu-core >/dev/null',
+        '  dotnet build src/Umbra.Linux -warnaserror -v q -nologo && dotnet build src/Umbra.Cli -warnaserror -v q -nologo',
+        "  UMBRA_CI_SHA=$short UMBRA_CI_CONTAINER=1 linux/test/ci.sh --no-build /out",
+        'fi'
     ) -join "`n"
     $nodeSh = @(
         'set -e', $copy, 'echo "node $(node -v)"',
@@ -128,8 +153,14 @@ try {
 
     $jobs = @()
     if ($docker) {
+        $linuxOut = New-Item -ItemType Directory -Force (Join-Path $OutDir 'linux')
         foreach ($j in @(@('linux', 'mcr.microsoft.com/dotnet/sdk:10.0'), @('node', 'node:22'))) {
-            $jobs += Start-Logged $j[0] 'docker' @('run', '--rm', '-v', "${wt}:/src:ro", '-v', "${OutDir}:/ci:ro", $j[1], 'bash', "/ci/$($j[0]).sh") $wt
+            $mounts = @('-v', "${wt}:/src:ro", '-v', "${OutDir}:/ci:ro")
+            if ($j[0] -eq 'linux') { $mounts += @('-v', "$($linuxOut.FullName):/out") }
+            $name = "umbra-ci-$short-$($j[0])-$([Guid]::NewGuid().ToString('N').Substring(0, 6))"
+            $job = Start-Logged $j[0] 'docker' (@('run', '--rm', '--name', $name) + $mounts + @($j[1], 'bash', "/ci/$($j[0]).sh")) $wt
+            $job.Container = $name; $job.Limit = 45 * 60 # a hung container must not leave local-ci pending forever
+            $jobs += $job
         }
     } else {
         Write-Host 'Docker is not running: start Docker Desktop. The linux and node jobs are marked FAIL.' -ForegroundColor Red
@@ -166,7 +197,7 @@ try {
         Finish $smoke 'FAIL|SKIPPED|passed\.'
     } else { $results['smoke'] = @{ Ok = $false; Lines = @('not run: the Windows build failed'); Secs = 0 } }
 
-    foreach ($j in $jobs) { Finish $j '^image:|^node v|Warning\(s\)|Error\(s\)|^(Passed|Failed)!|^\s+Failed |^# (pass|fail) |^not ok|^Versions|^OK:|^ERROR|error:' }
+    foreach ($j in $jobs) { Finish $j '^(PASS|FAIL|SKIPPED)  |^Linux CI|^image:|^node v|Warning\(s\)|Error\(s\)|^(Passed|Failed)!|^\s+Failed |^# (pass|fail) |^not ok|^Versions|^OK:|^ERROR|error:' }
     Finish $bump '\S'
 
     # Captures for review: the commit's widgets in a throwaway data folder, then settings:<page> and widget ids.
