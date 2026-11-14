@@ -14,6 +14,8 @@
 #
 # --offline: no network (skips the catalog install in smoke and the two declared-host checks in sandbox). The update check
 # never reaches GitHub either way: UMBRA_RELEASE_URL points at a local feed (a Debug-only hook, hence the Debug build).
+# --no-build: use the existing Debug build of src/Umbra.Linux and src/Umbra.Cli (ci-local.ps1 builds them before).
+# Each step is killed after UMBRA_CI_STEP_TIMEOUT seconds (default 900) and then counts as failed ("timed out").
 # Needs what headless.sh, sandbox.sh and catalog.sh need: xvfb (xvfb-run, xauth), openbox, dbus, python3, xdotool.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
@@ -35,6 +37,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/umbra-ci-XXXXXX")
 trap 'rm -rf "$work"' EXIT
 export UMBRA_TEST_TMP="$work"
 results=(); failed=0
+step_timeout=${UMBRA_CI_STEP_TIMEOUT:-900} # seconds per step
 echo "Umbra Linux CI ($sha), output in $out"
 
 if [ $build = 1 ]; then
@@ -42,7 +45,8 @@ if [ $build = 1 ]; then
   if dotnet build "$repo/Umbra.Linux.slnf" -warnaserror > "$out/build.log" 2>&1; then
     grep -E 'Warning\(s\)|Error\(s\)' "$out/build.log" | sed 's/^ */   /'
   else
-    grep -E ' error |Warning\(s\)|Error\(s\)' "$out/build.log" | tail -n 20; echo "FAIL  build"; exit 1
+    grep -E ' error |Warning\(s\)|Error\(s\)' "$out/build.log" | tail -n 20
+    echo "FAIL  build (see $out/build.log)" | tee "$out/summary.txt"; echo "Linux CI FAILED"; exit 1
   fi
 fi
 
@@ -53,6 +57,9 @@ export UMBRA_RELEASE_URL="$work/release.json"
 # WebKitGTK puts every web process in a bubblewrap sandbox. An unprivileged Docker container can't create the namespaces
 # it needs; rather than give the container privileges (it runs PR code), switch WebKit's own process sandbox off there.
 # Umbra's widget sandbox (web-process extension, per-widget CSP, dead-end proxy) is separate and stays on: sandbox.sh tests it.
+# Only inside a container (never on a dev machine, where bwrap works or the run should show that it doesn't).
+# Coverage gap: in the container the web-process extension is therefore never loaded under bubblewrap, which is how users
+# run it. A native run of this script on a real Linux machine (bwrap working) covers that combination.
 if ! command -v bwrap >/dev/null || ! bwrap --ro-bind / / --unshare-all --die-with-parent true 2>/dev/null; then
   if [ -f /.dockerenv ] || [ "${UMBRA_CI_CONTAINER:-}" = 1 ]; then
     echo "note: bubblewrap can't create namespaces in this container: WebKit's process sandbox is off (WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1)"
@@ -69,8 +76,10 @@ run() {
   local name=$1; shift
   echo "== $name"
   local start=$SECONDS
-  UMBRA_KEEP=1 "$@" > "$out/$name.txt" 2> "$out/$name.err"
-  local code=$?
+  # A hung step must not block CI: timeout signals its whole process group (Xvfb, the shell, umbra), then SIGKILL.
+  UMBRA_KEEP=1 timeout -k 10 "$step_timeout" "$@" > "$out/$name.txt" 2> "$out/$name.err"
+  local code=$? note=""
+  [ $code = 124 ] || [ $code = 137 ] && note="timed out after $step_timeout s, "
   # headless.sh / gnome.sh print "profile kept: <dir>" / "kept: <dir>": copy what's useful out of each, then delete it.
   local n=0
   while read -r dir; do
@@ -81,11 +90,11 @@ run() {
     case "$(basename "$dir")" in umbra-test-*|umbra-gnome-*) rm -rf "$dir" ;; esac
     n=$((n + 1))
   done < <(sed -n 's/^\(profile \)\{0,1\}kept: //p' "$out/$name.err")
-  grep -v 'kept: ' "$out/$name.err" >> "$out/$name.txt"; rm -f "$out/$name.err"
+  grep -Ev '^(profile )?kept: ' "$out/$name.err" >> "$out/$name.txt"; rm -f "$out/$name.err"
   grep -E '^ *(FAIL|SKIPPED|skip )' "$out/$name.txt" | head -n 15 | sed 's/^ */   /'
   if [ $code = 0 ]; then results+=("PASS  $name ($((SECONDS - start)) s)")
-  elif [ $optional = 1 ]; then results+=("FAIL  $name (optional, not counted; exit $code; see $out/$name.txt)")
-  else results+=("FAIL  $name (exit $code, $((SECONDS - start)) s; see $out/$name.txt)"); failed=1; tail -n 25 "$out/$name.txt" | sed 's/^/   | /'; fi
+  elif [ $optional = 1 ]; then results+=("FAIL  $name (optional, not counted; ${note}exit $code; see $out/$name.txt)")
+  else results+=("FAIL  $name (${note}exit $code, $((SECONDS - start)) s; see $out/$name.txt)"); failed=1; tail -n 25 "$out/$name.txt" | sed 's/^/   | /'; fi
   echo "   ${results[-1]}"
 }
 
@@ -96,13 +105,19 @@ run catalog "$here/catalog.sh"
 if [ "${UMBRA_CI_WAYLAND:-}" = 0 ]; then
   results+=("SKIPPED  wayland (UMBRA_CI_WAYLAND=0)"); echo "== wayland"; echo "   ${results[-1]}"
 elif ! command -v gnome-shell >/dev/null || ! command -v gjs >/dev/null; then
-  results+=("SKIPPED  wayland: gnome-shell and gjs are not installed (install them to run linux/test/gnome.sh under headless GNOME Shell)")
-  echo "== wayland"; echo "   ${results[-1]}"
+  echo "== wayland"
+  if [ "${UMBRA_CI_WAYLAND:-}" = 1 ]; then
+    results+=("FAIL  wayland: UMBRA_CI_WAYLAND=1 but gnome-shell or gjs is not installed"); failed=1
+  else
+    results+=("SKIPPED  wayland: gnome-shell and gjs are not installed (install them to run linux/test/gnome.sh under headless GNOME Shell)")
+  fi
+  echo "   ${results[-1]}"
 else
   mkdir -p "$out/wayland"
   # Optional unless UMBRA_CI_WAYLAND=1: the GNOME path isn't part of the required job (the container doesn't run it).
   opt=(-o); [ "${UMBRA_CI_WAYLAND:-}" = 1 ] && opt=()
-  UMBRA_OUT="$out/wayland" run "${opt[@]}" wayland "$here/gnome.sh"
+  # TMPDIR: gnome.sh's temp folder goes under $work too, so even a timed-out run leaves nothing behind.
+  TMPDIR="$work" UMBRA_OUT="$out/wayland" run "${opt[@]}" wayland "$here/gnome.sh"
 fi
 
 echo
