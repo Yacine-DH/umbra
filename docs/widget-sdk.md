@@ -369,8 +369,8 @@ Rules (checked when the widget loads, by `scripts/catalog.mjs`, and on install; 
   approval is saved for this widget and this command and is void as soon as the command changes or the resolved program file (path or SHA-256) differs
   (Linux paths are case-sensitive, so `/opt/Tool` and `/opt/tool` are different programs). On Windows the process and
   its descendants run in a job object and die on timeout or when Umbra exits. On Linux the program leads its own process group, which gets SIGTERM and then SIGKILL on
-  timeout or cancel (a program that starts its own session escapes the group, and the group is not killed if Umbra itself is killed). (The Linux host is still being
-  built. Commands stay off in a Flatpak until host programs can be identified for the approval: they would start through `flatpak-spawn --host`.) The prompt closes (as a refusal) after 2 minutes. A prompt only
+  timeout or cancel (a program that starts its own session escapes the group, and the group is not killed if Umbra itself is killed). (Commands stay off in a Flatpak
+  build until host programs can be identified for the approval.) The prompt closes (as a refusal) after 2 minutes. A prompt only
   appears right after the user clicked the widget (so a button works; a background timer doesn't), at most every 20 s,
   and not after three refusals. Without an approval a call rejects with a message you should show ("Approve it in
   Settings > My widgets"). Users can approve and revoke each command there, and Browse flags widgets that declare commands.
@@ -496,25 +496,37 @@ umbra.onSettings(suggest); // again when the user changes the view option; repea
 
 ## Platforms
 
-Everything in this file describes Umbra on **Windows**, the only platform it runs on today. A Linux version (KDE Plasma 6,
-GNOME 46+) is in progress (epic #172); the Linux app does not exist yet, so none of the following is available or verified.
-This is what the Linux design plans, so you can write widgets that will carry over:
+Everything above describes Umbra on **Windows**. The Linux host (GTK 4 + WebKitGTK 6; KDE Plasma 6, GNOME 46+) is a preview
+and runs the same widgets with the same API and sandbox. Write one widget for both:
 
-- **Same API, same widgets.** Pages keep using `https://umbra.local/shared/umbra.js` and `window.umbra`. Never touch the host
-  bridge (`window.chrome.webview` on Windows, WebKitGTK's `webkit.messageHandlers` on Linux) yourself.
-- **`umbra.notify`** is planned through the freedesktop Notifications service (#189), with the same permission, rate limit and action buttons.
-- **`umbra.media`** is planned through MPRIS (#190), with the same `permissions.media` rules. Planned limit: album art is only read from
-  `file://` art URLs, so a player that only offers an `https://` art URL (Spotify) returns no `art`, because the host does not fetch undeclared hosts.
-- **`umbra.system`** is planned from `/proc` and `/sys/class/power_supply` (#178), in the same JSON shape. `disk` maps to `/proc/diskstats`
-  and `statvfs` of the mounts; `gpu` has no generic Linux source, so it is planned to read `percent: null` there unless a driver exposes one.
-- **`umbra.run` / `permissions.commands`** is planned with the same rules, approvals and limits (#194). Linux details: the command runs in its
-  own process group that is killed on timeout, and in a Flatpak it would run through `flatpak-spawn --host`. The commands you declare
-  must exist on the target system, so a Windows-only program (`powershell`, `tasklist`) will not work there.
-- **`platforms` field (planned in #194, not accepted yet):** an optional `"platforms": ["windows", "linux"]` in `widget.json` (default: both) so a
-  widget that needs Windows programs can be marked Windows only. **Do not add it today:** the schema and `scripts/catalog.mjs` don't know it yet and would reject the manifest.
-- **Fonts:** `umbra.css` names Segoe UI Variable, which Linux lacks; a bundled Inter fallback is planned (#195). Keep using the tokens
-  and `.num` for tabular numbers, and don't hard-code a font by name.
-- **Hotkeys, tray and the rest of Settings** are host features, not widget APIs; their Linux differences are listed in the README.
+- **Use only `window.umbra`.** Load `https://umbra.local/shared/umbra.js` as usual (Linux serves it from `umbra://`, rewritten
+  for you). Never touch the host bridge yourself (`window.chrome.webview` on Windows, WebKitGTK's `webkit.messageHandlers` on
+  Linux, or `shared/bridge.js`); `umbractl validate` warns about `chrome.webview`.
+- **`platforms`** in `widget.json` (`["windows"]`, `["linux"]`, or leave it out for both). Set it when the widget only works on one OS,
+  usually because its commands run Windows programs (`powershell`, `tasklist`). On the other OS Browse shows "Windows only" (or
+  "Linux only") and offers no install, `umbractl install` and `create` refuse, and a copy already present is skipped.
+  It is a hint, never a permission. Script Runner is `["windows"]`.
+- **Paths:** the data folder is `$XDG_DATA_HOME/umbra` (default `~/.local/share/umbra`) instead of `%APPDATA%\Umbra`, same layout.
+  Widgets never see it; it only matters in docs and commands you write.
+- **`umbra.notify`** goes through the desktop's notification service (org.freedesktop.Notifications): same permission, switch,
+  prompt, `url`, `tag`, `actions` and rate limit. A click on the body opens `url`; buttons reach `umbra.onNotificationAction`.
+  How it looks, and Do Not Disturb, are up to the desktop.
+- **`umbra.media`** reads MPRIS players (Firefox, Chromium, Spotify, VLC...): same JSON and permission rules; `app` is the player's
+  name. `art` is filled only from a local `file://` art URL, so a player that only offers an `https://` one (Spotify) gives no `art`:
+  the host does not fetch undeclared hosts. Show a placeholder.
+- **`umbra.run` / `permissions.commands`**: same rules, approvals and limits. Declare programs that exist on Linux (and set
+  `platforms` if they don't). The command leads its own process group, killed on timeout. In a Flatpak build (none exists yet)
+  commands are refused.
+- **`umbra.system()`** returns `cpu`, `memory` and `network` on Linux; `gpu` and `disk` are not read there yet, so their keys are
+  missing. Check before you use them.
+- **Not on Linux yet:** `umbra.timelapse` (camera) and `umbra.images` (`saveImages`) reject with "Not available on Linux yet";
+  `umbra.setTabIcon` is ignored.
+- **Fonts:** `umbra.css` names Segoe UI Variable first, then Inter, bundled with Umbra (`shared/fonts`, OFL), then common Linux UI
+  fonts. Use the tokens (`var(--font)`, `var(--font-display)`) and `.num` for tabular numbers; don't hard-code a font by name.
+  Emoji need a colour emoji font on the user's system.
+- **Inputs:** WebKitGTK has no native picker for `<input type="date">` / `type="time">` and may show a plain text field; add a
+  `placeholder` such as `YYYY-MM-DD` and validate the text.
+- **Hotkeys, tray, updates and the rest of Settings** are host features, not widget APIs; their Linux differences are in the README.
 
 ## Develop with umbractl (or an AI agent)
 
