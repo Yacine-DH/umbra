@@ -1,0 +1,6 @@
+# Linux files must keep LF even in a Windows checkout (core.autocrlf): bash, the .desktop parser and gcc read them
+# in Linux containers (scripts/linux-package.ps1). Everything else keeps git's defaults.
+*.sh text eol=lf
+*.desktop text eol=lf
+*.py text eol=lf
+*.c text eol=lf

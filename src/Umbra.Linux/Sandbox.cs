@@ -122,4 +122,24 @@ static partial class Sandbox
             return NavigationVerdict.External;
         return NavigationVerdict.Block;
     }
+
+    /// <summary>
+    /// True when <paramref name="header"/> (the first bytes of <c>libumbra-webext.so</c>) is a 64-bit little-endian ELF shared
+    /// object for <paramref name="arch"/>. A wrong-architecture extension would exist on disk but never load into the web
+    /// process, silently dropping the first sandbox layer, so the host treats it like a missing one and opens no widget.
+    /// </summary>
+    public static bool ExtensionMatches(ReadOnlySpan<byte> header, System.Runtime.InteropServices.Architecture arch)
+    {
+        ushort want = arch switch
+        {
+            System.Runtime.InteropServices.Architecture.X64 => 62,    // EM_X86_64
+            System.Runtime.InteropServices.Architecture.Arm64 => 183, // EM_AARCH64
+            _ => 0,
+        };
+        if (want == 0 || header.Length < 20) return false;
+        if (header[0] != 0x7F || header[1] != (byte)'E' || header[2] != (byte)'L' || header[3] != (byte)'F') return false;
+        if (header[4] != 2 || header[5] != 1) return false; // ELFCLASS64, ELFDATA2LSB
+        if ((header[16] | header[17] << 8) != 3) return false; // ET_DYN
+        return (header[18] | header[19] << 8) == want;
+    }
 }

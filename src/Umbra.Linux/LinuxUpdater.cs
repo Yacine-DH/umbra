@@ -17,11 +17,15 @@ sealed class LinuxUpdater : IUpdater
 
     static readonly Lazy<HttpClient> Http = new(() =>
     {
-        var c = new HttpClient(Prefs.CreateHandler()) { Timeout = TimeSpan.FromSeconds(30) };
+        // GitHub's latest-release JSON is a few KB; anything over 1 MB is refused unread.
+        var c = new HttpClient(Prefs.CreateHandler()) { Timeout = TimeSpan.FromSeconds(30), MaxResponseContentBufferSize = MaxFeedBytes };
         c.DefaultRequestHeaders.UserAgent.ParseAdd($"Umbra/{AppInfo.Version}");
         c.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
         return c;
     });
+
+    /// <summary>The largest feed read.</summary>
+    public const int MaxFeedBytes = 1024 * 1024;
 
     readonly Func<bool> _enabled;
     readonly Action _changed;
@@ -29,7 +33,9 @@ sealed class LinuxUpdater : IUpdater
     readonly string _feed;
     readonly string _current;
     readonly string? _arch;
-    bool _checking;
+    Task? _inflight;
+    DateTime? _lastAttemptUtc;
+    bool _lastFailed;
 
     public LinuxUpdater(Func<bool> enabled, Action changed, bool flatpak, Fetcher? fetch = null, string? feed = null,
         string? current = null, string? arch = null)
@@ -63,40 +69,62 @@ sealed class LinuxUpdater : IUpdater
     public DateTime? LastChecked { get; private set; }
     public string? Error { get; private set; }
 
-    /// <summary>Starts the daily check: the first one after the desktop settled, then every 24 hours.</summary>
+    /// <summary>
+    /// Starts the daily check: the first one after the desktop settled, then an hourly tick that checks once the last
+    /// attempt is 24 hours old by the wall clock (GLib timers stop while the machine sleeps, so a 24 h timer could wait days).
+    /// </summary>
     public void Start()
     {
         if (Flatpak) { Log.Write("Update check skipped: Flatpak updates Umbra"); return; }
         UiThread.Every(8_000, () => { _ = CheckAsync(manual: false); return false; });
-        UiThread.Every((uint)TimeSpan.FromHours(24).TotalMilliseconds, () => { _ = CheckAsync(manual: false); return true; });
+        UiThread.Every((uint)TimeSpan.FromHours(1).TotalMilliseconds, () => { CheckIfDue(DateTime.UtcNow); return true; });
     }
+
+    /// <summary>Runs an automatic check when <see cref="IsDue"/> says so (the hourly tick).</summary>
+    public void CheckIfDue(DateTime utcNow)
+    {
+        if (IsDue(_lastAttemptUtc, _lastFailed, utcNow)) _ = CheckAsync(manual: false);
+    }
+
+    /// <summary>Due 24 hours after the last attempt, or 1 hour after a failed one; never before the first attempt (the start check does that).</summary>
+    public static bool IsDue(DateTime? lastAttemptUtc, bool lastFailed, DateTime utcNow) =>
+        lastAttemptUtc is { } last && utcNow - last >= (lastFailed ? TimeSpan.FromHours(1) : TimeSpan.FromHours(24));
 
     /// <summary>
     /// Queries the feed. An automatic check does nothing when the user turned update checks off; a manual one (Settings,
     /// <c>umbractl update check</c>) always asks. <paramref name="download"/> is ignored: Linux never downloads an update.
     /// </summary>
-    public async Task CheckAsync(bool manual, bool download = false)
+    public Task CheckAsync(bool manual, bool download = false)
     {
-        if (Flatpak || _checking) return;
-        if (!manual && !_enabled()) return;
-        _checking = true;
+        if (Flatpak) return Task.CompletedTask;
+        // A check already running answers this one too, so a manual check never returns the state from before it.
+        if (_inflight is { IsCompleted: false } running) return running;
+        if (!manual && !_enabled()) return Task.CompletedTask;
+        return _inflight = RunAsync();
+    }
+
+    async Task RunAsync()
+    {
+        _lastAttemptUtc = DateTime.UtcNow;
         try
         {
             if (_arch is null) throw new PlatformNotSupportedException($"No Linux build is published for {RuntimeInformation.OSArchitecture}");
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             // Off the UI thread: the first request loads the HTTP and TLS stack synchronously, long enough to stall the control socket.
             var json = await Task.Run(() => _fetch(_feed, cts.Token), cts.Token);
+            if (json.Length > MaxFeedBytes) throw new InvalidDataException("The release feed is larger than 1 MB");
             var rel = Updates.ParseLinuxNotice(json, _arch);
             Available = rel is not null && Updates.IsNewer(_current, rel.Version) ? rel : null;
             Error = null;
+            _lastFailed = false;
             if (Available is not null) Log.Write($"Update available: {Available.Version} ({Available.PageUrl})");
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             Error = ex.Message;
+            _lastFailed = true;
             Log.Write($"Update check failed: {ex.Message}");
         }
-        finally { _checking = false; }
         LastChecked = DateTime.Now;
         _changed();
     }

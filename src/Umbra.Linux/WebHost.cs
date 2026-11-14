@@ -57,8 +57,22 @@ static class WebHost
     /// <summary>The folder with <c>libumbra-webext.so</c>, the web-process extension that enforces the sandbox (next to the binary).</summary>
     public static string ExtensionDir => Path.Combine(AppPaths.AppDir, "webext");
 
-    /// <summary>False when the sandbox extension is missing: widget pages are then not opened at all (see <c>App</c>).</summary>
-    public static bool SandboxAvailable => File.Exists(Path.Combine(ExtensionDir, "libumbra-webext.so"));
+    /// <summary>
+    /// False when the sandbox extension is missing, unreadable or built for another architecture (it would never load):
+    /// widget pages are then not opened at all (see <c>App</c>). Checked once per run.
+    /// </summary>
+    public static bool SandboxAvailable => _sandboxAvailable.Value;
+    static readonly Lazy<bool> _sandboxAvailable = new(() =>
+    {
+        try
+        {
+            var header = new byte[64];
+            using var f = File.OpenRead(Path.Combine(ExtensionDir, "libumbra-webext.so"));
+            var n = f.ReadAtLeast(header, header.Length, throwOnEndOfStream: false);
+            return Sandbox.ExtensionMatches(header.AsSpan(0, n), System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return false; }
+    });
 
     static WebKit.WebContext CreateContext()
     {

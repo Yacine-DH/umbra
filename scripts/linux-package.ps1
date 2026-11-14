@@ -1,31 +1,42 @@
 # Builds the Linux release tarballs in Docker (#197): dist\umbra-<version>-linux-<arch>.tar.gz plus .sha256, for the same
-# GitHub release as the Windows installer. Each arch builds in linux/package.Dockerfile (Ubuntu 24.04 + .NET 10 SDK +
-# WebKitGTK 6 dev files) through linux/container-package.sh, from a read-only mount of this checkout.
+# GitHub release as the Windows installer. Each arch builds in an image of linux/package.Dockerfile (Ubuntu 24.04 + .NET 10
+# SDK + WebKitGTK 6 dev files) through linux/container-package.sh, from a read-only mount of this checkout.
 #   powershell -File scripts/linux-package.ps1               (x64 and arm64)
 #   powershell -File scripts/linux-package.ps1 -Arch x64
-# Needs Docker Desktop (Linux containers). arm64 runs under QEMU emulation, which Docker Desktop includes; it is slow
-# (several minutes). Called by build.ps1 -Linux.
+#   powershell -File scripts/linux-package.ps1 -Arch arm64 -Qemu
+# Needs Docker Desktop (Linux containers). Both arches build as linux/amd64: arm64 is published with -r linux-arm64 and
+# only the sandbox extension is cross-compiled (aarch64-linux-gnu-gcc); linux/package.sh refuses an extension of the wrong
+# architecture. -Qemu instead emulates a whole arm64 container (slow, the .NET SDK under QEMU is unsupported and can hang),
+# so each packaging run has a time limit and is retried once. Called by build.ps1 -Linux.
 # TODO(#196): the Flatpak bundle (io.github.aminechr54.Umbra.flatpak) once the manifest and metainfo exist.
-param([string[]]$Arch = @('x64', 'arm64'))
+param([string[]]$Arch = @('x64', 'arm64'), [switch]$Qemu, [int]$TimeoutMinutes = 45)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $version = ([xml](Get-Content (Join-Path $root 'Directory.Build.props'))).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
 $dist = Join-Path $root 'dist'
 New-Item $dist -ItemType Directory -Force | Out-Null
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw "Docker is needed for the Linux tarballs (Docker Desktop, Linux containers)" }
-$platforms = @{ x64 = 'linux/amd64'; arm64 = 'linux/arm64' }
 
 foreach ($a in $Arch) {
-  $platform = $platforms[$a]
-  if (-not $platform) { throw "Unknown arch '$a' (x64 or arm64)" }
-  $image = "umbra-linux-package:$a"
-  Write-Host "Linux $a ($platform)" -ForegroundColor Cyan
-  docker build --platform $platform -t $image -f (Join-Path $root 'linux\package.Dockerfile') (Join-Path $root 'linux')
+  if ($a -notin @('x64', 'arm64')) { throw "Unknown arch '$a' (x64 or arm64)" }
+  $emulated = $Qemu -and $a -eq 'arm64'
+  $platform = if ($emulated) { 'linux/arm64' } else { 'linux/amd64' }
+  $target = if ($emulated) { 'native' } else { $a }
+  $image = "umbra-linux-package:$target-$($platform.Replace('/', '-'))"
+  Write-Host "Linux $a (image target $target, $platform)" -ForegroundColor Cyan
+  docker build --platform $platform --target $target -t $image -f (Join-Path $root 'linux\package.Dockerfile') (Join-Path $root 'linux')
   if ($LASTEXITCODE) { throw "docker build ($a) failed" }
-  # The script is read through tr: a Windows checkout may have given it CRLF line endings.
-  docker run --rm --platform $platform -v "${root}:/src:ro" -v "${dist}:/out" -v "umbra-nuget-${a}:/root/.nuget/packages" $image `
-    bash -c "tr -d '\r' < /src/linux/container-package.sh > /tmp/package.sh && bash /tmp/package.sh /src /out $a"
-  if ($LASTEXITCODE) { throw "Linux packaging ($a) failed" }
+
+  # The script is read through tr: a Windows checkout may have given it CRLF line endings (.gitattributes should prevent it).
+  # `timeout` inside the container bounds a hung build; one retry after a failure.
+  $script = "tr -d '\r' < /src/linux/container-package.sh > /tmp/package.sh && timeout $($TimeoutMinutes * 60) bash /tmp/package.sh /src /out $a"
+  $ok = $false
+  foreach ($attempt in 1, 2) {
+    docker run --rm --platform $platform -v "${root}:/src:ro" -v "${dist}:/out" -v "umbra-nuget-${target}:/root/.nuget/packages" $image bash -c $script
+    if (-not $LASTEXITCODE) { $ok = $true; break }
+    Write-Warning "Linux packaging ($a) failed or timed out (attempt $attempt)"
+  }
+  if (-not $ok) { throw "Linux packaging ($a) failed twice" }
 
   $tar = Join-Path $dist "umbra-$version-linux-$a.tar.gz"
   $sum = "$tar.sha256"

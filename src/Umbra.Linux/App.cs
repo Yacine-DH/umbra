@@ -77,7 +77,7 @@ sealed class App : IUmbraHost
         Manifests = WidgetManifest.DiscoverAll();
         WebHost.Manifests = () => Manifests;
         if (!WebHost.SandboxAvailable)
-            Log.Write($"Sandbox extension missing ({WebHost.ExtensionDir}): no widget is opened. Error: this build is incomplete.");
+            Log.Write($"Sandbox extension missing or built for another architecture ({WebHost.ExtensionDir}): no widget is opened. Error: this build is incomplete.");
         _autostart = LinuxAutostart.Create(Environment.GetEnvironmentVariable, File.Exists, AppPaths.ExePath, AppPaths.IsPortable, portal: null);
         Pin = X11Pin.TryCreate() ?? (IDesktopPin)new NoPin();
         Log.Write($"Umbra started, {Manifests.Count} widget(s) found, desktop pinning: {Pin.Name}");

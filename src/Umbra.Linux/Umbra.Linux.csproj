@@ -47,7 +47,10 @@
   -->
   <PropertyGroup>
     <WebExtSource>$(MSBuildProjectDirectory)/native/umbra-webext.c</WebExtSource>
-    <WebExtOutput>$(MSBuildProjectDirectory)/$(IntermediateOutputPath)webext/libumbra-webext.so</WebExtOutput>
+    <!-- The C compiler: aarch64-linux-gnu-gcc for an arm64 cross build (linux/package.sh passes WEBEXT_CC; pkg-config then needs PKG_CONFIG_LIBDIR). -->
+    <WebExtCC Condition="'$(WebExtCC)' == ''">gcc</WebExtCC>
+    <!-- Per runtime identifier, so an x64 build is never reused for linux-arm64 (package.sh also checks the ELF machine). -->
+    <WebExtOutput>$(MSBuildProjectDirectory)/obj/webext/$(RuntimeIdentifier)/libumbra-webext.so</WebExtOutput>
   </PropertyGroup>
 
   <Target Name="BuildWebExtension" BeforeTargets="AssignTargetPaths" Condition="$([MSBuild]::IsOSPlatform('Linux'))"
@@ -58,7 +61,7 @@
     <Error Condition="'$(WebExtPkgExit)' != '0'"
            Text="The sandbox extension needs gcc, pkg-config and the WebKitGTK 6 development files (Ubuntu: sudo apt install build-essential pkg-config libwebkitgtk-6.0-dev)." />
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(WebExtOutput)'))" />
-    <Exec Command="gcc -shared -fPIC -O2 -Wall -Wextra -Werror -Wno-unused-parameter &quot;$(WebExtSource)&quot; %24(pkg-config --cflags --libs webkitgtk-web-process-extension-6.0) -o &quot;$(WebExtOutput)&quot;" />
+    <Exec Command="$(WebExtCC) -shared -fPIC -O2 -Wall -Wextra -Werror -Wno-unused-parameter &quot;$(WebExtSource)&quot; %24(pkg-config --cflags --libs webkitgtk-web-process-extension-6.0) -o &quot;$(WebExtOutput)&quot;" />
   </Target>
 
   <Target Name="IncludeWebExtension" BeforeTargets="AssignTargetPaths" DependsOnTargets="BuildWebExtension" Condition="$([MSBuild]::IsOSPlatform('Linux'))">

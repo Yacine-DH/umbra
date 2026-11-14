@@ -140,4 +140,37 @@ public sealed class CrashTests
         recovery.Reset();
         Assert.Equal(0, recovery.Used);
     }
+
+    static byte[] Elf(ushort machine, byte cls = 2, byte data = 1, ushort type = 3)
+    {
+        var h = new byte[64];
+        h[0] = 0x7F; h[1] = (byte)'E'; h[2] = (byte)'L'; h[3] = (byte)'F'; h[4] = cls; h[5] = data;
+        h[16] = (byte)type; h[17] = (byte)(type >> 8); h[18] = (byte)machine; h[19] = (byte)(machine >> 8);
+        return h;
+    }
+
+    [Fact]
+    public void The_extension_must_match_the_process_architecture()
+    {
+        const System.Runtime.InteropServices.Architecture x64 = System.Runtime.InteropServices.Architecture.X64, arm64 = System.Runtime.InteropServices.Architecture.Arm64;
+        Assert.True(Sandbox.ExtensionMatches(Elf(62), x64));
+        Assert.True(Sandbox.ExtensionMatches(Elf(183), arm64));
+        Assert.False(Sandbox.ExtensionMatches(Elf(62), arm64));  // an x64 .so in an arm64 package never loads
+        Assert.False(Sandbox.ExtensionMatches(Elf(183), x64));
+        Assert.False(Sandbox.ExtensionMatches(Elf(62), System.Runtime.InteropServices.Architecture.X86));
+        Assert.False(Sandbox.ExtensionMatches(Elf(62, cls: 1), x64));   // 32-bit
+        Assert.False(Sandbox.ExtensionMatches(Elf(62, data: 2), x64));  // big-endian
+        Assert.False(Sandbox.ExtensionMatches(Elf(62, type: 2), x64));  // an executable, not a shared object
+        Assert.False(Sandbox.ExtensionMatches(Elf(62).AsSpan(0, 19), x64));
+        Assert.False(Sandbox.ExtensionMatches("not an elf file at all"u8, x64));
+    }
+
+    [Fact]
+    public void The_built_extension_matches_this_machine()
+    {
+        var so = Path.Combine(AppContext.BaseDirectory, "webext", "libumbra-webext.so");
+        if (!File.Exists(so)) return; // built only on Linux
+        var header = File.ReadAllBytes(so).AsSpan(0, 64);
+        Assert.True(Sandbox.ExtensionMatches(header, System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture));
+    }
 }

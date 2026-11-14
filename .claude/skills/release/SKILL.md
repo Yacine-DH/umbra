@@ -24,8 +24,9 @@ merge commit of the release PR), never from a hand-pushed tag.
    (`gh pr merge <N> --squash --delete-branch`; the `local-ci` status is the required check).
 6. **Build and publish on this PC.** GitHub Actions is off, so `release.yml` doesn't run. On the updated `main`:
    `powershell -File build.ps1 -Linux` (Docker Desktop must be running: `-Linux` runs `scripts/linux-package.ps1`, which builds
-   `dist/umbra-X.Y.Z-linux-x64.tar.gz` and `-arm64.tar.gz`, each with a `.sha256`, in an Ubuntu 24.04 container; arm64 runs
-   under QEMU and takes several minutes. Without Docker, drop `-Linux` and the Linux assets, or build them later on a Linux
+   `dist/umbra-X.Y.Z-linux-x64.tar.gz` and `-arm64.tar.gz`, each with a `.sha256`, in Ubuntu 24.04 containers; arm64 is
+   cross-built on amd64, and if that image ever fails, `scripts/linux-package.ps1 -Arch arm64 -Qemu` emulates it instead
+   (slow, time-limited, retried once). Without Docker, drop `-Linux` and the Linux assets, or build them later on a Linux
    machine with `linux/container-package.sh . dist x64` and `gh release upload`). Check the portable zip runs (unzip it to a temp folder, start `Umbra.exe --background`,
    `umbractl status` shows the version and `portable: true`, then `umbractl quit`), and create the release on the merge commit
    with the notes above `<!-- end of release notes -->`:
