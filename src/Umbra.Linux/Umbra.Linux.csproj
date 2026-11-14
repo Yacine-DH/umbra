@@ -38,6 +38,8 @@
     <Content Include="..\..\settings\**\*" LinkBase="settings" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <!-- The app icon (hicolor theme): window icon, tray icon (and its attention variant), later the .desktop entry. -->
     <Content Include="..\..\linux\icons\**\*" LinkBase="icons" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- The GNOME Shell extension (#187), so Settings can offer to install it and install.sh can copy it. -->
+    <Content Include="..\..\linux\gnome-extension\**\*" LinkBase="gnome-extension" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--

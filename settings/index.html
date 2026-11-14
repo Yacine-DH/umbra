@@ -107,6 +107,18 @@
           <p>How Umbra looks, starts and runs.</p>
         </header>
 
+        <!-- Linux on GNOME Wayland without the Umbra Shell extension only (#187); Windows never sends gnomeExtension. -->
+        <div class="group" id="gnomeHint" hidden>
+          <div class="row">
+            <div class="row-text">
+              <div class="row-title">Install the Umbra GNOME extension for the best experience</div>
+              <div class="row-sub" id="gnomeHintSub">Widgets now sit on the desktop through XWayland. The extension pins them natively: above the desktop icons, out of the overview and Alt+Tab.</div>
+            </div>
+            <button type="button" class="btn" id="gnomeInstall">Install</button>
+            <button type="button" class="btn" id="gnomeDismiss">Not now</button>
+          </div>
+        </div>
+
         <div class="group">
           <div class="row">
             <div class="row-text">

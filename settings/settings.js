@@ -161,8 +161,22 @@ function renderGeneral() {
   $("#checkUpdates").checked = g.checkForUpdates !== false;
   $("#hideFullscreen").checked = !!g.hideOnFullscreen;
   syncInterval(g.refreshSeconds);
+  renderGnomeHint();
   labelRows();
 }
+// Linux, GNOME Wayland without the Umbra Shell extension (#187): a hint until the user installs it or says "Not now".
+// "install": the button copies it (the host asks nothing else); "relogin": installed, active after the next login;
+// "link": under Flatpak, opens the extension's page.
+function renderGnomeHint() {
+  const offer = state.gnomeExtension;
+  $("#gnomeHint").hidden = !offer;
+  if (!offer) return;
+  $("#gnomeInstall").hidden = offer === "relogin";
+  $("#gnomeInstall").textContent = offer === "link" ? "Get it" : "Install";
+  if (offer === "relogin") $("#gnomeHintSub").textContent = "The extension is installed. Log out and back in to start using it.";
+}
+$("#gnomeInstall").addEventListener("click", () => post({ type: "installGnomeExtension" }));
+$("#gnomeDismiss").addEventListener("click", () => { post({ type: "dismissGnomeExtension" }); $("#gnomeHint").hidden = true; });
 // Segmented control = radio group: the selected button is the one tab stop, arrows move and select.
 function syncInterval(seconds) {
   const buttons = $$("#interval button");

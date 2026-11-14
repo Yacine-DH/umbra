@@ -18,6 +18,7 @@ sealed class SettingsWindow : ISettingsView
 
     readonly App _app;
     readonly Gtk.Window _window;
+    string? _gnomeOffer;
     readonly WebKit.WebView _view;
     readonly bool _background;
     bool _closed;
@@ -38,6 +39,7 @@ sealed class SettingsWindow : ISettingsView
     {
         _app = app;
         _background = background;
+        _gnomeOffer = background ? null : GnomeExtensionSetup.TakeOffer(); // a capture window never uses up the one-time hint
         _view = WebHost.NewView(out var content, devTools: Prefs.DeveloperMode, sandbox: null, label: "settings");
         _view.SetBackgroundColor(new Gdk.RGBA { Red = 0, Green = 0, Blue = 0, Alpha = 1 });
         _view.OnContextMenu += (_, _) => !Prefs.DeveloperMode; // Inspect only in developer mode
@@ -400,6 +402,15 @@ sealed class SettingsWindow : ISettingsView
                 _app.Restart();
                 break;
 
+            case "installGnomeExtension":
+                if (_gnomeOffer is not null) _ = GnomeExtensionSetup.InstallAsync(_window);
+                break;
+
+            case "dismissGnomeExtension":
+                GnomeExtensionSetup.Dismiss();
+                _gnomeOffer = null;
+                break;
+
             case "openUrl":
                 WebHost.OpenExternal(S(msg, "url") ?? "");
                 break;
@@ -723,6 +734,7 @@ sealed class SettingsWindow : ISettingsView
         {
             ["type"] = "state",
             ["platform"] = "linux",
+            ["gnomeExtension"] = _gnomeOffer, // the GNOME Shell extension hint (#187), or null
             // What this host can do; settings.js hides or rewords what it can't (Windows sends none of this).
             ["capabilities"] = new JsonObject
             {

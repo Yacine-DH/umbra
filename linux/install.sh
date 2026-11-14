@@ -3,6 +3,9 @@
 # `umbractl` in ~/.local/bin, the app menu entry and the icon. Running it again updates in place; your widgets and settings
 # (~/.local/share/umbra) are never touched.   ./install.sh            install or update
 #                                              ./install.sh --uninstall  remove the app (keeps your data)
+#                                              ./install.sh --gnome-extension  also copy the Umbra GNOME Shell extension
+# The GNOME extension (native Wayland pinning on GNOME, #187) is only copied when you ask for it, and never turned on here:
+# enable it yourself (gnome-extensions enable umbra@aminechr54.github.io, or the Extensions app), then log out and back in.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 prefix=${UMBRA_PREFIX:-$HOME/.local}
@@ -10,6 +13,8 @@ app="$prefix/opt/umbra"
 bin="$prefix/bin"
 share=${XDG_DATA_HOME:-$HOME/.local/share}
 id=io.github.aminechr54.Umbra
+ext_uuid=umbra@aminechr54.github.io
+ext_dir="$share/gnome-shell/extensions/$ext_uuid"
 
 if [ "${1:-}" = "--uninstall" ]; then
   pkill -u "$(id -u)" -x umbra 2>/dev/null || true
@@ -17,6 +22,10 @@ if [ "${1:-}" = "--uninstall" ]; then
   rm -f "$bin/umbra" "$bin/umbractl" "$share/applications/$id.desktop"
   find "$share/icons/hicolor" -name "$id*.png" -delete 2>/dev/null || true
   rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/autostart/$id.desktop"
+  if [ -d "$ext_dir" ]; then
+    rm -rf "$ext_dir"
+    echo "Removed the Umbra GNOME extension files (it stays listed as enabled until you log out)."
+  fi
   echo "Umbra removed. Your widgets and settings are still in $share/umbra (delete that folder to remove them too)."
   exit 0
 fi
@@ -60,5 +69,17 @@ command -v update-desktop-database >/dev/null && update-desktop-database -q "$sh
 command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q -t "$share/icons/hicolor" 2>/dev/null || true
 
 echo "Umbra $(cat "$app/umbra/VERSION" 2>/dev/null) installed in $app"
+if [ "${1:-}" = "--gnome-extension" ]; then
+  mkdir -p "$share/gnome-shell/extensions"
+  rm -rf "$ext_dir"
+  cp -r "$app/umbra/gnome-extension/$ext_uuid" "$ext_dir"
+  echo "GNOME extension copied to $ext_dir. Turn it on with: gnome-extensions enable $ext_uuid"
+  echo "  (or in the Extensions app), then log out and back in."
+elif [ -d "$ext_dir" ]; then
+  rm -rf "$ext_dir"; cp -r "$app/umbra/gnome-extension/$ext_uuid" "$ext_dir" # keep an installed copy in step with the app
+  echo "Updated the Umbra GNOME extension in $ext_dir (active after your next login)."
+elif [ "${XDG_SESSION_TYPE:-}" = wayland ] && echo "${XDG_CURRENT_DESKTOP:-}" | grep -qi gnome; then
+  echo "Optional on GNOME Wayland: ./install.sh --gnome-extension pins widgets natively (above the desktop icons, out of the overview)."
+fi
 case ":$PATH:" in *":$bin:"*) ;; *) echo "Note: $bin is not on your PATH; open Umbra from the app menu, or add it to PATH for umbractl." ;; esac
 if [ $running = 1 ]; then nohup "$app/umbra/umbra" --background >/dev/null 2>&1 & echo "Restarted Umbra."; else echo "Open it from the app menu (Umbra) or run: umbra"; fi
