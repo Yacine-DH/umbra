@@ -20,7 +20,9 @@ sealed class Control(IUmbraHost app)
     {
         if (line.Trim() == "settings")
         {
-            await app.OnUi(() => Task.FromResult(app.ShowSettings()));
+            // A host without a Settings window yet (Linux, #184) says so with a CommandException; the signal has no reply to carry it.
+            try { await app.OnUi(() => Task.FromResult(app.ShowSettings())); }
+            catch (CommandException) { }
             return null; // legacy second-launch signal: no reply expected
         }
 
@@ -54,7 +56,8 @@ sealed class Control(IUmbraHost app)
         switch (cmd)
         {
             case "status":
-                return new JsonObject
+            {
+                var status = new JsonObject
                 {
                     ["version"] = AppInfo.Version,
                     ["protocol"] = 1,
@@ -75,6 +78,9 @@ sealed class Control(IUmbraHost app)
                     ["open"] = new JsonArray(app.OpenWindows.Select(w => (JsonNode?)w.Instance).ToArray()),
                     ["commands"] = new JsonArray(Protocol.Commands.Select(c => (JsonNode?)c.Cmd).ToArray()),
                 };
+                if (app.PinBackend is { } pin) status["pinBackend"] = pin; // Linux only: x11, none
+                return status;
+            }
 
             case "list":
                 return DescribeAll();
@@ -322,6 +328,7 @@ sealed class Control(IUmbraHost app)
                     copy["incompatible"] = Community.CatalogIncompatibility(copy);
                     // Installed from a file with the same id: never updated from the catalog; "install" would replace it.
                     copy["local"] = installed is not null && Community.IsLocalInstall(installed.Id);
+                    copy["supported"] = WidgetPlatforms.Supports(copy, WidgetPlatforms.Current); // false: for another OS, install is refused
                     list.Add(copy);
                 }
                 return list;

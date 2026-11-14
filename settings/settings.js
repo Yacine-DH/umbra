@@ -109,6 +109,45 @@ function save(immediate = false) {
 // A debounced save still waiting for its timer (sent right away before the window closes).
 function flushSave() { if (saveTimer) save(true); }
 
+// ---------- platform ----------
+// The Linux host sends platform "linux" and what it can do (capabilities); Windows sends neither, so on Windows every
+// helper below answers as before and applyPlatform changes nothing.
+const onLinux = () => !!state && state.platform === "linux";
+const can = (k) => !state || !state.capabilities || state.capabilities[k] !== false;
+const startLabel = () => (onLinux() ? "Start on login" : "Start with Windows");
+function applyPlatform() {
+  if (!onLinux()) return;
+  const text = (sel, t) => { const el = $(sel); if (el) el.textContent = t; };
+  const title = (sel, t) => { const el = $(sel); if (el) el.title = t; };
+  const rowOf = (id) => { const el = document.getElementById(id); return el && el.closest(".row"); };
+  const startRow = rowOf("startup");
+  if (startRow) $(".row-title", startRow).textContent = startLabel();
+  title("#copyDiagnostics", "Copies your Umbra and system versions, session type and monitors to the clipboard. No settings values, proxy address or widget data.");
+  if (!can("tray")) {
+    text("#homeHint", "Close this window and your widgets keep running; open Umbra again from your app menu to come back.");
+    title("#arrangeBox", "Widgets are locked unless you arrange them. Also on the Done pill on your desktop.");
+    WELCOME[2].title = "Umbra keeps running";
+    WELCOME[2].text = "Close this window and your widgets keep running. Open Umbra from your app menu to come back to Settings.";
+  }
+  const accent = rowOf("pf-accentWindows");
+  if (accent) {
+    accent.hidden = !can("accent");
+    $(".row-title", accent).textContent = "Match system accent";
+    $(".row-sub", accent).textContent = "Follows your desktop's accent color and updates when it changes. Dark accents are lightened to stay readable.";
+  }
+  const anim = rowOf("pf-animations");
+  if (anim) $(".row-sub", anim).textContent = "Chart draw-in, counters and pulses. Also follows your desktop's reduced-motion setting.";
+  const energy = rowOf("pf-slowOnEnergySaver");
+  if (energy) energy.hidden = !can("energySaver");
+  const updates = rowOf("checkUpdates");
+  if (updates) $(".row-sub", updates).textContent = "Once a day Umbra asks GitHub for a newer version and tells you. You download it yourself; Umbra never installs anything on its own.";
+  const fullscreen = rowOf("hideFullscreen");
+  if (fullscreen) fullscreen.hidden = !can("fullscreen");
+  text("#hotkeysIntro", can("hotkeys")
+    ? "System-wide shortcuts that work while any app has focus. Click a shortcut, then press the keys (at least one of Ctrl, Alt or Super). Esc cancels, Backspace turns it off."
+    : "Global shortcuts aren't available on Linux yet. You can set them now: they are kept and start working when a later version adds them.");
+}
+
 // ---------- links ----------
 function openLink(key) {
   const repo = (state && state.repo) || "https://github.com/AmineChr54/umbra";
@@ -127,6 +166,7 @@ function renderGeneral() {
   const g = state.settings.general;
   document.documentElement.dataset.motion = g.animations === false || g.animationSpeed === "off" ? "off" : "on";
   window.prefsRender && prefsRender();
+  applyPlatform();
   $("#startup").checked = state.startup;
   $("#startup").disabled = !!state.portable;
   $("#startupSub").textContent = state.portable ? "Not available in portable mode." : "Your widgets appear on the desktop when you sign in.";
@@ -149,7 +189,7 @@ function syncInterval(seconds) {
 }
 $("#startup").addEventListener("change", (e) => {
   post({ type: "setStartup", value: e.target.checked });
-  toast(e.target.checked ? "Umbra will start with Windows" : "Umbra won't start with Windows");
+  toast(e.target.checked ? (onLinux() ? "Umbra will start when you log in" : "Umbra will start with Windows") : (onLinux() ? "Umbra won't start when you log in" : "Umbra won't start with Windows"));
 });
 $("#checkUpdates").addEventListener("change", (e) => { state.settings.general.checkForUpdates = e.target.checked; save(true); });
 $("#countInstalls").addEventListener("change", (e) => { state.settings.general.countInstalls = e.target.checked; save(true); });
@@ -208,10 +248,13 @@ function renderUpdate() {
     : a ? `Umbra v${a.version} is available.`
     : u.error ? "Couldn't check for updates right now."
     : u.lastChecked ? "You're up to date."
-    : u.enabled === false ? "Update checks are turned off in General." : "Checking for updates...";
+    : u.enabled === false ? "Update checks are turned off in General."
+    : u.supported === false ? "This version doesn't check for updates yet. New releases are on GitHub." : "Checking for updates...";
   $("#update").classList.toggle("has-update", !!a);
   $("#updateInstall").hidden = !a;
-  $("#updateInstall").lastChild.textContent = u.portable ? "Download" : u.ready ? "Restart to update" : "Update now";
+  $("#updateCheck").hidden = u.supported === false;
+  const notifyOnly = u.portable || (state.capabilities && state.capabilities.updates === "notify");
+  $("#updateInstall").lastChild.textContent = notifyOnly ? "Download" : u.ready ? "Restart to update" : "Update now";
   $("#aboutPortable").hidden = !state.portable;
   $("#aboutPortable").textContent = state.portable ? `Portable mode - data in ${state.dataDir}` : "";
   // Disabled from the click until Umbra quits (or the install fails), also while the download reports progress.
@@ -223,7 +266,7 @@ function renderUpdate() {
   $("#navUpdate").hidden = bs === "none";
   // A disabled #updateInstall ignores click(), so the nav button must be disabled for the same window.
   $("#navUpdate").disabled = bs === "downloading" || !!u.installing;
-  $("#navUpdateText").textContent = bs === "downloading" ? "Downloading..." : bs === "ready" ? (u.installing ? "Restarting..." : "Restart to update") : u.portable ? "Download update" : "Update now";
+  $("#navUpdateText").textContent = bs === "downloading" ? "Downloading..." : bs === "ready" ? (u.installing ? "Restarting..." : "Restart to update") : notifyOnly ? "Download update" : "Update now";
   // Says what is being updated (widgets have their own Update all in Browse) and the version it brings.
   $("#navUpdateSub").textContent = a ? `Umbra v${a.version}` : "";
   // A loading line instead of a percentage: it fills with the download, and slides while the size isn't known yet.
@@ -302,7 +345,7 @@ $("#whatsNew").addEventListener("keydown", (e) => {
 $("#updateCheck").addEventListener("click", () => { $("#updateCheck").disabled = true; $("#updateText").textContent = "Checking..."; post({ type: "checkUpdate" }); });
 $("#navUpdate").addEventListener("click", () => $("#updateInstall").click());
 $("#updateInstall").addEventListener("click", () => {
-  if (state.update && state.update.portable) { post({ type: "openUrl", url: state.update.available.url }); return; }
+  if (state.update && (state.update.portable || (state.capabilities && state.capabilities.updates === "notify"))) { post({ type: "openUrl", url: state.update.available.url }); return; }
   $("#updateInstall").disabled = true;
   $("#updateText").textContent = state.update && state.update.ready ? "Restarting Umbra..." : "Downloading the update. Umbra will restart when it's done...";
   post({ type: "installUpdate" });
@@ -737,7 +780,10 @@ function renderCommands(root, w) {
 // typed. Saving here is the user's approval of exactly that command, so the line the host runs is shown on each row.
 const scriptDrafts = new Map(); // widget copy id -> the script being added or edited (kept while the state re-renders)
 let scriptFocus = null;         // widget copy whose editor should take focus after the next render
-const SCRIPT_KINDS = [["powershell", "PowerShell"], ["python", "Python"], ["bash", "Bash"], ["program", "Program"]];
+const SCRIPT_KINDS_ALL = [["powershell", "PowerShell"], ["python", "Python"], ["bash", "Bash"], ["program", "Program"]];
+// On Linux scripts run with bash or python; Windows PowerShell isn't there.
+const scriptKinds = () => (onLinux() ? SCRIPT_KINDS_ALL.filter(([k]) => k !== "powershell") : SCRIPT_KINDS_ALL);
+const defaultKind = () => (onLinux() ? "bash" : "powershell");
 const mk = (tag, className, text) => Object.assign(document.createElement(tag), className ? { className } : {}, text != null ? { textContent: text } : {});
 // Starting points for a new script. Picking one only fills the form: it becomes the user's own script when they save it.
 const SCRIPT_EXAMPLES = [
@@ -750,10 +796,19 @@ const SCRIPT_EXAMPLES = [
   { title: "Ping every 5 seconds", description: "Keeps running until you stop it", kind: "powershell", mode: "code", keepsRunning: true,
     code: 'while ($true) {\n    $r = Test-Connection 1.1.1.1 -Count 1 -ErrorAction SilentlyContinue\n    if ($r) { "$(Get-Date -Format T)  $($r.ResponseTime) ms" } else { "$(Get-Date -Format T)  no answer" }\n    Start-Sleep -Seconds 5\n}' },
 ];
+const SCRIPT_EXAMPLES_LINUX = [
+  { title: "Python version", description: "Needs Python on PATH", kind: "python", mode: "code", timeoutSeconds: 20,
+    code: "import sys, platform\nprint('Python', platform.python_version())\nprint(sys.executable)" },
+  { title: "System summary", description: "Kernel, uptime and memory", kind: "python", mode: "code", timeoutSeconds: 20,
+    code: "import platform, os\nprint(platform.system(), platform.release())\nprint(open('/proc/uptime').read().split()[0], 's up')\nprint(os.popen('free -h').read())" },
+  { title: "Ping every 5 seconds", description: "Keeps running until you stop it", kind: "program", mode: "file", keepsRunning: true,
+    path: "ping", args: "-i 5 1.1.1.1", code: "" },
+];
+const scriptExamples = () => (onLinux() ? SCRIPT_EXAMPLES_LINUX : SCRIPT_EXAMPLES);
 const clockTime = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 function editScript(w, draft) {
-  scriptDrafts.set(w.id, { widget: w.widget, kind: "powershell", mode: "file", path: "", code: "", args: "", description: "", title: "", timeoutSeconds: 60,
+  scriptDrafts.set(w.id, { widget: w.widget, kind: defaultKind(), mode: "file", path: "", code: "", args: "", description: "", title: "", timeoutSeconds: 60,
     keepsRunning: false, startIn: "", autoStart: false, restart: false, runAsAdmin: false, ...draft });
   scriptFocus = w.id;
   try { localStorage.setItem("openCards", JSON.stringify([...openCards().add(w.id)])); } catch { /* storage unavailable */ }
@@ -838,7 +893,7 @@ function scriptEditor(w, d) {
 
   const title = input("title", { maxLength: 60, placeholder: "Backup photos" });
   const kind = mk("select", "select");
-  for (const [v, label] of SCRIPT_KINDS) kind.append(new Option(label, v));
+  for (const [v, label] of scriptKinds()) kind.append(new Option(label, v));
   kind.value = d.kind;
   kind.addEventListener("change", () => { d.kind = kind.value; sync(); });
 
@@ -872,11 +927,11 @@ function scriptEditor(w, d) {
   if (!d.id) {
     const pick = mk("select", "select");
     pick.append(new Option("Start from scratch", ""));
-    SCRIPT_EXAMPLES.forEach((x, i) => pick.append(new Option(`${x.title}${x.keepsRunning ? " (keeps running)" : ""}`, String(i))));
+    scriptExamples().forEach((x, i) => pick.append(new Option(`${x.title}${x.keepsRunning ? " (keeps running)" : ""}`, String(i))));
     pick.value = d.example ?? "";
     pick.addEventListener("change", () => {
-      const x = SCRIPT_EXAMPLES[Number(pick.value)];
-      Object.assign(d, { example: pick.value, title: "", description: "", kind: "powershell", mode: "file", path: "", code: "", args: "", timeoutSeconds: 60, keepsRunning: false, autoStart: false, restart: false, runAsAdmin: false },
+      const x = scriptExamples()[Number(pick.value)];
+      Object.assign(d, { example: pick.value, title: "", description: "", kind: defaultKind(), mode: "file", path: "", code: "", args: "", timeoutSeconds: 60, keepsRunning: false, autoStart: false, restart: false, runAsAdmin: false },
         pick.value === "" ? {} : x);
       document.activeElement?.blur();
       renderInstalled();
@@ -963,7 +1018,7 @@ function scriptEditor(w, d) {
     mark(lifeBtns, !!d.keepsRunning);
     timeoutRow.hidden = !!d.keepsRunning;
     autoRow.hidden = restartRow.hidden = !d.keepsRunning;
-    adminRow.hidden = !!d.keepsRunning;
+    adminRow.hidden = !!d.keepsRunning || !can("runAsAdmin");
     saveHint.textContent = d.keepsRunning
       ? "Saving approves exactly this command. It runs as you, never from a shell, until you stop it or turn the widget off."
       : d.runAsAdmin
@@ -974,7 +1029,9 @@ function scriptEditor(w, d) {
     code.rows = bashCode ? 2 : 8;
     code.placeholder = { powershell: 'Get-Date\n"Hello from PowerShell"', python: 'import datetime\nprint(datetime.datetime.now())', bash: "date && uptime" }[d.kind] || "";
     $(".flabel", pathRow).textContent = program ? "Program" : "Script file";
-    path.placeholder = { powershell: "C:\\Scripts\\backup.ps1", python: "C:\\Scripts\\report.py", bash: "~/bin/sync.sh", program: "C:\\Tools\\app.exe or pwsh" }[d.kind];
+    path.placeholder = onLinux()
+      ? { python: "~/scripts/report.py", bash: "~/bin/sync.sh", program: "/usr/bin/rsync or rsync" }[d.kind]
+      : { powershell: "C:\\Scripts\\backup.ps1", python: "C:\\Scripts\\report.py", bash: "~/bin/sync.sh", program: "C:\\Tools\\app.exe or pwsh" }[d.kind];
     const hint = $(".hint-text", codeRow) || codeRow.appendChild(mk("span", "hint-text"));
     hint.textContent = bashCode ? "One line, run with bash -c. For a longer script, save a .sh file and pick it." : "Saved by Umbra and run as a file.";
   }
@@ -1504,6 +1561,13 @@ function renderCatalog() {
     $(".cauthor", card).textContent = [w.author ? `by ${w.author}` : "", catOf(w) !== "other" ? catLabel(catOf(w)) : "", installsText(w.installs)].filter(Boolean).join(" · ");
     $(".cdesc", card).textContent = w.description || "";
     permissionChips($(".chips", card), w);
+    // A widget restricted to one OS says so ("Windows only"), whichever OS Umbra runs on.
+    if (Array.isArray(w.platforms) && w.platforms.length === 1) {
+      const c = document.createElement("span");
+      c.className = "chip";
+      c.append(`${w.platforms[0] === "windows" ? "Windows" : w.platforms[0] === "linux" ? "Linux" : w.platforms[0]} only`);
+      chips.append(c);
+    }
     // A widget that can start programs on this PC is flagged with the exact commands (you approve each one on first use).
     // Collapsed cards show one summary chip; "Read more" lists every command in full.
     const chips = $(".chips", card);
@@ -1548,6 +1612,10 @@ function renderCatalog() {
     } else if (w.builtin) {
       btn.classList.add("done");
       btn.innerHTML = '<span class="ico" data-icon="check"></span>Built in';
+    } else if (w.supported === false && !w.installed) {
+      // For another OS: no install is offered (the host refuses it too).
+      btn.disabled = true;
+      btn.textContent = "Not available here";
     } else if (w.updateAvailable) {
       btn.classList.add("primary");
       btn.innerHTML = `<span class="ico" data-icon="download"></span>Update to v${escapeHtml(w.version)}`;
@@ -1715,7 +1783,7 @@ bridge && bridge.listen((m) => {
       if (d && typeof m.path === "string") {
         d.path = m.path;
         // A shortcut (.lnk) comes back as what it opens: its kind, arguments and Start in folder.
-        if (typeof m.kind === "string" && SCRIPT_KINDS.some(([k]) => k === m.kind)) { d.kind = m.kind; d.mode = "file"; }
+        if (typeof m.kind === "string" && SCRIPT_KINDS_ALL.some(([k]) => k === m.kind)) { d.kind = m.kind; d.mode = "file"; }
         if (typeof m.args === "string") d.args = m.args;
         if (typeof m.startIn === "string" && m.startIn) d.startIn = m.startIn;
         // A picked script usually expects to start in its own folder, like a double-click does.

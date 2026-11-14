@@ -94,8 +94,14 @@ static class AppPaths
         }
     }
 
-    /// <summary>WebView2 user data (cache, cookies): under LocalAppData, or inside the data folder in portable mode.</summary>
-    public static string WebViewDataDir => IsPortable
+    /// <summary>
+    /// Web engine user data (cache, cookies). Windows: WebView2 under LocalAppData, or inside the data folder in portable mode.
+    /// Linux: WebKit under <c>$XDG_CACHE_HOME/umbra</c>, or <c>&lt;data&gt;/cache</c> with UMBRA_DATA_DIR or portable mode.
+    /// </summary>
+    public static string WebViewDataDir => !OperatingSystem.IsWindows()
+        ? Linux.LinuxAppPaths.Resolve(Environment.GetEnvironmentVariable, AppDir, File.Exists,
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)).CacheDir
+        : IsPortable
         ? Path.Combine(DataDir, "WebView2")
         : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Umbra", "WebView2");
 }

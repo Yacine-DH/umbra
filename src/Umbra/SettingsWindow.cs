@@ -841,6 +841,7 @@ sealed class SettingsWindow : Form, ISettingsView
             copy["updateAvailable"] = Community.IsUpdate(copy, installed);
             copy["incompatible"] = Community.CatalogIncompatibility(copy); // made for a newer Umbra: greyed out
             copy["local"] = installed is not null && Community.IsLocalInstall(wid); // installed from a file: no catalog updates
+            copy["supported"] = WidgetPlatforms.Supports(copy, WidgetPlatforms.Current); // false: for another OS, Browse offers no install
             copy["previewUrl"] = previews.FirstOrDefault(x => x.wid == wid).Item2;
             copy["installs"] = _installCounts.TryGetValue(wid, out var n) ? n : null;
             list.Add(copy);

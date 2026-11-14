@@ -19,3 +19,9 @@ public sealed class WindowsTheoryAttribute : TheoryAttribute
 {
     public WindowsTheoryAttribute() { if (!OperatingSystem.IsWindows()) Skip = "Windows only"; }
 }
+
+/// <summary>A test that needs a real Linux system (live <c>/proc</c>, XDG tools): skipped elsewhere.</summary>
+public sealed class LinuxFactAttribute : FactAttribute
+{
+    public LinuxFactAttribute() { if (!OperatingSystem.IsLinux()) Skip = "Linux only"; }
+}

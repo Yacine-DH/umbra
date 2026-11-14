@@ -25,7 +25,7 @@ const OPTION_TYPES = new Set(["text", "number", "select", "toggle"]);
 const MANIFEST_VERSION = 1;
 // Same list and order as WidgetManifest.Categories in the app.
 const CATEGORIES = ["time", "productivity", "info", "markets", "system", "media", "developer", "social", "games"];
-const KNOWN_KEYS = new Set(["$schema", "id", "name", "description", "author", "version", "manifestVersion", "minUmbraVersion", "changelog", "category", "entry", "preview", "icon", "width", "height", "themeable", "private", "defaultPosition", "permissions", "options"]);
+const KNOWN_KEYS = new Set(["$schema", "id", "name", "description", "author", "version", "manifestVersion", "minUmbraVersion", "changelog", "category", "entry", "preview", "icon", "width", "height", "themeable", "private", "defaultPosition", "platforms", "permissions", "options"]);
 
 const errors = [];
 const fail = (id, msg) => errors.push(`widgets/${id}: ${msg}`);
@@ -42,8 +42,16 @@ const CMD_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const PLACEHOLDER = /^\$\{([a-z][A-Za-z0-9]{0,31})\}$/;
 const BARE_EXE = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
 const ABS_EXE = /^[A-Za-z]:[\\/][^\0*?"<>|]{1,250}$/;
+const POSIX_ABS_EXE = /^\/(?!\/)[^\0*?"<>|\\]{1,250}$/; // no leading "//" (a UNC path on Windows)
 const PARAM_NAME = /^[a-z][A-Za-z0-9]{0,31}$/;
-const INTERPRETERS = new Set(["cmd", "powershell", "pwsh", "wscript", "cscript", "mshta", "node", "python", "pythonw", "py", "bash", "sh", "wsl", "rundll32", "regsvr32", "msiexec"]);
+// Programs that run whatever their arguments name (shells, script hosts, runtimes, launchers): free-text parameters are refused for them.
+const INTERPRETERS = new Set(["cmd", "powershell", "pwsh", "wscript", "cscript", "mshta", "node", "python", "pythonw", "py", "bash", "sh", "wsl", "rundll32", "regsvr32", "msiexec",
+  "dash", "ash", "zsh", "fish", "ksh", "csh", "tcsh", "busybox", "nodejs", "deno", "bun", "perl", "ruby", "php", "lua", "osascript",
+  "env", "xargs", "sudo", "su", "doas", "pkexec", "nohup", "setsid", "nice", "ionice", "timeout", "systemd-run", "flatpak", "flatpak-spawn",
+  "awk", "gawk", "sed", "find", "xterm"]);
+const VERSIONED_INTERPRETER = /^(python|pypy|perl|ruby|php|lua|node)[0-9][0-9.]*$/i; // python3, python3.12, perl5.38...
+const SCRIPT_SUFFIX = /\.(ps1|bat|cmd|vbs|js|mjs|cjs|sh|bash|py|pl|rb|php|lua)$/i;
+const PLATFORMS = ["windows", "linux"];
 const CMD_KEYS = new Set(["id", "run", "description", "params", "timeoutSeconds"]);
 const hasControl = (s) => /[\u0000-\u0008\u000a-\u001f\u007f]/.test(s);
 
@@ -68,7 +76,7 @@ function validateCommands(wid, commands) {
       fail(wid, `${name}: "run" must be an array of 1-32 strings (executable first, then arguments)`);
       continue;
     }
-    if (!BARE_EXE.test(run[0]) && !ABS_EXE.test(run[0])) fail(wid, `${name}: executable "${run[0]}" must be a plain program name or an absolute path like C:\\Tools\\app.exe`);
+    if (!BARE_EXE.test(run[0]) && !ABS_EXE.test(run[0]) && !POSIX_ABS_EXE.test(run[0])) fail(wid, `${name}: executable "${run[0]}" must be a plain program name or an absolute path like C:\\Tools\\app.exe or /usr/bin/app`);
     if (/[\\/]$/.test(run[0]) || run[0].includes("..")) fail(wid, `${name}: executable path is invalid`);
     const params = c.params ?? {};
     const used = new Set();
@@ -78,7 +86,8 @@ function validateCommands(wid, commands) {
       if (p) { used.add(p[1]); if (!(p[1] in params)) fail(wid, `${name}: \${${p[1]}} is not declared in "params"`); }
     }
     const file = run[0].replace(/\\/g, "/").split("/").pop();
-    const interpreter = /\.(ps1|bat|cmd|vbs|js)$/i.test(file) || INTERPRETERS.has(file.replace(/\.(exe|com)$/i, "").toLowerCase());
+    const exeName = file.replace(/\.(exe|com)$/i, "");
+    const interpreter = SCRIPT_SUFFIX.test(file) || INTERPRETERS.has(exeName.toLowerCase()) || VERSIONED_INTERPRETER.test(exeName);
     for (const [pn, spec] of Object.entries(params)) {
       if (interpreter && !(typeof spec === "object" && spec !== null && Array.isArray(spec.choices)))
         fail(wid, `${name}: "${run[0]}" runs arbitrary code, so parameter "${pn}" needs fixed "choices"`);
@@ -133,6 +142,10 @@ for (const id of readdirSync(widgetsDir).sort()) {
   for (const k of ["width", "height"])
     if (m[k] !== undefined && (!Number.isInteger(m[k]) || m[k] < 80 || m[k] > 1200)) fail(id, `"${k}" must be an integer between 80 and 1200`);
 
+  // Optional OS restriction (absent = both): a non-empty list of unique, lowercase "windows" / "linux". Same rule as WidgetPlatforms.Validate.
+  if (m.platforms !== undefined && (!Array.isArray(m.platforms) || !m.platforms.length || new Set(m.platforms).size !== m.platforms.length || m.platforms.some((p) => !PLATFORMS.includes(p))))
+    fail(id, `"platforms" must be a non-empty list of unique values from: ${PLATFORMS.join(", ")} (leave it out for both)`);
+
   const hosts = m.permissions?.hosts ?? [];
   if (!Array.isArray(hosts)) fail(id, `"permissions.hosts" must be an array`);
   else for (const h of hosts) if (typeof h !== "string" || !HOST.test(h)) fail(id, `invalid host "${h}" (hostnames only, no scheme or path)`);
@@ -180,6 +193,8 @@ for (const id of readdirSync(widgetsDir).sort()) {
     ...(typeof m.changelog === "string" && m.changelog.trim() ? { changelog: m.changelog.trim() } : {}),
     preview: m.preview ?? null,
     ...(m.icon ? { icon: m.icon } : {}),
+    // Only present for widgets restricted to some OS; Browse shows "Windows only" and offers no install elsewhere.
+    ...(Array.isArray(m.platforms) && m.platforms.length ? { platforms: m.platforms } : {}),
     hosts,
     ...(system.length ? { system } : {}),
     ...(media.length ? { media } : {}),

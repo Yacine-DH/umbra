@@ -1,0 +1,13 @@
+{
+  "id": "notify-widget",
+  "name": "Notify widget (notification test)",
+  "description": "Test only: sends notifications with buttons and records what comes back. Run by linux/test/notify.sh, never installed.",
+  "author": "Umbra tests",
+  "version": "1.0.0",
+  "manifestVersion": 1,
+  "entry": "index.html",
+  "width": 300,
+  "height": 160,
+  "defaultPosition": { "x": 400, "y": 300 },
+  "permissions": { "hosts": ["example.com"], "notifications": true }
+}

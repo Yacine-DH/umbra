@@ -160,7 +160,7 @@ sealed class CommandService
 
         // Everything that can be checked without the user is checked first, so a bad request never raises a prompt.
         var args = spec.BuildArgs(values);
-        var identity = ExeIdentity.Of(spec)
+        var identity = ExeIdentity.Of(spec, _approvals.Resolver)
                   ?? throw new WidgetCommandException($"'{spec.Exe}' was not found on this PC (PATH). Install it, or ask the widget author for the full path.");
 
         // A script that runs as administrator (only a user script can) never starts on its own: each run is a click on the
@@ -503,7 +503,7 @@ sealed class CommandService
     {
         var spec = Find(m, commandId) ?? throw new WidgetCommandException("Unknown command");
         if (!string.Equals(spec.Hash(), expectedHash, StringComparison.Ordinal)) throw new WidgetCommandException("The command changed; review it again");
-        var exe = ExeIdentity.Of(spec) ?? throw new WidgetCommandException($"'{spec.Exe}' was not found on this PC, so it can't be approved yet");
+        var exe = ExeIdentity.Of(spec, _approvals.Resolver) ?? throw new WidgetCommandException($"'{spec.Exe}' was not found on this PC, so it can't be approved yet");
         _approvals.Approve(m.Id, spec, exe);
         lock (_gate) foreach (var k in _prompts.Keys.Where(k => InstanceId.WidgetOf(k) == m.Id).ToList()) _prompts.Remove(k);
     }

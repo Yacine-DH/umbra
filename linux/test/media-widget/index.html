@@ -1,0 +1,17 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><script src="https://umbra.local/shared/umbra.js"></script></head>
+<body style="background:#000;color:#fff;font:14px sans-serif;height:100vh;margin:0">
+<p>media test</p>
+<script>
+  // linux/test/media.sh sets "go" to get | <command>; a click on the widget sends "next".
+  const log = (k, v) => umbra.store.set(k, v);
+  const run = async (what) => {
+    try {
+      const r = what === "get" ? await umbra.media.nowPlaying() : await umbra.media.control(what);
+      log("result", { what, ok: true, data: r && r.art ? { ...r, art: r.art.slice(0, 30) } : r });
+    } catch (e) { log("result", { what, ok: false, error: e.message || String(e) }); }
+  };
+  umbra.store.onChange(async (key) => { if (key === "go") run(await umbra.store.get("go")); });
+  document.addEventListener("mousedown", () => run("next"));
+</script>
+</body></html>

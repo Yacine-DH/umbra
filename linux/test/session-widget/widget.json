@@ -1,0 +1,13 @@
+{
+  "id": "session-widget",
+  "name": "Session widget (session test)",
+  "description": "Test only: records the accent, pause state and time changes it is told about. Run by linux/test/session.sh, never installed.",
+  "author": "Umbra tests",
+  "version": "1.0.0",
+  "manifestVersion": 1,
+  "entry": "index.html",
+  "width": 300,
+  "height": 160,
+  "defaultPosition": { "x": 400, "y": 300 },
+  "permissions": { "hosts": [] }
+}

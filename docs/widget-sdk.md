@@ -73,6 +73,7 @@ Nothing ships inside the app; every widget, including S&P 500, is installed from
 | `themeable` | Default `true`. `false` keeps your own look: the user's [theme](#themes) is not applied to the widget |
 | `private` | Default `false`. `true` marks a widget shared [from a file](#share-without-the-catalog-the-umbrawidget-package), not the catalog: a Private badge in My widgets, no catalog updates, and a catalog widget with the same id can't replace it. Grants no extra access; refused in the public catalog |
 | `defaultPosition` | `{x, y}` from the top-left of the primary work area, logical pixels. Omit to start top right |
+| `platforms` | Optional: `["windows"]`, `["linux"]` or both (the default when left out). Say `["windows"]` when the widget runs Windows-only programs (`powershell`, `tasklist`...). Browse then shows "Windows only" and offers no install on Linux, `umbractl install` and a local install (`create`, `create_widget`) refuse with a clear error, and an already-present copy is skipped when widgets load. `scripts/catalog.mjs` validates it (non-empty, unique, lowercase) and copies it into `widgets/index.json` |
 | `permissions.notifications` | Optional boolean. Needed for `umbra.notify`; the user must also allow notifications for the widget: in Settings (off by default) or in the prompt `umbra.requestNotifications()` shows after a click |
 | `permissions.saveImages` | Optional boolean. Needed for `umbra.images` (the host saves PNGs into `Pictures\Umbra\<widget name>`, or a folder the user picks). Listed in the update review box |
 | `permissions.camera` | Optional boolean. Needed for `umbra.timelapse` (webcam stills rendered to an MP4 by the host). Listed in the update review box |
@@ -344,22 +345,32 @@ await umbra.run("ask", { prompt: "Say hi", model: "haiku" });
 Rules (checked when the widget loads, by `scripts/catalog.mjs`, and on install; a violation stops the widget from loading):
 
 - `run` is `[executable, ...arguments]`, **never a shell line**. The executable is a plain program name found on `PATH`
-  (`claude`, `python`) or an absolute local path (`C:\Tools\app.exe`); no relative paths, no UNC. The page can't change it.
+  (`claude`, `python`) or an absolute local path (`C:\Tools\app.exe` on Windows, `/usr/bin/app` on Linux); no relative paths, no UNC.
+  The page can't change it. Both path forms validate everywhere, but only the host's own form is found: `C:\...` on Linux and
+  `/usr/...` on Windows report "not found". A bare name is searched on the absolute entries of `PATH` only (never the
+  current folder), and on Linux the file must have an execute bit. For a program that exists on only one OS, set `platforms`.
 - Each argument is a literal, or exactly `"${name}"` for a declared parameter. A parameter can't be part of a longer
   string (`"--model=${m}"` is rejected), and the executable can't be a parameter.
 - A parameter is a string, always supplied, at most `maxLength` characters (default 200, max 1000), without control
   characters, and **must not start with `-` or `/`** unless it is one of the fixed `choices`. If the executable is an
-  interpreter (`cmd`, `powershell`, `pwsh`, `wscript`, `cscript`, `mshta`, `node`, `python`, `py`, `bash`, `sh`, `wsl`,
-  `rundll32`, `regsvr32`, `msiexec`, or a `.ps1`/`.bat`/`.cmd`/`.vbs`/`.js` file), every parameter needs fixed `choices`;
+  interpreter or launcher (`cmd`, `powershell`, `pwsh`, `wscript`, `cscript`, `mshta`, `node`, `python` and versioned names such as
+  `python3.12`, `py`, `bash`, `sh`, `dash`, `zsh`, `fish`, `perl`, `ruby`, `php`, `lua`, `wsl`, `rundll32`, `regsvr32`, `msiexec`,
+  `env`, `xargs`, `sudo`, `su`, `doas`, `nohup`, `setsid`, `timeout`, `flatpak-spawn`, `awk`, `sed`, `find`, or a
+  `.ps1`/`.bat`/`.cmd`/`.vbs`/`.js`/`.sh`/`.py`/`.pl`/`.rb` file), every parameter needs fixed `choices`;
   free text is refused when the widget loads. It reaches the program as one
   single argument, so spaces and quotes in it can't add arguments.
 - `.cmd`/`.bat` files are only started for commands without parameters. `timeoutSeconds` is 1-120 (default 60).
-- The program runs as the user with no window, in `%APPDATA%\Umbra\data\run\<widget id>`, with a scrubbed environment
-  (system variables and `PATH` only: no tokens, no `UMBRA_*`). It is killed after the timeout, and at most 1 MB of
+- The program runs as the user with no window, in `%APPDATA%\Umbra\data\run\<widget id>` (Linux: `$XDG_DATA_HOME/umbra/data/run/<widget id>`), with a scrubbed environment
+  (system variables and `PATH` only: no tokens, no `UMBRA_*`). On Linux that is `PATH` (absolute entries only), `HOME`, `USER`, `LOGNAME`, `LANG`,
+  `LANGUAGE`, `LC_ALL`, `LC_CTYPE`, `LC_MESSAGES`, `LC_TIME`, `TZ`, `TMPDIR`, `XDG_RUNTIME_DIR` and the `XDG_*_HOME` folders, plus `NO_COLOR=1`: no display
+  variables, no session bus address, no `LD_*`. It is killed after the timeout, and at most 1 MB of
   stdout and of stderr is kept (`truncated` tells you).
 - **The user approves every command.** The first run shows an Umbra prompt with the exact command line; the
-  approval is saved for this widget and this command and is void as soon as the command changes or the resolved program file (path or SHA-256) differs. The process and
-  its descendants run in a job object and die on timeout or when Umbra exits. The prompt closes (as a refusal) after 2 minutes. A prompt only
+  approval is saved for this widget and this command and is void as soon as the command changes or the resolved program file (path or SHA-256) differs
+  (Linux paths are case-sensitive, so `/opt/Tool` and `/opt/tool` are different programs). On Windows the process and
+  its descendants run in a job object and die on timeout or when Umbra exits. On Linux the program leads its own process group, which gets SIGTERM and then SIGKILL on
+  timeout or cancel (a program that starts its own session escapes the group, and the group is not killed if Umbra itself is killed). (The Linux host is still being
+  built. Commands stay off in a Flatpak until host programs can be identified for the approval: they would start through `flatpak-spawn --host`.) The prompt closes (as a refusal) after 2 minutes. A prompt only
   appears right after the user clicked the widget (so a button works; a background timer doesn't), at most every 20 s,
   and not after three refusals. Without an approval a call rejects with a message you should show ("Approve it in
   Settings > My widgets"). Users can approve and revoke each command there, and Browse flags widgets that declare commands.

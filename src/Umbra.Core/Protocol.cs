@@ -96,16 +96,18 @@ public static class PortableMode
 
     public static bool IsPortable(string appDir) => File.Exists(Path.Combine(appDir, Marker));
 
-    /// <summary>The data folder (not created): UMBRA_DATA_DIR, else &lt;appDir&gt;\data when portable, else %APPDATA%\Umbra.</summary>
+    /// <summary>The data folder (not created): UMBRA_DATA_DIR, else &lt;appDir&gt;\data when portable, else %APPDATA%\Umbra (Linux: $XDG_DATA_HOME/umbra).</summary>
     public static string DataDir(string appDir) => DataDir(appDir, Environment.GetEnvironmentVariable("UMBRA_DATA_DIR"));
 
     /// <summary>Same as <see cref="DataDir(string)"/> with the UMBRA_DATA_DIR value passed in (testable).</summary>
     public static string DataDir(string appDir, string? envOverride)
     {
         if (envOverride is { Length: > 0 } custom) return custom;
-        return IsPortable(appDir)
-            ? Path.Combine(appDir, "data")
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Umbra");
+        if (IsPortable(appDir)) return Path.Combine(appDir, "data");
+        return OperatingSystem.IsWindows()
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Umbra")
+            : Linux.LinuxAppPaths.Resolve(n => n == "UMBRA_DATA_DIR" ? null : Environment.GetEnvironmentVariable(n), appDir, _ => false,
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)).DataDir;
     }
 
     /// <summary>Short stable hash of a folder path (case-insensitive) for pipe and mutex names. Not a secret.</summary>

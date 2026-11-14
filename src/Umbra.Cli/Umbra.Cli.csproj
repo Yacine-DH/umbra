@@ -14,6 +14,8 @@
     <InternalsVisibleTo Include="Umbra.Tests" />
     <InternalsVisibleTo Include="Umbra.Core.Tests" />
     <Compile Include="..\Umbra.Core\Protocol.cs" Link="Protocol.cs" />
+    <!-- Protocol.cs resolves the Linux data folder ($XDG_DATA_HOME/umbra) through LinuxAppPaths. -->
+    <Compile Include="..\Umbra.Core\Linux\LinuxPaths.cs" Link="LinuxPaths.cs" />
     <!-- Agents ask for these through the MCP widget_authoring_guide tool, so they ship next to the exe. -->
     <Content Include="..\..\docs\widget-sdk.md" Link="docs\widget-sdk.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\docs\widgets\*.md" Link="docs\widgets\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

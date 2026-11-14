@@ -3,10 +3,12 @@
     <Project Path="src/Umbra.Cli/Umbra.Cli.csproj" />
     <Project Path="src/Umbra.Core/Umbra.Core.csproj" />
     <Project Path="src/Umbra/Umbra.csproj" />
+    <Project Path="src/Umbra.Linux/Umbra.Linux.csproj" />
     <Project Path="src/Umbra.Updater/Umbra.Updater.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Umbra.Core.Tests/Umbra.Core.Tests.csproj" />
+    <Project Path="tests/Umbra.Linux.Tests/Umbra.Linux.Tests.csproj" />
     <Project Path="tests/Umbra.Tests/Umbra.Tests.csproj" />
   </Folder>
 </Solution>

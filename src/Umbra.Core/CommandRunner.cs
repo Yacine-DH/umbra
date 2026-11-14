@@ -18,30 +18,18 @@ static class CommandRunner
     static readonly string[] ProgramExtensions = { ".exe", ".com" };
     static readonly string[] ScriptExtensions = { ".cmd", ".bat" };
 
-    /// <summary>Only these variables reach the child. Tokens, API keys and UMBRA_* are never passed on.</summary>
-    static readonly string[] EnvAllowList =
-    {
-        "SystemRoot", "windir", "SystemDrive", "ComSpec", "PATH", "PATHEXT", "TEMP", "TMP", "USERNAME", "USERDOMAIN",
-        "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA", "ProgramData", "ProgramFiles", "ProgramFiles(x86)",
-        "ProgramW6432", "CommonProgramFiles", "CommonProgramFiles(x86)", "CommonProgramW6432", "NUMBER_OF_PROCESSORS",
-        "PROCESSOR_ARCHITECTURE", "OS", "COMPUTERNAME", "PSModulePath",
-    };
-
-    public static Dictionary<string, string> ScrubbedEnvironment()
-    {
-        var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var name in EnvAllowList)
-            if (Environment.GetEnvironmentVariable(name) is { Length: > 0 } v) env[name] = v;
-        env["NO_COLOR"] = "1";
-        return env;
-    }
+    /// <summary>Only the variables on <see cref="CommandEnvironment"/>'s allow-list reach the child. Tokens, API keys and UMBRA_* are never passed on.</summary>
+    public static Dictionary<string, string> ScrubbedEnvironment() =>
+        CommandEnvironment.Scrub(WidgetPlatforms.Current, Environment.GetEnvironmentVariable);
 
     /// <summary>
     /// Finds the program file for a declared executable: an absolute path as given, or a bare name searched on PATH
     /// (absolute PATH entries only, never the current folder). .cmd/.bat are only found when <paramref name="allowScripts"/>.
+    /// A POSIX-style path ("/usr/bin/x", which Windows would read relative to the current drive) is never accepted. Other OSes use <see cref="ExecutableResolver"/>.
     /// </summary>
     public static string? ResolveExe(string exe, bool allowScripts, string? pathVariable = null)
     {
+        if (exe.StartsWith('/') || exe.StartsWith('\\')) return null;
         var exts = allowScripts ? ProgramExtensions.Concat(ScriptExtensions).ToArray() : ProgramExtensions;
         var given = Path.GetExtension(exe);
         var names = exts.Contains(given, StringComparer.OrdinalIgnoreCase) ? new[] { exe } : exts.Select(e => exe + e).ToArray();
@@ -64,64 +52,44 @@ static class CommandRunner
         return null;
     }
 
-    /// <summary>Capped, drained copy of a child's output stream; also feeds the live <see cref="OutputTail"/> when there is one.</summary>
-    sealed class Capture(int max)
-    {
-        readonly MemoryStream _buf = new();
-        readonly object _gate = new();
-        public bool Truncated { get; private set; }
-
-        public async Task PumpAsync(Stream s, OutputTail? tail = null)
-        {
-            var chunk = new byte[8192];
-            var decoder = Encoding.UTF8.GetDecoder(); // a character split across two reads stays whole
-            var chars = new char[Encoding.UTF8.GetMaxCharCount(chunk.Length)];
-            int n;
-            try
-            {
-                while ((n = await s.ReadAsync(chunk)) > 0)
-                {
-                    lock (_gate)
-                    {
-                        var room = max - (int)_buf.Length;
-                        if (room > 0) _buf.Write(chunk, 0, Math.Min(room, n));
-                        if (n > room) Truncated = true; // keep reading so the child never blocks on a full pipe
-                    }
-                    tail?.Append(new string(chars, 0, decoder.GetChars(chunk, 0, n, chars, 0)));
-                }
-            }
-            catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException) { }
-        }
-
-        public string Text()
-        {
-            lock (_gate) return Encoding.UTF8.GetString(_buf.GetBuffer(), 0, (int)_buf.Length);
-        }
-    }
-
     static ProcessStartInfo StartInfo(string exePath, IReadOnlyList<string> args, string workingDir, bool createWorkingDir)
     {
-        // Containing the process tree is Windows-only so far (job objects); Linux gets process groups in #194.
-        if (!OperatingSystem.IsWindows()) throw new WidgetCommandException("Widget commands are not supported on this platform yet");
+        var platform = WidgetPlatforms.Current;
+        if (platform == WidgetPlatforms.Other) throw new WidgetCommandException("Widget commands are not supported on this platform");
         if (createWorkingDir) Directory.CreateDirectory(workingDir);
         else if (!Directory.Exists(workingDir)) throw new WidgetCommandException($"The Start in folder {workingDir} doesn't exist");
-        var psi = new ProcessStartInfo(exePath)
+        // Fail closed in a Flatpak: exePath was resolved inside the sandbox, so it may name a different file than the host's.
+        // CommandLaunch.Plan can build the flatpak-spawn line, but it is not wired in until host programs can be identified.
+        if (platform == WidgetPlatforms.Linux && CommandLaunch.IsFlatpak(File.Exists))
+            throw new WidgetCommandException("Widget commands are not available in the Flatpak build yet");
+        var plan = CommandLaunch.Plan(platform, flatpak: false, SetsidPath(), exePath, args, workingDir, ScrubbedEnvironment());
+        var psi = new ProcessStartInfo(plan.FileName)
         {
             UseShellExecute = false,
             CreateNoWindow = true,
             WindowStyle = ProcessWindowStyle.Hidden,
-            WorkingDirectory = workingDir,
+            WorkingDirectory = plan.WorkingDirectory,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
-        foreach (var a in args) psi.ArgumentList.Add(a);
+        foreach (var a in plan.Args) psi.ArgumentList.Add(a);
         psi.Environment.Clear();
-        foreach (var (k, v) in ScrubbedEnvironment()) psi.Environment[k] = v;
+        foreach (var (k, v) in plan.Environment) psi.Environment[k] = v;
         return psi;
     }
+
+    /// <summary>util-linux <c>setsid</c> at its usual absolute path (never a PATH lookup), else the bare name.</summary>
+    static string SetsidPath() =>
+        OperatingSystem.IsWindows() ? "setsid" : new[] { "/usr/bin/setsid", "/bin/setsid" }.FirstOrDefault(ExecutableResolver.IsExecutableFile) ?? "setsid";
+
+    /// <summary>Windows: a kill-on-close job object. Linux: the process group setsid made.</summary>
+    static IProcessContainment CreateContainment() =>
+        OperatingSystem.IsWindows() ? JobContainment.Create()
+        : OperatingSystem.IsLinux() ? new ProcessGroupContainment()
+        : throw new WidgetCommandException("Widget commands are not supported on this platform");
 
     /// <summary>
     /// Runs <paramref name="exePath"/> with <paramref name="args"/> (each one argv element). After <paramref name="timeout"/>
@@ -134,31 +102,18 @@ static class CommandRunner
     {
         var psi = StartInfo(exePath, args, workingDir, createWorkingDir);
         var sw = Stopwatch.StartNew();
-        // The job makes every descendant die with the job: on timeout, when the run ends, or if Umbra itself exits.
-        var job = ProcessJob.CreateKillOnCloseJob();
-        if (job == IntPtr.Zero) throw new WidgetCommandException("Could not create a job object to contain the program");
-        try
-        {
-            return await RunInJobAsync(psi, job, sw, maxBytes, timeout, ct, tail);
-        }
-        finally
-        {
-            ProcessJob.TerminateJobObject(job, 1);
-            ProcessJob.CloseHandle(job);
-        }
+        // The containment makes every descendant die with the run: on timeout, when the run ends, and on Windows also if Umbra itself exits.
+        using var containment = CreateContainment();
+        return await RunContainedAsync(psi, containment, sw, maxBytes, timeout, ct, tail);
     }
 
-    static async Task<RunResult> RunInJobAsync(ProcessStartInfo psi, IntPtr job, Stopwatch sw, int maxBytes, TimeSpan timeout, CancellationToken ct, OutputTail? tail)
+    static async Task<RunResult> RunContainedAsync(ProcessStartInfo psi, IProcessContainment containment, Stopwatch sw, int maxBytes, TimeSpan timeout, CancellationToken ct, OutputTail? tail)
     {
         using var proc = Process.Start(psi) ?? throw new WidgetCommandException("The program could not be started");
-        if (!ProcessJob.AddToJob(job, proc.Handle))
-        {
-            try { proc.Kill(entireProcessTree: true); } catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { }
-            throw new WidgetCommandException("Could not contain the program in a job object");
-        }
+        containment.Attach(proc);
         try { proc.StandardInput.Close(); } catch (IOException) { }
-        var stdout = new Capture(maxBytes);
-        var stderr = new Capture(maxBytes);
+        var stdout = new OutputCapture(maxBytes);
+        var stderr = new OutputCapture(maxBytes);
         var pumps = Task.WhenAll(stdout.PumpAsync(proc.StandardOutput.BaseStream, tail), stderr.PumpAsync(proc.StandardError.BaseStream, tail));
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -168,7 +123,7 @@ static class CommandRunner
         catch (OperationCanceledException)
         {
             timedOut = !ct.IsCancellationRequested;
-            ProcessJob.TerminateJobObject(job, 1);
+            await containment.KillAsync(proc);
             try { proc.Kill(entireProcessTree: true); } catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { }
             try { await proc.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5)); } catch (TimeoutException) { }
         }
@@ -181,27 +136,26 @@ static class CommandRunner
 
     /// <summary>
     /// Starts a user script that keeps running (a tunnel, a server): no time limit, and its output is only kept as the
-    /// last characters in <paramref name="tail"/>. It sits in a kill-on-close job, so it and everything it started end on
-    /// <see cref="RunningProcess.Stop"/>, when the handle is disposed, and when Umbra exits (even on a crash).
+    /// last characters in <paramref name="tail"/>. It sits in a kill-on-close job (Windows) or its own process group (Linux), so
+    /// it and everything it started end on <see cref="RunningProcess.Stop"/>, when the handle is disposed, and when Umbra exits
+    /// (on Windows even on a crash; on Linux Umbra's exit kills the group).
     /// </summary>
     public static RunningProcess Start(string exePath, IReadOnlyList<string> args, string workingDir, bool createWorkingDir, OutputTail tail)
     {
         var psi = StartInfo(exePath, args, workingDir, createWorkingDir);
-        var job = ProcessJob.CreateKillOnCloseJob();
-        if (job == IntPtr.Zero) throw new WidgetCommandException("Could not create a job object to contain the program");
+        var containment = CreateContainment();
         Process? proc = null;
         try
         {
             proc = Process.Start(psi) ?? throw new WidgetCommandException("The program could not be started");
-            if (!ProcessJob.AddToJob(job, proc.Handle)) throw new WidgetCommandException("Could not contain the program in a job object");
+            containment.Attach(proc);
             try { proc.StandardInput.Close(); } catch (IOException) { }
-            var pumps = Task.WhenAll(new Capture(0).PumpAsync(proc.StandardOutput.BaseStream, tail), new Capture(0).PumpAsync(proc.StandardError.BaseStream, tail));
-            return new RunningProcess(proc, job, pumps);
+            var pumps = Task.WhenAll(new OutputCapture(0).PumpAsync(proc.StandardOutput.BaseStream, tail), new OutputCapture(0).PumpAsync(proc.StandardError.BaseStream, tail));
+            return new RunningProcess(proc, containment, pumps);
         }
         catch
         {
-            ProcessJob.TerminateJobObject(job, 1);
-            ProcessJob.CloseHandle(job);
+            containment.Dispose();
             if (proc is not null)
             {
                 try { proc.Kill(entireProcessTree: true); } catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { }
@@ -251,25 +205,25 @@ public sealed class OutputTail(int max = OutputTail.DefaultMax)
     }
 }
 
-/// <summary>A started keeps-running script: its process in its own kill-on-close job.</summary>
+/// <summary>A started keeps-running script: its process in its own containment (job object or process group).</summary>
 sealed class RunningProcess : IDisposable
 {
     readonly Process _proc;
-    readonly IntPtr _job;
+    readonly IProcessContainment _containment;
     readonly object _gate = new();
     bool _closed, _exited;
 
-    internal RunningProcess(Process proc, IntPtr job, Task pumps)
+    internal RunningProcess(Process proc, IProcessContainment containment, Task pumps)
     {
         _proc = proc;
-        _job = job;
+        _containment = containment;
         Exited = WaitAsync(pumps);
     }
 
     public DateTime StartedAt { get; } = DateTime.UtcNow;
     /// <summary>Set by <see cref="Stop"/>: the exit was asked for, not the script's own doing.</summary>
     public bool StopRequested { get; private set; }
-    /// <summary>Completes with the exit code once the process ended (its output read, its job closed).</summary>
+    /// <summary>Completes with the exit code once the process ended (its output read, its containment closed).</summary>
     public Task<int> Exited { get; }
 
     async Task<int> WaitAsync(Task pumps)
@@ -279,7 +233,7 @@ sealed class RunningProcess : IDisposable
         await Task.WhenAny(pumps, Task.Delay(TimeSpan.FromSeconds(2)));
         var code = _proc.ExitCode;
         lock (_gate) _exited = true;
-        Dispose(); // closing the job also ends whatever the script left behind
+        Dispose(); // closing the containment also ends whatever the script left behind
         _proc.Dispose();
         return code;
     }
@@ -291,7 +245,7 @@ sealed class RunningProcess : IDisposable
         {
             if (_closed || _exited) return;
             StopRequested = true;
-            ProcessJob.TerminateJobObject(_job, 1);
+            _ = _containment.KillAsync(_proc);
             try { _proc.Kill(entireProcessTree: true); } catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { }
         }
     }
@@ -302,8 +256,7 @@ sealed class RunningProcess : IDisposable
         {
             if (_closed) return;
             _closed = true;
-            ProcessJob.TerminateJobObject(_job, 1);
-            ProcessJob.CloseHandle(_job);
+            _containment.Dispose();
         }
     }
 }

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="https://umbra.local/shared/umbra.css">
+  <style>
+    body { margin: 0; padding: 12px; font-size: 12px; }
+    input { width: 240px; margin-top: 8px; font: inherit; }
+  </style>
+</head>
+<body>
+  <div>edit widget: <span id="state">starting</span></div>
+  <input id="text" placeholder="type here after a click">
+  <script src="https://umbra.local/shared/umbra.js"></script>
+  <script>
+    // What a hostile page would try: every edit-mode request straight to the host, with no mouse or key involved.
+    const raw = (m) => window.webkit.messageHandlers.umbra.postMessage(m);
+    const text = document.getElementById("text");
+    text.addEventListener("input", () => umbra.store.set("typed", text.value));
+    (async () => {
+      await umbra.ready;
+      for (let i = 0; i < 3; i++) {
+        raw({ type: "drag" });
+        raw({ type: "resize", edge: "corner" });
+        raw({ type: "zoom", steps: 1 });
+        raw({ type: "nudge", dir: "right" });
+        raw({ type: "focus" });
+        raw({ type: "exitEdit" });
+        text.focus();
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      await umbra.store.set("attacked", true);
+      document.getElementById("state").textContent = "ready";
+      umbra.rendered();
+    })();
+  </script>
+</body>
+</html>

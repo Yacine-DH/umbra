@@ -9,3 +9,6 @@ _site/
 .claude/scheduled_tasks.lock
 .claude/worktrees/
 .claude/settings.local.json
+
+# Linux sandbox extension build output (built from native/umbra-webext.c, never committed)
+src/Umbra.Linux/webext/

@@ -11,15 +11,31 @@ public sealed record ExeIdentity(string Path, string Sha256)
 {
     static readonly Dictionary<(string, long, long), string> Cache = new();
 
+    /// <summary>
+    /// Whether two paths name the same program file. Windows paths ignore case; Linux paths do not ("/opt/Tool" and "/opt/tool" are
+    /// different files), so an approval never carries over to a differently-cased path there.
+    /// </summary>
+    public static bool SamePath(string? a, string? b, string platform) =>
+        string.Equals(a, b, platform == WidgetPlatforms.Windows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
+    /// <summary>
+    /// True when a saved approval was given for exactly this program: the same path (see <see cref="SamePath"/>) and the same
+    /// SHA-256. An approval without a recorded file (written by an older build) never matches.
+    /// </summary>
+    public static bool Matches(CommandApproval approval, ExeIdentity? current, string platform) =>
+        current is not null && approval.ExeHash is not null && string.Equals(approval.ExeHash, current.Sha256, StringComparison.Ordinal)
+        && approval.ExePath is not null && SamePath(approval.ExePath, current.Path, platform);
+
     /// <summary>Resolves the spec's executable the way a run would and fingerprints the file; null when it isn't found.</summary>
-    public static ExeIdentity? Of(CommandSpec spec)
+    /// <param name="resolver">Finds the file; defaults to the one for this OS.</param>
+    public static ExeIdentity? Of(CommandSpec spec, IExecutableResolver? resolver = null)
     {
-        var path = CommandRunner.ResolveExe(spec.Exe, allowScripts: spec.Params.Count == 0);
+        var path = (resolver ?? ExecutableResolver.Default).Resolve(spec.Exe, allowScripts: spec.Params.Count == 0);
         if (path is null) return null;
         try
         {
             var info = new FileInfo(path);
-            var key = (path.ToLowerInvariant(), info.Length, info.LastWriteTimeUtc.Ticks);
+            var key = (OperatingSystem.IsWindows() ? path.ToLowerInvariant() : path, info.Length, info.LastWriteTimeUtc.Ticks);
             lock (Cache)
                 if (Cache.TryGetValue(key, out var cached)) return new(path, cached);
             using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
@@ -47,6 +63,9 @@ sealed class CommandApprovals(string path)
 
     readonly object _gate = new();
     List<CommandApproval>? _items;
+
+    /// <summary>Finds the program a command stands for (the OS's own rules by default).</summary>
+    public IExecutableResolver Resolver { get; init; } = ExecutableResolver.Default;
 
     List<CommandApproval> Items => _items ??= Load();
 
@@ -91,8 +110,7 @@ sealed class CommandApprovals(string path)
         if (!string.Equals(a.Hash, spec.Hash(), StringComparison.Ordinal)) return "changed";
         // The approval is also bound to the program file it resolved to: a different path or different bytes need a new approval.
         // (An approval without a recorded file, e.g. one written by an older build, is treated as changed.)
-        var exe = ExeIdentity.Of(spec);
-        return exe is not null && a.ExeHash == exe.Sha256 && string.Equals(a.ExePath, exe.Path, StringComparison.OrdinalIgnoreCase) ? "approved" : "changed";
+        return ExeIdentity.Matches(a, ExeIdentity.Of(spec, Resolver), WidgetPlatforms.Current) ? "approved" : "changed";
     }
 
     public bool IsApproved(string widgetId, CommandSpec spec) => Status(widgetId, spec) == "approved";
@@ -100,7 +118,7 @@ sealed class CommandApprovals(string path)
     /// <param name="exe">The program being approved; defaults to what the spec resolves to now.</param>
     public void Approve(string widgetId, CommandSpec spec, ExeIdentity? exe = null)
     {
-        exe ??= ExeIdentity.Of(spec);
+        exe ??= ExeIdentity.Of(spec, Resolver);
         lock (_gate)
         {
             Items.RemoveAll(x => x.WidgetId == widgetId && x.CommandId == spec.Id);

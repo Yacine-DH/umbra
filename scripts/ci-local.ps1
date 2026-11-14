@@ -111,6 +111,8 @@ try {
     $linuxSh = @(
         'set -e', $copy,
         'echo "image: $(. /etc/os-release; echo $PRETTY_NAME), dotnet $(dotnet --version)"',
+        # src/Umbra.Linux compiles its sandbox web-process extension (native/umbra-webext.c) with gcc against WebKitGTK 6.
+        'apt-get update -qq && apt-get install -y -qq --no-install-recommends gcc pkg-config libwebkitgtk-6.0-dev >/dev/null',
         'dotnet build Umbra.Linux.slnf -c Release -warnaserror',
         'dotnet test Umbra.Linux.slnf -c Release --no-build --logger "console;verbosity=normal"'
     ) -join "`n"

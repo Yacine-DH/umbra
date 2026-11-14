@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="https://umbra.local/shared/umbra.css">
+  <style>
+    body { margin: 0; padding: 10px; font-size: 12px; }
+    a#link { display: block; position: fixed; inset: 0; color: var(--text, #fff); padding: 10px; }
+  </style>
+</head>
+<body>
+  <!-- Covers the whole widget so the harness can click it: a real click must open the browser, not navigate the widget. -->
+  <a id="link" href="https://example.org/umbra-link-test">hostile widget: <span id="state">running</span></a>
+  <script src="https://umbra.local/shared/umbra.js"></script>
+  <script>
+    // Undeclared targets. Nothing listens for real: linux/test/sandbox.sh counts TCP connections on this port, and one
+    // connection (even a failed TLS handshake) means a request left the sandbox.
+    const TARGETS = { https: "https://localhost:47812/", http: "http://127.0.0.1:47812/" };
+    const results = {};
+    const violations = [];
+    document.addEventListener("securitypolicyviolation", (e) => violations.push(e.effectiveDirective + " " + e.blockedURI));
+
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    // Resolves "loaded", "error", or "none" when the vector gives no signal within 3 s.
+    const outcome = (start) => Promise.race([new Promise((resolve) => {
+      try { start(() => resolve("loaded"), () => resolve("error")); } catch (e) { resolve("error"); }
+    }), wait(3000).then(() => "none")]);
+    const add = (tag, props, parent = document.body) => {
+      const el = Object.assign(document.createElement(tag), props);
+      parent.appendChild(el);
+      return el;
+    };
+
+    const VECTORS = {
+      fetch: (u) => outcome((ok, bad) => fetch(u, { mode: "no-cors" }).then(ok, bad)),
+      xhr: (u) => outcome((ok, bad) => { const x = new XMLHttpRequest(); x.onload = ok; x.onerror = bad; x.open("GET", u); x.send(); }),
+      img: (u) => outcome((ok, bad) => { const i = new Image(); i.onload = ok; i.onerror = bad; i.src = u; }),
+      "css-url": (u) => outcome(() => add("div", { style: `width:1px;height:1px;background-image:url("${u}")` })),
+      "css-import": (u) => outcome(() => add("style", { textContent: `@import url("${u}");` }, document.head)),
+      "link-stylesheet": (u) => outcome((ok, bad) => add("link", { rel: "stylesheet", href: u, onload: ok, onerror: bad }, document.head)),
+      script: (u) => outcome((ok, bad) => add("script", { src: u, onload: ok, onerror: bad })),
+      iframe: (u) => outcome(() => add("iframe", { src: u, width: 1, height: 1 })),
+      websocket: (u) => outcome((ok, bad) => { const w = new WebSocket(u.replace(/^http/, "ws")); w.onopen = ok; w.onerror = bad; }),
+      eventsource: (u) => outcome((ok, bad) => { const s = new EventSource(u); s.onopen = ok; s.onerror = () => { s.close(); bad(); }; }),
+      beacon: (u) => outcome(() => navigator.sendBeacon(u, "x")),
+      audio: (u) => outcome((ok, bad) => add("audio", { src: u, onloadeddata: ok, onerror: bad })),
+      video: (u) => outcome((ok, bad) => add("video", { src: u, onloadeddata: ok, onerror: bad, width: 1, height: 1 })),
+      "font-face": (u) => outcome((ok, bad) => new FontFace("hostile", `url("${u}")`).load().then(ok, bad)),
+      prefetch: (u) => outcome(() => add("link", { rel: "prefetch", href: u }, document.head)),
+      preload: (u) => outcome((ok, bad) => add("link", { rel: "preload", as: "fetch", href: u, onload: ok, onerror: bad }, document.head)),
+      "worker-url": (u) => outcome((ok, bad) => { const w = new Worker(u); w.onmessage = ok; w.onerror = bad; }),
+      "object-embed": (u) => outcome(() => { add("object", { data: u, width: 1, height: 1 }); add("embed", { src: u, width: 1, height: 1 }); }),
+      "a-ping": (u) => outcome(() => add("a", { href: "#", ping: u, textContent: "" }).click()),
+    };
+
+    async function save() {
+      try { await umbra.store.set("results", results); await umbra.store.set("violations", violations); } catch {}
+    }
+
+    (async () => {
+      await umbra.ready;
+      // Declared hosts must keep working, through the page (img, fetch) and through the host (fetchText).
+      results["declared-img"] = await outcome((ok, bad) => { const i = new Image(); i.onload = ok; i.onerror = bad;
+        i.src = "https://raw.githubusercontent.com/AmineChr54/umbra/main/assets/umbra-256.png"; });
+      results["declared-fetch"] = await outcome((ok, bad) => fetch("https://api.github.com/zen").then((r) => (r.ok ? ok() : bad()), bad));
+      results["declared-host-fetch"] = await umbra.fetchText("https://api.github.com/zen").then(() => "loaded", () => "error");
+      results["undeclared-host-fetch"] = await umbra.fetchText("https://example.org/").then(() => "loaded", () => "error");
+      await save();
+
+      for (const [name, base] of Object.entries(TARGETS))
+        await Promise.all(Object.entries(VECTORS).map(async ([vector, run]) => {
+          results[`${vector}-${name}`] = await run(`${base}?v=${vector}`);
+        }));
+      const inner = await new Promise((resolve) => {
+        const w = new Worker("worker.js");
+        w.onmessage = (e) => resolve(e.data);
+        w.postMessage(TARGETS);
+        setTimeout(() => resolve({ worker: "none" }), 4000);
+      });
+      Object.assign(results, inner);
+      await save();
+
+      // Navigation: each of these would replace or leave the page if it were allowed. "survived" is only written if none did.
+      for (const [name, base] of Object.entries(TARGETS)) {
+        try { results[`window-open-${name}`] = window.open(base + "?v=window-open") ? "loaded" : "error"; } catch { results[`window-open-${name}`] = "error"; }
+        add("form", { action: base + "?v=form", method: "post" }).submit();
+        await wait(400);
+        add("a", { href: base + "?v=anchor-script-click" }).click();
+        await wait(400);
+        location.href = base + "?v=location";
+        await wait(400);
+        add("meta", { httpEquiv: "refresh", content: `0;url=${base}?v=meta-refresh` }, document.head);
+        await wait(600);
+      }
+      results.survived = location.href;
+      await save();
+      document.getElementById("state").textContent = "done";
+      umbra.rendered();
+    })();
+  </script>
+</body>
+</html>

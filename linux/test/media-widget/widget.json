@@ -1,0 +1,13 @@
+{
+  "id": "media-widget",
+  "name": "Media widget (media test)",
+  "description": "Test only: reads and controls the media player when linux/test/media.sh asks. Never installed.",
+  "author": "Umbra tests",
+  "version": "1.0.0",
+  "manifestVersion": 1,
+  "entry": "index.html",
+  "width": 300,
+  "height": 160,
+  "defaultPosition": { "x": 400, "y": 300 },
+  "permissions": { "hosts": [], "media": ["read", "control"] }
+}

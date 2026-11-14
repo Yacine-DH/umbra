@@ -1,0 +1,23 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><script src="https://umbra.local/shared/umbra.js"></script></head>
+<body style="background:#000;color:#fff;font:14px sans-serif">
+<p id="s">notify test</p>
+<script>
+  // Driven by linux/test/notify.sh through umbractl data: set "go" to a number and the widget sends one notification.
+  const log = (k, v) => umbra.store.set(k, v);
+  umbra.onNotificationAction(({ id, tag }) => log("action", `${id}|${tag}`));
+  // A click anywhere asks for permission (the host shows its prompt only right after a physical left click).
+  const ask = () => umbra.requestNotifications().then((v) => log("prompt", `answer ${v}`), (e) => log("prompt", `error ${e.message || e}`));
+  document.addEventListener("click", ask);
+  umbra.store.onChange(async (key) => { if (key === "ask") ask(); });
+  umbra.store.onChange(async (key) => {
+    if (key !== "go") return;
+    const n = await umbra.store.get("go");
+    try {
+      await umbra.notify({ title: `Hello <b>${n}</b>`, body: "Body & <i>markup</i>", url: "https://example.com/x", tag: "t1",
+        actions: [{ id: "snooze", label: "Snooze" }, { id: "done", label: "Done" }] });
+      log("result", `ok ${n}`);
+    } catch (e) { log("result", `error ${n}: ${e.message || e}`); }
+  });
+</script>
+</body></html>
