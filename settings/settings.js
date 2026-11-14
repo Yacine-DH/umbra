@@ -1586,7 +1586,10 @@ function renderCatalog() {
     $(".cver", card).textContent = `v${w.version}`;
     $(".cauthor", card).textContent = [w.author ? `by ${w.author}` : "", catOf(w) !== "other" ? catLabel(catOf(w)) : "", installsText(w.installs)].filter(Boolean).join(" · ");
     $(".cdesc", card).textContent = w.description || "";
-    permissionChips($(".chips", card), w);
+    // Declared first: the platform chip below uses it (it was used before its const, a ReferenceError that stopped Browse
+    // rendering at the first single-platform widget).
+    const chips = $(".chips", card);
+    permissionChips(chips, w);
     // A widget restricted to one OS says so ("Windows only"), whichever OS Umbra runs on.
     if (Array.isArray(w.platforms) && w.platforms.length === 1) {
       const c = document.createElement("span");
@@ -1596,7 +1599,6 @@ function renderCatalog() {
     }
     // A widget that can start programs on this PC is flagged with the exact commands (you approve each one on first use).
     // Collapsed cards show one summary chip; "Read more" lists every command in full.
-    const chips = $(".chips", card);
     const cmds = w.commands || [];
     const open = expandedCards.has(w.id);
     // Only a lot of command text is folded away; one short command stays visible as it is.
