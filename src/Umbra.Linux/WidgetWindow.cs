@@ -42,6 +42,34 @@ sealed partial class WidgetWindow : IWidgetView
     /// <summary>False once the window is closed or its copy was removed: nothing may be written for it.</summary>
     bool Alive => !_closed && _app.Settings.Widgets.ContainsKey(Instance);
 
+    readonly Queue<long> _tabIconCalls = new();
+
+    /// <summary>
+    /// umbra.setTabIcon (#369, as on Windows): the page may suggest one name from the bundled shared/tabicons (null or "" clears it).
+    /// Anything else is ignored and logged. It only fills in when the user picked no icon for this copy (the user's TabIcon always
+    /// wins), and changes are rate limited so a page can't churn settings.json. No control command reads or sets it.
+    /// </summary>
+    void HandleTabIcon(JsonNode msg)
+    {
+        var node = msg["name"];
+        string? name = null;
+        if (node is not null && node.GetValueKind() != System.Text.Json.JsonValueKind.Null)
+        {
+            if (node.GetValueKind() != System.Text.Json.JsonValueKind.String) { Log.Write($"[{Instance}] tab icon suggestion ignored: not a string"); return; }
+            name = node.GetValue<string>();
+        }
+        string? clean = null;
+        if (!string.IsNullOrEmpty(name) && (clean = Groups.CleanSuggestion(name)) is null)
+        {
+            var shown = new string(name.Take(40).Select(c => char.IsControl(c) ? '?' : c).ToArray());
+            Log.Write($"[{Instance}] tab icon suggestion ignored: '{shown}' is not a bundled tab icon");
+            return;
+        }
+        if (!Alive || clean == Ws.SuggestedTabIcon) return; // nothing changes: repeated calls (say from onSettings) cost nothing
+        if (!Groups.AllowSuggestion(_tabIconCalls, Environment.TickCount64)) return;
+        _app.SuggestTabIcon(Instance, clean);
+    }
+
     public WidgetWindow(App app, WidgetManifest manifest, string instance)
     {
         _app = app;
@@ -300,6 +328,10 @@ sealed partial class WidgetWindow : IWidgetView
                 case "stop":
                 case "commandOutput":
                     HandleScriptControl(type, msg);
+                    break;
+
+                case "tabIcon":
+                    HandleTabIcon(msg);
                     break;
 
                 case null:

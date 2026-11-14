@@ -522,6 +522,16 @@ sealed class App : IUmbraHost
     readonly Dictionary<string, GroupTabs> _tabStrips = new();
     readonly Dictionary<string, long> _tabSwitchedAt = new();
 
+    /// <summary>A widget's own tab icon suggestion (umbra.setTabIcon, already checked); the user's pick still wins. Strips redraw on the next tick.</summary>
+    public void SuggestTabIcon(string instance, string? icon)
+    {
+        if (!Settings.Widgets.TryGetValue(instance, out var ws) || ws.SuggestedTabIcon == icon) return;
+        ws.SuggestedTabIcon = icon;
+        SaveSettings();
+        Log.Write($"[{instance}] suggests the tab icon {icon ?? "(none)"}");
+        SettingsChangedElsewhere();
+    }
+
     /// <summary>
     /// Every tick: keeps a group's tab strip on its visible widget (hidden with it) and switches groups that have a cycle
     /// interval to their next tab (not while the pointer is over them or in edit mode).
