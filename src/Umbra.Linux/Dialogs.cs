@@ -246,9 +246,9 @@ static class Dialogs
             var winMotion = Gtk.EventControllerMotion.New();
             winMotion.OnEnter += (_, e) => Track(e.X, e.Y);
             winMotion.OnMotion += (_, e) => Track(e.X, e.Y);
-            // No "leave" handler: pressing the button makes GTK grab the pointer, which sends a crossing event between press and
-            // release; reacting to it would disarm Allow in the middle of the user's click. Position alone decides.
-            winMotion.OnLeave += (_, _) => sawOutside = true;
+            // A leave (also the crossing GTK sends when a press on Allow grabs the pointer) means "not inside" until a motion says
+            // otherwise; arming is latched, so this never disarms a click in progress (review of #396).
+            winMotion.OnLeave += (_, _) => { inside = false; sawOutside = true; };
             win.AddController(winMotion);
             UiThread.Every(40, () =>
             {
