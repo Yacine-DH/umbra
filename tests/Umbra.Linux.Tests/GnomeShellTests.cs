@@ -85,29 +85,64 @@ public sealed class GnomeShellTests
     }
 
     [Fact]
-    public void Points_map_between_logical_monitors_and_the_stage()
+    public void Points_map_between_logical_monitors_and_the_stage_paired_by_connector()
     {
-        // A 2x monitor laid out in physical pixels: GDK says 1280x720 logical, the stage 2560x1440.
-        Rectangle[] gdk = [new(0, 0, 1280, 720), new(1280, 0, 1920, 1080)];
-        Rectangle[] stage = [new(0, 0, 2560, 1440), new(2560, 0, 1920, 1080)];
+        // A 2x monitor laid out in physical pixels: GDK says 1280x720 logical, the stage 2560x1440. Mutter lists the
+        // monitors in another order than GDK: the connector pairs them.
+        GnomeShell.Output[] gdk = [new(new(0, 0, 1280, 720), "eDP-1"), new(new(1280, 0, 1920, 1080), "DP-2")];
+        GnomeShell.Output[] stage = [new(new(2560, 0, 1920, 1080), "DP-2"), new(new(0, 0, 2560, 1440), "eDP-1")];
         Assert.Equal(new Point(200, 100), GnomeShell.Map(new Point(100, 50), gdk, stage));
         Assert.Equal(new Point(100, 50), GnomeShell.Map(new Point(200, 100), stage, gdk));
         Assert.Equal(new Point(2660, 40), GnomeShell.Map(new Point(1380, 40), gdk, stage));
-        // Same layout, or monitors that do not line up: unchanged.
-        Assert.Equal(new Point(7, 9), GnomeShell.Map(new Point(7, 9), gdk, gdk));
-        Assert.Equal(new Point(7, 9), GnomeShell.Map(new Point(7, 9), gdk, [stage[0]]));
+        Assert.Equal(new Point(1380, 40), GnomeShell.Map(new Point(2660, 40), stage, gdk));
+    }
+
+    [Fact]
+    public void Without_a_connector_to_pair_with_the_point_is_left_as_it_is()
+    {
+        GnomeShell.Output[] gdk = [new(new(0, 0, 1280, 720), "eDP-1")];
+        Assert.Equal(new Point(7, 9), GnomeShell.Map(new Point(7, 9), gdk, [new(new(0, 0, 2560, 1440), "HDMI-1")]));
+        Assert.Equal(new Point(7, 9), GnomeShell.Map(new Point(7, 9), gdk, [new(new(0, 0, 2560, 1440), "")]));
+        Assert.Equal(new Point(7, 9), GnomeShell.Map(new Point(7, 9), [new(new(0, 0, 1280, 720), null)], [new(new(0, 0, 2560, 1440), null)]));
+        Assert.Equal(new Point(5000, 9), GnomeShell.Map(new Point(5000, 9), gdk, [new(new(0, 0, 2560, 1440), "eDP-1")])); // off every monitor
         Assert.Equal(new Point(7, 9), GnomeShell.Map(new Point(7, 9), [], []));
     }
 
     [Theory]
-    // desktop, session, backend, installed, dismissed -> offer
-    [InlineData("ubuntu:GNOME", "wayland", "X11", false, false, "Install")]
-    [InlineData("GNOME", "wayland", "X11", true, false, "Relogin")]
-    [InlineData("GNOME", "wayland", "X11", false, true, "None")]           // shown once already, or "Not now"
-    [InlineData("GNOME", "wayland", "GnomeExtension", false, false, "None")] // the extension already pins
-    [InlineData("GNOME", "x11", "X11", false, false, "None")]              // GNOME on Xorg needs nothing
-    [InlineData("KDE", "wayland", "X11", false, false, "None")]
-    [InlineData(null, null, "X11", false, false, "None")]
-    public void Settings_offers_the_extension_only_where_it_helps(string? desktop, string? session, string backend, bool installed, bool dismissed, string expected) =>
-        Assert.Equal(expected, GnomeShell.OfferFor(desktop, session, Enum.Parse<PinBackend>(backend), installed, dismissed).ToString());
+    // desktop, session, backend, installed, dismissed, flatpak -> offer
+    [InlineData("ubuntu:GNOME", "wayland", "X11", false, false, false, "Install")]
+    [InlineData("GNOME", "wayland", "X11", true, false, false, "TurnOn")]          // disabled, just installed, or another protocol
+    [InlineData("GNOME", "wayland", "X11", false, true, false, "None")]            // shown once already, or "Not now"
+    [InlineData("GNOME", "wayland", "X11", false, false, true, "None")]            // Flatpak: the pid check cannot pass (#196)
+    [InlineData("GNOME", "wayland", "GnomeExtension", false, false, false, "None")] // the extension already pins
+    [InlineData("GNOME", "x11", "X11", false, false, false, "None")]               // GNOME on Xorg needs nothing
+    [InlineData("KDE", "wayland", "X11", false, false, false, "None")]
+    [InlineData(null, null, "X11", false, false, false, "None")]
+    public void Settings_offers_the_extension_only_where_it_helps(string? desktop, string? session, string backend, bool installed, bool dismissed, bool flatpak, string expected) =>
+        Assert.Equal(expected, GnomeShell.OfferFor(desktop, session, Enum.Parse<PinBackend>(backend), installed, dismissed, flatpak).ToString());
+
+    [Theory]
+    [InlineData("@as []\n", "['umbra@aminechr54.github.io']")]
+    [InlineData("['ding@rastersoft.com', 'ubuntu-dock@ubuntu.com']\n", "['ding@rastersoft.com', 'ubuntu-dock@ubuntu.com', 'umbra@aminechr54.github.io']")]
+    [InlineData("['a@b', \"it's@c\"]", "['a@b', 'it\\'s@c', 'umbra@aminechr54.github.io']")]
+    [InlineData("['umbra@aminechr54.github.io']", null)] // already there: nothing written
+    [InlineData("not a list", null)]
+    [InlineData("['unterminated]", null)]
+    public void Enabling_appends_to_the_users_list_and_keeps_the_rest(string current, string? expected) =>
+        Assert.Equal(expected, GnomeShell.EnabledWith(current));
+
+    [Fact]
+    public void Enabling_takes_it_off_the_disabled_list()
+    {
+        Assert.Equal("['x@y']", GnomeShell.DisabledWithout("['umbra@aminechr54.github.io', 'x@y']"));
+        Assert.Equal("@as []", GnomeShell.DisabledWithout("['umbra@aminechr54.github.io']"));
+        Assert.Null(GnomeShell.DisabledWithout("['x@y']"));
+        Assert.Null(GnomeShell.DisabledWithout("@as []"));
+    }
+
+    [Theory]
+    [InlineData("GDBus.Error:org.freedesktop.DBus.Error.AccessDenied: token in use", true)]
+    [InlineData("GDBus.Error:org.freedesktop.DBus.Error.LimitsExceeded: too many windows", false)]
+    [InlineData(null, false)]
+    public void A_token_held_by_someone_else_is_recognised(string? error, bool taken) => Assert.Equal(taken, GnomeShell.TokenTaken(error));
 }

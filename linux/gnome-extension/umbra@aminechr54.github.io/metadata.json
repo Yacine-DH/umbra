@@ -1,7 +1,7 @@
 {
   "uuid": "umbra@aminechr54.github.io",
   "name": "Umbra desktop widgets",
-  "description": "Pins Umbra's widgets to the desktop on GNOME Wayland: below every window and above the desktop icons, on all workspaces, out of Alt+Tab, the overview and the dock, and never focused unless you click one. Does nothing without Umbra running. It stays on at the lock screen so widgets keep their place when you unlock.",
+  "description": "Pins Umbra's widgets to the desktop on GNOME Wayland: below every window, on all workspaces, out of Alt+Tab and the overview, and never focused unless you click one. On GNOME 49 and later they are desktop windows above the desktop icons and out of the dock; on GNOME 46-48 the dock still shows Umbra as running. Does nothing without Umbra running. It stays on at the lock screen (doing nothing there) so widgets do not turn into normal windows each time you lock.",
   "shell-version": ["46", "47", "48", "49", "50"],
   "url": "https://github.com/AmineChr54/umbra",
   "session-modes": ["user", "unlock-dialog"],

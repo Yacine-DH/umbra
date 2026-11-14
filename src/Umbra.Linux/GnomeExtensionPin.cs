@@ -9,19 +9,31 @@ namespace Umbra;
 /// out of Alt+Tab, the overview and the dock) and moves it on request. Focus gating is the extension's: it hands the focus
 /// back unless this host asked with <c>SetFocusable</c> right after a physical press, which it checks again itself.
 /// The pointer for the drag, resize and zoom gates comes from the compositor (<c>GetPointer</c>).
-/// If the extension goes away while Umbra runs, the windows become plain windows until it comes back (they are then
-/// registered again) or Umbra restarts on XWayland.
+/// If the extension goes away while Umbra runs, its windows would become plain windows (above the user's apps, in Alt+Tab,
+/// focused when mapped), so they are hidden at once; if it is back within <see cref="ReturnMs"/> (a reload) they are
+/// registered and shown again, else <see cref="Lost"/> fires and the host restarts on XWayland.
 /// </summary>
 sealed class GnomeExtensionPin : IDesktopPin
 {
     readonly IntPtr _bus;
     readonly Dictionary<IntPtr, Entry> _windows = new(); // by Gtk.Window handle
-    List<Rectangle> _stage = new();
+    List<GnomeShell.Output> _stage = new();
     Rectangle? _work;
     bool _present = true;
+    long _lostAt;
+    readonly HashSet<Gtk.Window> _hidden = new();
 
-    sealed record Entry(Gtk.Window Window, string Token, bool Overlay)
+    /// <summary>How long the extension may be gone (disabled and enabled again) before the host gives up on it.</summary>
+    public const uint ReturnMs = 3000;
+
+    /// <summary>The extension stayed away: the host restarts on XWayland (<see cref="App.RestartOnXWayland"/>).</summary>
+    public event Action? Lost;
+
+    sealed class Entry(Gtk.Window window, string token, bool overlay)
     {
+        public Gtk.Window Window { get; } = window;
+        public string Token { get; set; } = token;
+        public bool Overlay { get; } = overlay;
         public Point? At { get; set; }
     }
 
@@ -34,14 +46,40 @@ sealed class GnomeExtensionPin : IDesktopPin
         {
             if (present == _present) return;
             _present = present;
-            if (!present) { Log.Write("The Umbra GNOME Shell extension went away: widgets are plain windows until it is back."); return; }
+            if (!present) { OnGone(); return; }
             Log.Write("The Umbra GNOME Shell extension is back: registering the windows again.");
             ReadMonitors();
             foreach (var e in _windows.Values.ToList()) { Register(e); if (e.At is { } at) SendMove(e, at); }
+            foreach (var w in _hidden.ToList()) w.SetVisible(true);
+            _hidden.Clear();
         });
     }
 
     public string Name => "gnome-extension";
+
+    /// <summary>Hides every window at once, then gives the extension <see cref="ReturnMs"/> to come back.</summary>
+    void OnGone()
+    {
+        Log.Write("The Umbra GNOME Shell extension went away: widgets are hidden until it is back.");
+        foreach (var e in _windows.Values) Hide(e.Window);
+        var lostAt = _lostAt = Environment.TickCount64;
+        UiThread.Every(ReturnMs, () =>
+        {
+            if (!_present && _lostAt == lostAt)
+            {
+                Log.Write("The Umbra GNOME Shell extension did not come back: restarting on XWayland.");
+                Lost?.Invoke();
+            }
+            return false;
+        });
+    }
+
+    void Hide(Gtk.Window w)
+    {
+        if (!w.GetVisible()) return;
+        _hidden.Add(w);
+        w.SetVisible(false);
+    }
 
     /// <summary>
     /// True when the extension answers <c>GetVersion</c> with this host's protocol version. Runs before GTK opens the
@@ -81,10 +119,32 @@ sealed class GnomeExtensionPin : IDesktopPin
         window.OnUnrealize += (_, _) => Forget(window);
     }
 
-    void Register(Entry e) => Send("AddWindow", GnomeShell.AddArgs(e.Token, e.Overlay));
+    /// <summary>
+    /// Registers the window's token. A token another caller already holds (it registered it while this host was away, e.g.
+    /// after an extension reload) is replaced by a fresh one and a new title.
+    /// </summary>
+    void Register(Entry e)
+    {
+        for (var attempt = 0; attempt < 3 && _present; attempt++)
+        {
+            try
+            {
+                DBus.Call(_bus, GnomeShell.BusName, GnomeShell.ObjectPath, GnomeShell.Interface, "AddWindow", GnomeShell.AddArgs(e.Token, e.Overlay), 1000).Dispose();
+                return;
+            }
+            catch (DBusException ex) when (GnomeShell.TokenTaken(ex.Message))
+            {
+                Log.Write("A window token was already registered by someone else: using a new one.");
+                e.Token = GnomeShell.NewToken();
+                e.Window.SetTitle(GnomeShell.Title(e.Token));
+            }
+            catch (DBusException ex) { Log.Verbose($"GNOME extension AddWindow failed: {ex.Message}"); return; }
+        }
+    }
 
     void Forget(Gtk.Window window)
     {
+        _hidden.Remove(window);
         if (!_windows.Remove(H(window), out var e)) return;
         Send("RemoveWindow", GnomeShell.TokenArgs(e.Token));
     }
@@ -102,6 +162,7 @@ sealed class GnomeExtensionPin : IDesktopPin
     /// <summary>The extension places a window when it is shown; this repeats the position in case it was not known then.</summary>
     public void Mapped(Gtk.Window window, bool overlay = false)
     {
+        if (!_present) { Hide(window); return; } // never a plain window on the user's desktop
         if (_windows.TryGetValue(H(window), out var e) && e.At is { } at) SendMove(e, at);
     }
 
@@ -165,19 +226,20 @@ sealed class GnomeExtensionPin : IDesktopPin
         {
             using var m = list[i];
             int F(int k) { using var v = m[k]; return v.Int; }
-            monitors.Add(new GnomeShell.Monitor(new Rectangle(F(0), F(1), F(2), F(3)), new Rectangle(F(4), F(5), F(6), F(7))));
+            using var connector = m[8];
+            monitors.Add(new GnomeShell.Monitor(new Rectangle(F(0), F(1), F(2), F(3)), new Rectangle(F(4), F(5), F(6), F(7)), connector.Str));
         }
-        _stage = monitors.Select(m => m.Bounds).ToList();
+        _stage = monitors.Select(m => new GnomeShell.Output(m.Bounds, m.Connector)).ToList();
         _work = GnomeShell.PrimaryWorkArea(primary.Int, monitors);
     }
 
-    static List<Rectangle> GdkMonitors()
+    static List<GnomeShell.Output> GdkMonitors()
     {
-        var list = new List<Rectangle>();
+        var list = new List<GnomeShell.Output>();
         if (Gdk.Display.GetDefault() is not { } display) return list;
         var monitors = display.GetMonitors();
         for (uint i = 0; i < monitors.GetNItems(); i++)
-            if (monitors.GetObject(i) is Gdk.Monitor m) { m.GetGeometry(out var g); list.Add(new Rectangle(g.X, g.Y, g.Width, g.Height)); }
+            if (monitors.GetObject(i) is Gdk.Monitor m) { m.GetGeometry(out var g); list.Add(new(new Rectangle(g.X, g.Y, g.Width, g.Height), m.GetConnector())); }
         return list;
     }
 }

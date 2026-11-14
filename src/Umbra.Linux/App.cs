@@ -80,6 +80,7 @@ sealed class App : IUmbraHost
             Log.Write($"Sandbox extension missing or built for another architecture ({WebHost.ExtensionDir}): no widget is opened. Error: this build is incomplete.");
         _autostart = LinuxAutostart.Create(Environment.GetEnvironmentVariable, File.Exists, AppPaths.ExePath, AppPaths.IsPortable, portal: null);
         Pin = GnomeExtensionPin.TryCreate() ?? LayerShellPin.TryCreate() ?? X11Pin.TryCreate() ?? (IDesktopPin)new NoPin();
+        if (Pin is GnomeExtensionPin gnome) gnome.Lost += RestartOnXWayland;
         Log.Write($"Umbra started, {Manifests.Count} widget(s) found, desktop pinning: {Pin.Name}");
         if (Pin is NoPin) Log.Write("Widgets are plain windows on this session: this compositor has no layer-shell, the Umbra GNOME Shell extension is not running, and no X server was found.");
 
@@ -426,12 +427,21 @@ sealed class App : IUmbraHost
     }
 
     /// <summary>Starts a fresh Umbra that waits for this one to exit, then quits. For settings that only apply on start.</summary>
-    public void Restart()
+    public void Restart() => Restart(null);
+
+    /// <summary>
+    /// The GNOME Shell extension went away for good while widgets were pinned through it (#187): the same restart, with
+    /// <c>UMBRA_PIN_BACKEND=x11</c> so the new process pins through XWayland instead of waiting for the extension.
+    /// </summary>
+    public void RestartOnXWayland() => Restart("x11");
+
+    void Restart(string? pinBackend)
     {
         try
         {
             var psi = new System.Diagnostics.ProcessStartInfo(AppPaths.ExePath) { UseShellExecute = false };
             psi.ArgumentList.Add(Program.RestartArg);
+            if (pinBackend is not null) psi.Environment["UMBRA_PIN_BACKEND"] = pinBackend;
             using var p = System.Diagnostics.Process.Start(psi);
         }
         catch (Exception ex)

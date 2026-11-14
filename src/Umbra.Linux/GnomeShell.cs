@@ -46,7 +46,11 @@ static class GnomeShell
     static string Checked(string token) => IsToken(token) ? token : throw new ArgumentException("not a window token", nameof(token));
 
     /// <summary>One monitor as <c>GetMonitors</c> reports it, in stage coordinates.</summary>
-    public readonly record struct Monitor(Rectangle Bounds, Rectangle Work);
+    public readonly record struct Monitor(Rectangle Bounds, Rectangle Work, string? Connector = null);
+
+    /// <summary>True for the extension's refusal of a token another caller holds (<c>AddWindow</c>'s AccessDenied).</summary>
+    public static bool TokenTaken(string? error) =>
+        error is not null && (error.Contains("AccessDenied", StringComparison.Ordinal) || error.Contains("token in use", StringComparison.Ordinal));
 
     /// <summary>The primary monitor's work area from a <c>GetMonitors</c> reply, or null when the reply does not make sense.</summary>
     public static Rectangle? PrimaryWorkArea(int primary, IReadOnlyList<Monitor> monitors)
@@ -65,40 +69,92 @@ static class GnomeShell
         return new PointerState(at, (mask & Buttons) != 0, (mask & Shift) != 0, (mask & Control) != 0);
     }
 
+    /// <summary>A monitor rectangle and its connector name ("DP-1"; null or empty when unknown).</summary>
+    public readonly record struct Output(Rectangle Bounds, string? Connector);
+
     /// <summary>
     /// Maps a point between two descriptions of the same monitors: GDK's logical rectangles and the compositor's stage
-    /// (which differ on a scaled monitor when Mutter lays monitors out in physical pixels). Monitors are matched by index;
-    /// the point keeps its proportional place on the monitor that holds it (else the first). Lists of different lengths,
-    /// or empty ones, leave the point as it is.
+    /// (which differ on a scaled monitor when Mutter lays monitors out in physical pixels). The monitor holding the point
+    /// is paired with the one of the same connector on the other side (their order is not guaranteed to agree), and the
+    /// point keeps its proportional place on it. No monitor holding the point, or no connector to pair it with: unchanged.
     /// </summary>
-    public static Point Map(Point p, IReadOnlyList<Rectangle> from, IReadOnlyList<Rectangle> to)
+    public static Point Map(Point p, IReadOnlyList<Output> from, IReadOnlyList<Output> to)
     {
-        if (from.Count == 0 || from.Count != to.Count) return p;
-        var i = 0;
-        for (var k = 0; k < from.Count; k++) if (from[k].Contains(p)) { i = k; break; }
-        var (a, b) = (from[i], to[i]);
+        var i = -1;
+        for (var k = 0; k < from.Count; k++) if (from[k].Bounds.Contains(p)) { i = k; break; }
+        if (i < 0 || string.IsNullOrEmpty(from[i].Connector)) return p;
+        var j = -1;
+        for (var k = 0; k < to.Count; k++) if (to[k].Connector == from[i].Connector) { j = k; break; }
+        if (j < 0) return p;
+        var (a, b) = (from[i].Bounds, to[j].Bounds);
         if (a.Width <= 0 || a.Height <= 0) return p;
         return new Point(
             b.X + (int)Math.Round((p.X - a.X) * (double)b.Width / a.Width),
             b.Y + (int)Math.Round((p.Y - a.Y) * (double)b.Height / a.Height));
     }
 
-    /// <summary>What Settings says about the extension: nothing, offer to install it, or tell the user to log in again.</summary>
-    public enum Offer { None, Install, Relogin }
+    /// <summary>What Settings says about the extension: nothing, offer to install it, or tell the user to turn it on.</summary>
+    public enum Offer { None, Install, TurnOn }
 
     /// <summary>
     /// The one-time Settings hint: only on a GNOME Wayland session that fell back to XWayland (the extension is not
-    /// running), outside Flatpak (there it links to the extension page instead, see <see cref="FlatpakHint"/>), and only
-    /// until the user dismissed it. Installed but not running means it was just installed or is disabled: log in again.
+    /// running), never under Flatpak (the extension identifies the caller by pid, which a sandboxed app cannot pass:
+    /// the D-Bus proxy's pid is not the window's; #196 decides), and only until the user dismissed it. Installed but not
+    /// running means disabled, just installed (no login since) or a version this Umbra does not speak: turn it on.
     /// </summary>
-    public static Offer OfferFor(string? currentDesktop, string? sessionType, PinBackend backend, bool installed, bool dismissed)
+    public static Offer OfferFor(string? currentDesktop, string? sessionType, PinBackend backend, bool installed, bool dismissed, bool flatpak)
     {
-        if (dismissed || backend != PinBackend.X11) return Offer.None;
+        if (dismissed || flatpak || backend != PinBackend.X11) return Offer.None;
         var gnome = (currentDesktop ?? "").Split(':').Any(d => d.Trim().Equals("GNOME", StringComparison.OrdinalIgnoreCase));
         if (!gnome || !string.Equals(sessionType?.Trim(), "wayland", StringComparison.OrdinalIgnoreCase)) return Offer.None;
-        return installed ? Offer.Relogin : Offer.Install;
+        return installed ? Offer.TurnOn : Offer.Install;
     }
 
-    /// <summary>Under Flatpak the extension cannot be copied from inside the sandbox: Settings links here instead.</summary>
-    public const string FlatpakHint = "https://github.com/AmineChr54/umbra/tree/main/linux/gnome-extension";
+    /// <summary>
+    /// <c>org.gnome.shell enabled-extensions</c> with this extension added, from <c>gsettings get</c> output (<c>['a', 'b']</c>
+    /// or <c>@as []</c>), as GVariant text for <c>gsettings set</c>; the other entries are kept as they are. Null when the
+    /// text cannot be read (then nothing is written) or the extension is already listed.
+    /// </summary>
+    public static string? EnabledWith(string gsettingsValue)
+    {
+        var list = ParseStrings(gsettingsValue);
+        if (list is null || list.Contains(Uuid)) return null;
+        list.Add(Uuid);
+        return V.Strings(list);
+    }
+
+    /// <summary>
+    /// <c>org.gnome.shell disabled-extensions</c> without this extension (that list wins over the enabled one), or null
+    /// when it is not listed or the text cannot be read.
+    /// </summary>
+    public static string? DisabledWithout(string gsettingsValue)
+    {
+        var list = ParseStrings(gsettingsValue);
+        if (list is null || !list.Remove(Uuid)) return null;
+        while (list.Remove(Uuid)) { }
+        return V.Strings(list);
+    }
+
+    /// <summary>A GVariant string array as gsettings prints it, or null when it is anything else.</summary>
+    public static List<string>? ParseStrings(string text)
+    {
+        var t = text.Trim();
+        if (t.StartsWith("@as ", StringComparison.Ordinal)) t = t[4..].TrimStart();
+        if (t.Length < 2 || t[0] != '[' || t[^1] != ']') return null;
+        var list = new List<string>();
+        var i = 1;
+        while (true)
+        {
+            while (i < t.Length - 1 && (t[i] == ' ' || t[i] == ',')) i++;
+            if (i >= t.Length - 1) return list;
+            var q = t[i];
+            if (q != '\'' && q != '"') return null;
+            var sb = new System.Text.StringBuilder();
+            i++;
+            while (i < t.Length - 1 && t[i] != q) { if (t[i] == '\\' && i + 1 < t.Length - 1) i++; sb.Append(t[i]); i++; }
+            if (i >= t.Length - 1) return null;
+            list.Add(sb.ToString());
+            i++;
+        }
+    }
 }

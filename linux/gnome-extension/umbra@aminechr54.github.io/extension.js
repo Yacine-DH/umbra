@@ -19,7 +19,13 @@
 // Focus gating (the CLAUDE.md invariant): an Umbra window never keeps the keyboard focus unless Umbra asked, right after
 // a physical press the compositor itself saw on that window (SetFocusable re-checks the pointer); any other focus
 // (a click outside edit mode, the focus falling back when a window closes) is handed straight back.
+//
+// Session modes "user" and "unlock-dialog": if the extension were disabled at the lock screen, every widget would turn
+// back into a normal window (above the user's apps, in Alt+Tab) and the host would drop to XWayland, on every lock.
+// While locked it does nothing but keep the windows as they are: no pointer answers, no restacking, no press records,
+// and the lock screen covers the desktop layer anyway.
 
+import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -27,6 +33,7 @@ import Meta from 'gi://Meta';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Workspace from 'resource:///org/gnome/shell/ui/workspace.js';
+import * as WorkspaceThumbnail from 'resource:///org/gnome/shell/ui/workspaceThumbnail.js';
 
 const APP_ID = 'io.github.aminechr54.Umbra';
 const BUS_NAME = 'io.github.aminechr54.Umbra.Shell';
@@ -35,6 +42,7 @@ const PROTOCOL_VERSION = 1;
 const TOKEN = /^[0-9a-f]{32}$/;
 const TITLE = /^umbra:([0-9a-f]{32})$/;
 const MAX_WINDOWS_PER_CLIENT = 512;
+const MAX_WAITING = 256; // Wayland windows followed until their app id arrives (any client can open many)
 const PRESS_WINDOW_US = 2000 * 1000; // a press the compositor saw counts this long for SetFocusable
 const LEASE_MS = 1500; // a granted focus that was never taken is withdrawn after this
 const BUTTONS = (1 << 8) | (1 << 9) | (1 << 10); // Clutter.ModifierType BUTTON1..3
@@ -53,7 +61,7 @@ const IFACE = `
     <method name="SetFocusable">
       <arg type="s" direction="in" name="token"/><arg type="b" direction="in" name="focusable"/><arg type="b" direction="out" name="granted"/>
     </method>
-    <method name="GetMonitors"><arg type="i" direction="out" name="primary"/><arg type="a(iiiiiiii)" direction="out" name="monitors"/></method>
+    <method name="GetMonitors"><arg type="i" direction="out" name="primary"/><arg type="a(iiiiiiiis)" direction="out" name="monitors"/></method>
     <method name="GetPointer">
       <arg type="b" direction="out" name="known"/><arg type="i" direction="out" name="x"/><arg type="i" direction="out" name="y"/>
       <arg type="u" direction="out" name="mask"/>
@@ -62,7 +70,11 @@ const IFACE = `
   </interface>
 </node>`;
 
-/** Mutter 49+ can make a Wayland window a desktop window itself; 46-48 only through a Meta.WaylandClient Umbra is not. */
+/**
+ * Mutter 49+ can make a Wayland window a desktop window itself; 46-48 only through a Meta.WaylandClient Umbra is not.
+ * There the windows stay normal windows at the bottom of the normal layer, filtered from Alt+Tab, the overview and its
+ * workspace thumbnails; the dash/dock still lists Umbra as a running app (the shell tracks the window in C).
+ */
 const NATIVE = typeof Meta.Window.prototype.set_type === 'function' &&
     typeof Meta.Window.prototype.hide_from_window_list === 'function';
 
@@ -85,18 +97,22 @@ export default class UmbraExtension extends Extension {
             global.display.connect('window-created', (_d, w) => this._watch(w)),
             global.display.connect('notify::focus-window', () => this._onFocusWindow()),
             global.display.connect('workareas-changed', () => this._monitorsChanged()),
-            global.display.connect('restacked', () => this._checkStacking()),
+            global.display.connect('restacked', () => this._checkStackingSoon()),
         ];
         this._layoutSignal = Main.layoutManager.connect('monitors-changed', () => this._monitorsChanged());
+
         for (const actor of global.get_window_actors()) this._watch(actor.meta_window);
         if (!NATIVE) this._patchShell();
     }
 
     disable() {
         for (const id of this._displaySignals) global.display.disconnect(id);
+        if (this._stackTimer) { GLib.source_remove(this._stackTimer); this._stackTimer = 0; }
         Main.layoutManager.disconnect(this._layoutSignal);
         for (const [w, ids] of this._watched) for (const id of ids) w.disconnect(id);
         for (const w of [...this._waiting.keys()]) this._stopWaiting(w);
+        // Not restored to normal windows: the host hides them at once and restarts on XWayland (#187 review), and a
+        // desktop window left behind for a moment stays below the user's apps.
         for (const entry of this._entries.values()) this._detach(entry);
         for (const client of this._clients.values()) Gio.bus_unwatch_name(client.watch);
         for (const [obj, name, old] of this._patches) obj[name] = old;
@@ -158,9 +174,19 @@ export default class UmbraExtension extends Extension {
         for (let i = 0; i < global.display.get_n_monitors(); i++) {
             const g = global.display.get_monitor_geometry(i);
             const a = Main.layoutManager.getWorkAreaForMonitor(i);
-            list.push([g.x, g.y, g.width, g.height, a.x, a.y, a.width, a.height]);
+            list.push([g.x, g.y, g.width, g.height, a.x, a.y, a.width, a.height, this._connector(i)]);
         }
-        invocation.return_value(new GLib.Variant('(ia(iiiiiiii))', [global.display.get_primary_monitor(), list]));
+        invocation.return_value(new GLib.Variant('(ia(iiiiiiiis))', [global.display.get_primary_monitor(), list]));
+    }
+
+    /** The connector ("DP-1") of monitor i, so the host pairs it with GDK's monitor by name; '' where Mutter does not say. */
+    _connector(i) {
+        try {
+            const logical = global.backend.get_monitor_manager().get_logical_monitors().find(l => l.get_number() === i);
+            return logical?.get_monitors()[0]?.get_connector() ?? '';
+        } catch (e) {
+            return '';
+        }
     }
 
     /**
@@ -169,7 +195,7 @@ export default class UmbraExtension extends Extension {
      * (a drag or resize), so the bus does not become a way to follow the pointer.
      */
     GetPointerAsync(_params, invocation) {
-        const client = this._clients.get(invocation.get_sender());
+        const client = Main.sessionMode.isLocked ? null : this._clients.get(invocation.get_sender());
         const [x, y, mask] = global.get_pointer();
         let known = false;
         if (client) {
@@ -220,7 +246,7 @@ export default class UmbraExtension extends Extension {
 
     /** The host is closing the window (or went away): its window is being destroyed, so nothing is restored. */
     _forget(entry) {
-        this._detach(entry, false);
+        this._detach(entry);
         this._entries.delete(entry.token);
         this._clients.get(entry.sender)?.tokens.delete(entry.token);
     }
@@ -230,7 +256,7 @@ export default class UmbraExtension extends Extension {
         if (!window || this._watched.has(window)) return;
         if (window.get_wm_class() !== APP_ID && window.get_gtk_application_id() !== APP_ID) {
             // A Wayland client's app id can arrive after the window: look again once it does.
-            if (window.get_client_type() === Meta.WindowClientType.WAYLAND && !this._waiting.has(window)) {
+            if (window.get_client_type() === Meta.WindowClientType.WAYLAND && !this._waiting.has(window) && this._waiting.size < MAX_WAITING) {
                 this._waiting.set(window, [
                     window.connect('notify::wm-class', () => { this._stopWaiting(window); this._watch(window); }),
                     window.connect('unmanaged', () => this._stopWaiting(window)),
@@ -286,20 +312,13 @@ export default class UmbraExtension extends Extension {
         if (global.display.focus_window === window) this._onFocusWindow();
     }
 
-    _detach(entry, restore = true) {
+    _detach(entry) {
         const window = entry.window;
         if (entry.lease) { GLib.source_remove(entry.lease); entry.lease = 0; }
         entry.focusable = false;
         if (!window) return;
         this._byWindow.delete(window);
         entry.window = null;
-        if (!restore) return;
-        try {
-            if (NATIVE) { window.set_type(Meta.WindowType.NORMAL); window.show_in_window_list(); }
-            window.unstick();
-        } catch (e) {
-            console.warn(`Umbra: could not restore a window: ${e.message}`);
-        }
     }
 
     _applyMove(entry) {
@@ -333,11 +352,22 @@ export default class UmbraExtension extends Extension {
 
     /**
      * After any restack: when another desktop window (DING raising its own) ended above a widget, or a widget above an
-     * overlay, the order is put back. The raises restack again, which then finds the order right and stops.
+     * overlay, the order is put back. Checked shortly after the burst of restacks and once more a little later, because
+     * the window actors only follow Mutter's stack at the next redraw; the order is wrong if either view says so. Our
+     * raises restack again, and the next check finds the order right and stops.
      */
-    _checkStacking() {
-        if (!NATIVE || this._restacking || !this._byWindow?.size) return;
-        const sorted = global.get_window_actors().map(a => a.meta_window); // the painted order, bottom to top
+    _checkStackingSoon() {
+        if (this._stackTimer) return;
+        let pass = 0;
+        this._stackTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 60, () => {
+            this._checkStacking();
+            if (++pass < 3) return GLib.SOURCE_CONTINUE; // 60, 120, 180 ms
+            this._stackTimer = 0;
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _orderWrong(sorted) {
         let desktopTop = -1, firstOverlay = Infinity, lastWidget = -1, firstWidget = Infinity;
         sorted.forEach((w, i) => {
             const e = this._byWindow.get(w);
@@ -345,11 +375,18 @@ export default class UmbraExtension extends Extension {
             if (e.kind === 'overlay') firstOverlay = Math.min(firstOverlay, i);
             else { lastWidget = i; firstWidget = Math.min(firstWidget, i); }
         });
-        if (firstWidget > desktopTop && firstOverlay > lastWidget && firstOverlay > desktopTop) return;
+        return !(firstWidget > desktopTop && firstOverlay > lastWidget && firstOverlay > desktopTop);
+    }
+
+    _checkStacking() {
+        if (!NATIVE || this._restacking || !this._byWindow?.size || Main.sessionMode.isLocked) return;
+        const stack = global.display.sort_windows_by_stacking(global.display.list_all_windows()); // bottom to top
+        const painted = global.get_window_actors().map(a => a.meta_window);
+        if (!this._orderWrong(stack) && !this._orderWrong(painted)) return;
         this._restacking = true;
         try {
-            for (const w of sorted) if (this._byWindow.get(w)?.kind === 'widget') w.raise();
-            for (const w of sorted) if (this._byWindow.get(w)?.kind === 'overlay') w.raise();
+            for (const w of stack) if (this._byWindow.get(w)?.kind === 'widget') w.raise();
+            for (const w of stack) if (this._byWindow.get(w)?.kind === 'overlay') w.raise();
         } finally {
             this._restacking = false;
         }
@@ -372,9 +409,10 @@ export default class UmbraExtension extends Extension {
             if (window && global.display.focus_window === window) this._giveBack();
             return !on;
         }
-        const [x, y, mask] = global.get_pointer();
-        const pressed = (mask & BUTTONS) !== 0 || GLib.get_monotonic_time() - entry.pressedAt <= PRESS_WINDOW_US;
+        const [x, y] = global.get_pointer();
+        const pressed = entry.pressedAt > 0 && GLib.get_monotonic_time() - entry.pressedAt <= PRESS_WINDOW_US;
         if (!pressed || !this._contains(window, x, y)) return false;
+        entry.pressedAt = 0; // one press, one grant
         entry.focusable = true;
         entry.hadFocus = false;
         window.focus(global.display.get_current_time_roundtrip());
@@ -395,10 +433,25 @@ export default class UmbraExtension extends Extension {
         const entry = focused ? this._byWindow.get(focused) : null;
         if (!entry) { if (focused) this._lastOther = focused; return; }
         if (entry.focusable) { entry.hadFocus = true; return; }
-        entry.pressedAt = GLib.get_monotonic_time(); // a click (or a focus fallback): only SetFocusable may keep it
-        if (this._reverting) return;
+        // A physical press on the window (button down, the window topmost under the pointer) is what click-to-focus
+        // looks like; the focus falling back when a window closes is not, and never counts as a press.
+        const [x, y, mask] = global.get_pointer();
+        if ((mask & BUTTONS) !== 0 && !Main.sessionMode.isLocked && this._windowAt(x, y) === focused)
+            entry.pressedAt = GLib.get_monotonic_time();
+        if (this._reverting) return; // only SetFocusable may keep it
         this._reverting = true;
         try { this._giveBack(); } finally { this._reverting = false; }
+    }
+
+    /**
+     * The window whose actor is topmost at a stage point (so a press on a window above the widget is not the widget's).
+     * Clutter event filters never see presses on Wayland surfaces, so the press is read where Mutter acts on it: the
+     * click-to-focus it triggers, with the button still down in the seat state.
+     */
+    _windowAt(x, y) {
+        let actor = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y);
+        while (actor && !(actor instanceof Meta.WindowActor)) actor = actor.get_parent();
+        return actor?.get_meta_window() ?? null;
     }
 
     /** Back to the window the user had, or to nothing. */
@@ -415,7 +468,7 @@ export default class UmbraExtension extends Extension {
         this._dbus?.emit_signal('MonitorsChanged', null);
     }
 
-    // ---------- GNOME 46-48: keep normal windows out of Alt+Tab and the overview ----------
+    // ---------- GNOME 46-48: keep normal windows out of Alt+Tab, the overview and its thumbnails ----------
 
     _patchShell() {
         const ours = w => this._byWindow?.has(w);
@@ -424,13 +477,17 @@ export default class UmbraExtension extends Extension {
         this._patch(display, 'get_tab_list', function (...args) {
             return getTabList.apply(this, args).filter(w => !ours(w));
         });
-        const proto = Workspace.Workspace?.prototype;
-        if (proto && typeof proto._isOverviewWindow === 'function') {
-            const isOverview = proto._isOverviewWindow;
-            this._patch(proto, '_isOverviewWindow', function (window) {
-                return !ours(window) && isOverview.call(this, window);
-            });
-        }
+        this._patchOverview(Workspace.Workspace?.prototype);
+        this._patchOverview(WorkspaceThumbnail.WorkspaceThumbnail?.prototype);
+    }
+
+    _patchOverview(proto) {
+        if (!proto || typeof proto._isOverviewWindow !== 'function') return;
+        const ours = w => this._byWindow?.has(w);
+        const isOverview = proto._isOverviewWindow;
+        this._patch(proto, '_isOverviewWindow', function (window) {
+            return !ours(window) && isOverview.call(this, window);
+        });
     }
 
     _patch(obj, name, replacement) {
