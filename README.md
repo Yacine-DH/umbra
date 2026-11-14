@@ -39,6 +39,8 @@ Download **[`UmbraSetup.exe`](https://github.com/AmineChr54/umbra/releases/lates
 
 Umbra then lives in the tray. Click the tray icon (or open Umbra from the Start menu) for **Settings**, and go to **Browse** to add your first widgets. A dot on the tray icon means an Umbra update is ready.
 
+On Linux, see [Install on Linux](#install-on-linux).
+
 <details>
 <summary><b>Portable copy</b></summary>
 
@@ -73,21 +75,65 @@ The **Browse** page installs, updates and removes these in one click. You can al
 
 Missing one? [Build it](CONTRIBUTING.md) in an afternoon, or let an agent [write it for you](#ai-agents-mcp).
 
-## Platforms and Linux status
+## Linux (preview)
 
-| Platform | Status |
-|---|---|
-| Windows 10 1809+ / Windows 11 | Supported. This is the only platform Umbra releases for today. |
-| Linux (KDE Plasma 6, GNOME 46+) | **In progress, tracked in [#172](https://github.com/AmineChr54/umbra/issues/172). Not usable yet: there is no Linux release, tarball, Flatpak or installer, and the Linux app does not exist.** |
+Umbra for Linux is new and still being finished ([#172](https://github.com/AmineChr54/umbra/issues/172)). Widgets, Settings, Browse, edit mode, the tray, notifications, media, local commands, hotkeys and `umbractl` work. There is no Flatpak yet ([#196](https://github.com/AmineChr54/umbra/issues/196)), and a few Windows features are missing (see [Differences from Windows](#differences-from-windows)).
 
-What exists on Linux today is only the platform-neutral groundwork: the shared `Umbra.Core` library, `umbractl` built as plain `net10.0`, the bridge shim that lets widget pages talk to WebKitGTK as well as WebView2, and a CI job that builds and tests that part on Ubuntu. Nothing draws a widget on a Linux desktop yet. If you are not a contributor, there is nothing to install: follow #172 for progress.
+**Desktops:** KDE Plasma 6 and GNOME 46 or newer, on Wayland or X11, plus other X11 desktops and layer-shell compositors (Sway, Hyprland). **Systems:** anything with GTK 4 and WebKitGTK 6.0, such as Ubuntu 24.04 or newer, Fedora 41 or newer and Arch; x64 or arm64. .NET is bundled.
 
-What the Linux port aims for, as designed in #172 (none of this is shipped or verified yet):
+### Install on Linux
 
-- **Desktops:** KDE Plasma 6 (Wayland, and X11 sessions) and GNOME 46 or newer (Wayland through a small Umbra GNOME Shell extension, with an XWayland fallback, and X11 sessions). Minimum distributions in the design: Ubuntu 24.04, Fedora 41, Arch.
-- **Packaging:** a self-contained tarball (`umbra-<version>-linux-<x64|arm64>.tar.gz`) and a Flatpak (`io.github.aminechr54.Umbra`). Exact install steps will be written here once the packaging issue (#196) lands, so none are listed yet.
-- **Expected differences from Windows,** from the individual issues: global hotkeys need the GlobalShortcuts portal, which is KDE Plasma 6 and GNOME 48+ (on GNOME 46 Settings is meant to say "Not supported on this desktop"); the tray icon needs a StatusNotifierItem host (KDE, and Ubuntu's GNOME, which ships AppIndicator, have one; stock GNOME has none); `umbra.media` album art is only read from `file://` URLs; updates will only notify and open the release page, never install; a few catalog widgets run Windows programs and are planned to be marked Windows only.
-- **Same security rules:** the sandbox, command approvals and focus rules in [CLAUDE.md](CLAUDE.md) apply unchanged. Linux sandbox parity is a release blocker.
+1. Install the system libraries:
+
+   ```bash
+   sudo apt install libgtk-4-1 libwebkitgtk-6.0-4 libgtk4-layer-shell0   # Ubuntu / Debian
+   sudo dnf install gtk4 webkitgtk6.0 gtk4-layer-shell                    # Fedora
+   sudo pacman -S gtk4 webkitgtk-6.0 gtk4-layer-shell                     # Arch
+   ```
+
+   `gtk4-layer-shell` is optional: it pins widgets natively on KDE Plasma Wayland, Sway and Hyprland. Without it they are pinned through XWayland.
+2. Download `umbra-<version>-linux-x64.tar.gz` (or `-arm64`) from [Releases](https://github.com/AmineChr54/umbra/releases). Linux tarballs are attached from the first release after 1.17.0; until then, [build one](#build-on-linux).
+3. Unpack it and run the per-user installer (no root):
+
+   ```bash
+   tar xzf umbra-<version>-linux-x64.tar.gz
+   cd umbra-<version>-linux-x64
+   ./install.sh
+   ```
+
+   It puts the app in `~/.local/opt/umbra`, `umbra` and `umbractl` in `~/.local/bin`, and Umbra in your app menu.
+4. Open **Umbra** from the app menu (or run `umbra`), then go to **Browse** to add widgets. **Start on login** is in Settings > General.
+
+To update, unpack the new tarball and run `./install.sh` again. `./install.sh --uninstall` removes the app and keeps your data. Your settings, widgets and `umbra.log` are in `~/.local/share/umbra` (`UMBRA_DATA_DIR` overrides it), the web cache in `~/.cache/umbra`.
+
+**GNOME on Wayland:** without help, GNOME doesn't let an app pin windows to the desktop, so Umbra pins its widgets through XWayland. The small Umbra GNOME Shell extension pins them natively: below every window, above the desktop icons, on all workspaces, and out of Alt+Tab and the overview. It is never installed or turned on without you. Either click **Install** on the hint Settings shows once, or:
+
+```bash
+./install.sh --gnome-extension                        # from the unpacked tarball
+gnome-extensions enable umbra@aminechr54.github.io    # or turn it on in the Extensions app
+```
+
+Then log out and back in. `umbractl status` shows the pinning in use as `pinBackend` (`gnome-extension`, `layer-shell` or `x11`).
+
+### Build on Linux
+
+Needs the .NET 10 SDK, `gcc`, `pkg-config` and `libwebkitgtk-6.0-dev` (the sandbox's web extension is C). See [CONTRIBUTING.md](CONTRIBUTING.md#working-on-the-linux-port) for the full setup.
+
+```bash
+linux/package.sh x64                 # -> dist/umbra-<ver>-linux-x64.tar.gz, then install it as above
+dotnet build Umbra.Linux.slnf        # development build
+TMPDIR=$(mktemp -d /tmp/umbra.XXXX) UMBRA_DATA_DIR=$(mktemp -d) dotnet run --project src/Umbra.Linux   # run from source next to an installed Umbra
+```
+
+### Differences from Windows
+
+- **Hotkeys** need an X11 session, KDE Plasma 6 or GNOME 48+. On Wayland your desktop asks you to confirm new shortcuts in its own dialog. On GNOME 46 and 47 with Wayland, Settings > Hotkeys says "Not supported on this desktop".
+- **Tray icon:** a StatusNotifierItem. KDE and Ubuntu's GNOME show it. Stock GNOME (Fedora, Arch) needs the "AppIndicator and KStatusNotifierItem Support" extension. Without a tray, open Umbra from the app menu again to get Settings.
+- **Updates only notify.** Settings > About and the tray say when a new version is out and open the release page. Umbra never downloads or installs anything; run the new `install.sh` yourself.
+- **Media:** `umbra.media` reads MPRIS players. Album art shows only when the player gives a local `file://` image; players that only offer an `https://` art URL (such as Spotify) show none.
+- **Notifications** go through your desktop's notification service, with the same permission, buttons and rate limit.
+- **Widget commands** work as on Windows (same approvals and limits). Script Runner is Windows only: Browse marks it "Windows only" and offers no install. A future Flatpak will refuse widget commands until they are reviewed there.
+- **Not on Linux yet:** peek, hiding widgets during fullscreen apps, the webcam timelapse (Pomodoro), saving pictures to a folder (Hearth), Run as administrator, GPU and disk readings in `umbra.system()`, and opening a `.umbrawidget` by double-click (use Browse > Install from file). Re-placing widgets after a monitor or display-scale change is in review. Interface text uses the bundled Inter font where Segoe UI is missing.
 
 To help, see "Working on the Linux port" in [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -139,7 +185,7 @@ Settings works from the keyboard: **Esc** closes it, **Ctrl+F** or **/** jumps t
 
 The installer puts `umbractl` on your PATH. Every command prints JSON and starts Umbra in the background if it isn't running.
 
-> **Linux:** `umbractl` and the MCP server are being made cross-platform (they already build as plain `net10.0`), but there is no Linux Umbra for them to talk to yet (#172). The examples below are Windows. Planned for the Flatpak: an MCP client runs `flatpak run --command=umbractl io.github.aminechr54.Umbra mcp`, because the control socket lives inside the sandbox (#175). Not usable today.
+> **Linux:** `install.sh` puts `umbractl` in `~/.local/bin`, and the commands and MCP tools below work the same, except what Linux lacks yet (`peek` answers "not available on Linux yet"; `--hide-fullscreen` is saved but does nothing). The examples use Windows paths. It talks to Umbra over a Unix socket in `$TMPDIR` that only your user can open, so run it with the same `TMPDIR` as Umbra. It doesn't start Umbra by itself on Linux yet: open Umbra first, or set `UMBRA_EXE=~/.local/opt/umbra/umbra/umbra`. There is no Flatpak build yet (#196).
 
 ```powershell
 umbractl list                          # widgets, their settings, option schema and window bounds
@@ -212,7 +258,7 @@ Then ask, for example, *"add a widget that shows the weather in Berlin under my 
 - **Resources:** every installed widget's files, read-only, as `umbra://widgets/<id>/<file>` (same path and extension rules as agent-written files, 5 MB cap), so an agent can read a widget before editing it.
 - **Prompts:** `new_widget`, `fix_widget` and `restyle_widget`, which walk the agent through `widget_authoring_guide`, `create_widget` and `capture`.
 
-Under the hood, the CLI and the MCP server talk to the running app over a per-user named pipe with one JSON line per request (`src/Umbra.Core/Protocol.cs`). Other users on the PC can't connect, and agent-made widgets get the same sandbox as community widgets.
+Under the hood, the CLI and the MCP server talk to the running app over a per-user named pipe (a Unix socket on Linux) with one JSON line per request (`src/Umbra.Core/Protocol.cs`). Other users on the PC can't connect, and agent-made widgets get the same sandbox as community widgets.
 </details>
 
 ## How it works
@@ -252,13 +298,13 @@ Umbra is community-built. The [roadmap board](https://github.com/users/AmineChr5
 
 ## Good to know
 
-- Windows 10 1809+ and Windows 11 only (`net10.0-windows10.0.19041.0`). A Linux version is in progress ([#172](https://github.com/AmineChr54/umbra/issues/172)), see [Platforms and Linux status](#platforms-and-linux-status).
+- Windows 10 1809+ and Windows 11 (`net10.0-windows10.0.19041.0`). Linux is a preview, see [Linux (preview)](#linux-preview).
 - The S&P 500 widget uses Yahoo's unofficial endpoint. Data may be delayed or change without notice, so don't use it for trading.
 - The original lightweight Rainmeter skin is still in [`extras/rainmeter`](extras/rainmeter/SP500).
 
 ## Privacy
 
-Umbra has no account and doesn't track you. Settings, widget data and logs stay in `%APPDATA%\Umbra` on your PC. The only network traffic Umbra itself makes is a daily check on GitHub for new releases and widget updates (you can turn it off in Settings), the widget and theme catalogs when you open Browse (with the install counts from the Umbra relay), the downloads you choose to install, one anonymous +1 for a catalog widget when you install it, so Browse can show install counts (no id, no version, nothing about you or your PC; updates aren't counted; turn it off in **Data & privacy**), and the requests a widget makes to hosts it declares in its `widget.json` (see **Data & privacy** in Settings). The website counts page views the same way: a path and the referring site, no cookie, no id, and nothing at all with Do Not Track or Global Privacy Control on.
+Umbra has no account and doesn't track you. Settings, widget data and logs stay in `%APPDATA%\Umbra` (Linux: `~/.local/share/umbra`) on your PC. The only network traffic Umbra itself makes is a daily check on GitHub for new releases and widget updates (you can turn it off in Settings), the widget and theme catalogs when you open Browse (with the install counts from the Umbra relay), the downloads you choose to install, one anonymous +1 for a catalog widget when you install it, so Browse can show install counts (no id, no version, nothing about you or your PC; updates aren't counted; turn it off in **Data & privacy**), and the requests a widget makes to hosts it declares in its `widget.json` (see **Data & privacy** in Settings). The website counts page views the same way: a path and the referring site, no cookie, no id, and nothing at all with Do Not Track or Global Privacy Control on.
 
 ## License
 

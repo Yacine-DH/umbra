@@ -1,19 +1,19 @@
 # Umbra
 
-> Open-source Windows desktop widgets: small sandboxed web pages (HTML/CSS/JS in WebView2) pinned to the wallpaper by a C# .NET 10 host. Scriptable through `umbractl` and an MCP server, so AI agents can configure and build widgets. Windows is the only supported platform today; a Linux version (KDE Plasma 6, GNOME 46+) is in progress, tracked in issue #172, and is not usable yet.
+> Open-source desktop widgets: small sandboxed web pages (HTML/CSS/JS) pinned to the wallpaper by a C# .NET 10 host, on Windows 10 1809+ / 11 (WebView2) and, as a preview, Linux (GTK 4 + WebKitGTK 6; KDE Plasma 6, GNOME 46+; self-contained tarball, no Flatpak yet). Scriptable through `umbractl` and an MCP server on both, so AI agents can configure and build widgets. Widgets are the same on both platforms: they use only `window.umbra`.
 
 ## Docs
 
-- [README](https://github.com/AmineChr54/umbra/blob/main/README.md): what Umbra is, install, settings, automation (CLI and MCP)
-- [Widget SDK](https://github.com/AmineChr54/umbra/blob/main/docs/widget-sdk.md): complete widget reference (manifest, JavaScript API, sandbox, design rules)
+- [README](https://github.com/AmineChr54/umbra/blob/main/README.md): what Umbra is, install (Windows, and Linux in "Linux (preview)" with its differences from Windows), settings, automation (CLI and MCP)
+- [Widget SDK](https://github.com/AmineChr54/umbra/blob/main/docs/widget-sdk.md): complete widget reference (manifest, JavaScript API, sandbox, design rules; "Platforms" covers Linux and the `platforms` field)
 - [Tutorial](https://github.com/AmineChr54/umbra/blob/main/docs/widgets/tutorial.md): your first widget in 10 minutes (new, dev, validate, pack, install, share)
 - [Cookbook](https://github.com/AmineChr54/umbra/blob/main/docs/widgets/cookbook.md): recipes linked to real widgets (fetching, options, timers, notifications, commands, media, offline, games)
 - [For browser-extension developers](https://github.com/AmineChr54/umbra/blob/main/docs/widgets/from-browser-extensions.md): manifest.json vs widget.json, permissions, storage, alarms, and the manifest field index by version
 - Package format: a `.umbrawidget` is a zip with `widget.json` at its root (`umbractl pack`); `manifestVersion` (default 1) and `minUmbraVersion` in widget.json gate older apps
 - [widget.json schema](https://raw.githubusercontent.com/AmineChr54/umbra/main/schemas/widget.schema.json): JSON Schema for widget manifests
-- [CONTRIBUTING](https://github.com/AmineChr54/umbra/blob/main/CONTRIBUTING.md): publish a widget by pull request
+- [CONTRIBUTING](https://github.com/AmineChr54/umbra/blob/main/CONTRIBUTING.md): publish a widget by pull request; Linux dev setup and headless tests (`linux/test/`)
 - [CLAUDE.md](https://github.com/AmineChr54/umbra/blob/main/CLAUDE.md): architecture, commands, security invariants for coding agents (including the "Linux port" section)
-- [Linux port epic #172](https://github.com/AmineChr54/umbra/issues/172): design and status of the in-progress Linux version (not shipped)
+- [Linux port epic #172](https://github.com/AmineChr54/umbra/issues/172): design and remaining work of the Linux version (Flatpak is #196)
 
 ## Examples
 
@@ -23,5 +23,5 @@
 
 ## Automation
 
-- [Control protocol](https://github.com/AmineChr54/umbra/blob/main/src/Umbra.Core/Protocol.cs): commands available over the per-user pipe
+- [Control protocol](https://github.com/AmineChr54/umbra/blob/main/src/Umbra.Core/Protocol.cs): commands available over the per-user pipe (a Unix socket in `$TMPDIR` on Linux)
 - [MCP server](https://github.com/AmineChr54/umbra/blob/main/src/Umbra.Cli/McpServer.cs): tool definitions for `umbractl mcp`
