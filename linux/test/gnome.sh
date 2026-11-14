@@ -25,7 +25,8 @@ if [ "${UMBRA_GNOME_INSIDE:-}" = "" ]; then
   [ -x "$bin" ] || { echo "gnome.sh: $bin not found; run: dotnet build Umbra.Linux.slnf" >&2; exit 2; }
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/umbra-gnome-XXXXXX")
   chmod 700 "$tmp"
-  cleanup() { if [ "${UMBRA_KEEP:-}" = 1 ]; then echo "kept: $tmp" >&2; else rm -rf "$tmp"; fi; }
+  # The session's gvfs and document-portal FUSE mounts can outlive it by a moment: unmount them before removing the folder.
+  cleanup() { if [ "${UMBRA_KEEP:-}" = 1 ]; then echo "kept: $tmp" >&2; else fusermount3 -uz "$tmp/run/gvfs" 2>/dev/null; fusermount3 -uz "$tmp/run/doc" 2>/dev/null; rm -rf "$tmp" 2>/dev/null || { sleep 2; rm -rf "$tmp"; }; fi; }
   trap cleanup EXIT
   mkdir -p "$tmp/home" "$tmp/config" "$tmp/data/gnome-shell/extensions" "$tmp/cache" "$tmp/state" "$tmp/run" "$tmp/profile/widgets" "$tmp/bin"
   chmod 700 "$tmp/run"
@@ -84,6 +85,10 @@ umbra=$!
 for _ in $(seq 1 40); do $UMBRACTL status >/dev/null 2>&1 && break; sleep 0.5; done
 sleep 3
 status=$($UMBRACTL status 2>&1)
+# Every umbractl call below must reach this throwaway host, never an installed Umbra.
+if ! echo "$status" | grep -q "\"dataDir\": \"$UMBRA_DATA_DIR\""; then
+  echo "FAIL  umbractl does not reach the test host (dataDir is not $UMBRA_DATA_DIR): stopping"; kill $umbra $shell 2>/dev/null; exit 1
+fi
 [ -n "${UMBRA_GNOME_DEBUG:-}" ] && { echo "$status"; js 'JSON.stringify(global.display.list_all_windows().map(w => [w.get_title(), w.get_wm_class()]))'; }
 
 if [ "$mode" = fallback ]; then
@@ -124,8 +129,11 @@ app.run([]);
 EOF
   GDK_BACKEND=wayland gjs "$tmp/other.js" "a normal window" "$tmp/other-typed.txt" >/dev/null 2>&1 & other=$!
   GDK_BACKEND=wayland gjs "$tmp/other.js" "fake desktop icons" "$tmp/icons-typed.txt" >/dev/null 2>&1 & icons=$!
-  sleep 2
-  js 'const i = global.display.list_all_windows().find(w => w.get_title() === "fake desktop icons"); i.set_type(imports.gi.Meta.WindowType.DESKTOP); i.stick(); i.move_resize_frame(false, 0, 0, 1920, 1080); "ok"' >/dev/null
+  # Wait until a window with this title is shown (a gjs start can take several seconds on a busy machine).
+  shown() { for _ in $(seq 1 40); do [ "$(js "String(global.display.list_all_windows().some(w => w.get_title() === '$1'))")" = true ] && return 0; sleep 0.25; done; return 1; }
+  check 'the two test windows are up' 'shown "a normal window" && shown "fake desktop icons"'
+  sleep 0.5
+  js 'const i = global.display.list_all_windows().find(w => w.get_title() === "fake desktop icons"); i.set_type(imports.gi.Meta.WindowType.DESKTOP); i.stick(); i.move_frame(false, 0, 330); /* 500x400: overlaps the bottom of the widget at 300,240, not the spots clicked below */ "ok"' >/dev/null
   js 'const o = global.display.list_all_windows().find(w => w.get_title() === "a normal window"); o.move_frame(false, 200, 150); "ok"' >/dev/null
   sleep 0.5
   # DING raises and lowers its own desktop windows; the widget must end up above it whatever it does.
@@ -146,11 +154,17 @@ EOF
   click() { js "$ptr; const C = imports.gi.Clutter; const t = imports.gi.GLib.get_monotonic_time(); __ptr.notify_absolute_motion(t, $1, $2); __ptr.notify_button(t + 1000, C.BUTTON_PRIMARY, C.ButtonState.PRESSED); 'ok'" >/dev/null
       sleep 0.25; js "$ptr; const C = imports.gi.Clutter; __ptr.notify_button(imports.gi.GLib.get_monotonic_time(), C.BUTTON_PRIMARY, C.ButtonState.RELEASED); 'ok'" >/dev/null; }
   focus() { js 'const f = global.display.focus_window; f ? (/^umbra:/.test(f.get_title() ?? "") ? "umbra" : f.get_title()) : "none"'; }
+  focus_is() { for _ in $(seq 1 12); do [ "$(focus)" = "$1" ] && return 0; sleep 0.25; done; return 1; } # within ~3 s
+  # Clicks a window wherever it really is (a move asked of a just-mapped window may not land), in its lower part: the
+  # shell's "unsafe mode" banner (from the test-only Eval extension) sits at the top centre and would take the click.
+  clickon() { local at; at=$(js "const w = global.display.list_all_windows().find(w => w.get_title() === '$1'); const r = w.get_frame_rect(); (r.x + (r.width >> 1)) + ' ' + (r.y + ((r.height * 7) >> 3))"); click $at; }
   data="$UMBRA_DATA_DIR/data/edit-widget.json"
   js "$kb; $ptr; 'ok'" >/dev/null; sleep 0.5 # the virtual devices exist before their first event
   check 'the page asked for the focus three times by itself (edit-widget) and got nothing' 'grep -q "\"attacked\":true" "$data" && [ "$(focus)" != umbra ]'
-  click 650 500; sleep 0.8
-  check "a click on the normal window focuses it (has: $(focus))" '[ "$(focus)" = "a normal window" ]'
+  clickon "a normal window"
+  # A dropped first press is reported, and allowed once; a second miss fails the check below.
+  focus_is "a normal window" || { echo "note  the first click on the normal window was lost (focus: $(focus)); clicking again"; clickon "a normal window"; }
+  check "a click on the normal window focuses it (has: $(focus))" 'focus_is "a normal window"'
   if [ -n "${UMBRA_GNOME_HOLD:-}" ]; then echo "$DBUS_SESSION_BUS_ADDRESS" > "$tmp/bus"; echo "holding: $tmp/bus"; sleep "$UMBRA_GNOME_HOLD"; fi
   type "abc"; sleep 0.5
   check 'typing goes to the normal window' 'grep -q abc "$tmp/other-typed.txt"'
@@ -163,13 +177,43 @@ EOF
   check "a click on the widget's label leaves the focus where it was (has: $(focus))" '[ "$(focus)" = "a normal window" ]'
   # A click into the widget's text field: the page asks right after the press, the host and the extension grant it.
   click 360 280; sleep 1
-  check "after a real click into the widget's text field it has the focus (has: $(focus))" '[ "$(focus)" = umbra ]'
+  check "after a real click into the widget's text field it has the focus (has: $(focus))" 'focus_is umbra'
   type "hello"; sleep 1
   check "typing after the click reaches the widget ($(grep -o '"typed":"[^"]*"' "$data"))" 'grep -q "\"typed\":\"hello\"" "$data"'
-  click 1500 600; sleep 1
-  check "a click on the normal window takes the focus back (has: $(focus))" '[ "$(focus)" = "a normal window" ]'
+  clickon "a normal window"; sleep 1
+  check "a click on the normal window takes the focus back (has: $(focus))" 'focus_is "a normal window"'
   type "xyz"; sleep 0.5
   check 'and typing goes there again, not to the widget' 'grep -q xyz "$tmp/other-typed.txt" && grep -q "\"typed\":\"hello\"" "$data"'
+  # The focus falling back when the active window closes, with the pointer resting over the widget (no press). Every
+  # other normal window is closed first, so the fallback has only the widget (or the stand-in desktop window) to go to:
+  # the widget must not keep it, and the extension must not count that focus as a press.
+  js 'const o = global.display.list_all_windows().find(w => w.get_title() === "a normal window"); o.delete(global.display.get_current_time_roundtrip()); "ok"' >/dev/null
+  sleep 1
+  closing() {
+    GDK_BACKEND=wayland gjs "$tmp/other.js" "closing window" "$tmp/closing-typed.txt" >/dev/null 2>&1 & closing=$!
+    shown "closing window"; sleep 0.5
+    js 'const c = global.display.list_all_windows().find(w => w.get_title() === "closing window"); c.move_frame(false, 900, 100); "ok"' >/dev/null
+    sleep 0.5; clickon "closing window"
+    check "the closing window has the focus (has: $(focus))" 'focus_is "closing window"'
+  }
+  close_it() { js 'const c = global.display.list_all_windows().find(w => w.get_title() === "closing window"); c.delete(global.display.get_current_time_roundtrip()); "ok"' >/dev/null; }
+  closing
+  js "$ptr; __ptr.notify_absolute_motion(imports.gi.GLib.get_monotonic_time(), 500, 250); 'ok'" >/dev/null; sleep 0.3
+  close_it; sleep 1.5
+  check "only the widget was left: after the window closed with the pointer on it, it does not have the focus (has: $(focus))" '[ "$(focus)" != umbra ]'
+  type "qq"; sleep 0.5
+  check 'and typing does not reach the widget' 'grep -q "\"typed\":\"hello\"" "$data"'
+  kill $closing 2>/dev/null
+  # The same with a button held down on the widget's label while the window closes (a press, but not one the page
+  # asks the focus for): still no focus for the widget.
+  closing
+  js "$ptr; const C = imports.gi.Clutter; const t = imports.gi.GLib.get_monotonic_time(); __ptr.notify_absolute_motion(t, 500, 250); __ptr.notify_button(t + 1000, C.BUTTON_PRIMARY, C.ButtonState.PRESSED); 'ok'" >/dev/null
+  sleep 0.3; close_it; sleep 1.5
+  check "with a button held on the widget while the window closed, the widget does not have the focus (has: $(focus))" '[ "$(focus)" != umbra ]'
+  js "$ptr; const C = imports.gi.Clutter; __ptr.notify_button(imports.gi.GLib.get_monotonic_time(), C.BUTTON_PRIMARY, C.ButtonState.RELEASED); 'ok'" >/dev/null
+  type "qq"; sleep 0.5
+  check 'and typing does not reach the widget' 'grep -q "\"typed\":\"hello\"" "$data"'
+  kill $closing 2>/dev/null
 
   # The compositor's own view (inside this headless shell only) and the widget's own capture.
   js 'const S = imports.gi.Shell; new S.Screenshot().screenshot(false, imports.gi.Gio.File.new_for_path("'"$tmp"'/gnome-screen.png").create(0, null), () => {}); "ok"' >/dev/null
@@ -178,13 +222,38 @@ EOF
   check 'umbractl capture works on the extension path' '[ -s "$tmp/edit-widget.png" ]'
   [ -n "$UMBRA_OUT" ] && cp "$tmp/gnome-screen.png" "$tmp/edit-widget.png" "$UMBRA_OUT/" 2>/dev/null
 
-  # The extension going away: the widget becomes a plain window again (and is pinned again once it is back).
-  gdbus call --session --dest org.gnome.Shell.Extensions --object-path /org/gnome/Shell/Extensions --method org.gnome.Shell.Extensions.DisableExtension "$uuid" >/dev/null
-  sleep 1
-  check 'disabled: the window is a normal window again' '[ "$(js "$q; String(w.get_window_type() === imports.gi.Meta.WindowType.NORMAL)")" = true ]'
-  gdbus call --session --dest org.gnome.Shell.Extensions --object-path /org/gnome/Shell/Extensions --method org.gnome.Shell.Extensions.EnableExtension "$uuid" >/dev/null
-  sleep 2
-  check 'enabled again: Umbra registers it again and it is pinned' '[ "$(js "$q; String(w.get_window_type() === imports.gi.Meta.WindowType.DESKTOP && w.get_frame_rect().x === 300)")" = true ]'
+  # The extension going away. Disabled and enabled again quickly (a reload): the widget is hidden meanwhile (never a
+  # plain window above the user's apps), then registered and pinned again.
+  ext() { gdbus call --session --dest org.gnome.Shell.Extensions --object-path /org/gnome/Shell/Extensions --method "org.gnome.Shell.Extensions.$1" "$uuid" >/dev/null; }
+  mapped() { js 'String(global.display.list_all_windows().some(w => /^umbra:/.test(w.get_title() ?? "") && w.get_window_type() !== imports.gi.Meta.WindowType.DESKTOP && w.showing_on_its_workspace()))'; }
+  pinned() { js 'String(global.display.list_all_windows().filter(w => /^umbra:/.test(w.get_title() ?? "") && w.get_window_type() === imports.gi.Meta.WindowType.DESKTOP && w.showing_on_its_workspace()).length)'; }
+  ext DisableExtension; sleep 0.7
+  check 'disabled: no Umbra window is left as a plain window' '[ "$(mapped)" = false ]'
+  # A widget opened while the extension is away is held back, never shown as a plain window.
+  $UMBRACTL add-instance edit-widget >/dev/null 2>&1; sleep 1.5
+  check 'a widget opened while it is away is not shown as a plain window' '[ "$(mapped)" = false ]'
+  ext EnableExtension; sleep 3
+  check "enabled again within 3 s: both widgets registered and pinned (pinned: $(pinned))" '[ "$(pinned)" = 2 ]'
+  check 'the first one is back at 300,240' '[ "$(js "String(global.display.list_all_windows().some(w => /^umbra:/.test(w.get_title() ?? \"\") && w.get_frame_rect().x === 300 && w.get_frame_rect().y === 240))")" = true ]'
+  check "and neither took the focus after the reload (has: $(focus))" '[ "$(focus)" != umbra ]'
+  # Disabled, and someone else takes the free bus name: it is not trusted (no protocol answer), the widgets stay
+  # hidden, and Umbra restarts on XWayland.
+  ext DisableExtension; sleep 0.3
+  cat > "$tmp/squatter.js" <<'EOF'
+const {Gio, GLib} = imports.gi;
+Gio.bus_own_name(Gio.BusType.SESSION, 'io.github.aminechr54.Umbra.Shell', Gio.BusNameOwnerFlags.NONE, null, null, null);
+new GLib.MainLoop(null, false).run();
+EOF
+  gjs "$tmp/squatter.js" >/dev/null 2>&1 & squatter=$!
+  sleep 0.7
+  check 'a squatter on the bus name: still no plain Umbra window' '[ "$(mapped)" = false ]'
+  for _ in $(seq 1 40); do grep -q "not as this Umbra's extension" "$UMBRA_DATA_DIR/umbra.log" && break; sleep 0.25; done
+  for _ in $(seq 1 40); do timeout 5 $UMBRACTL status 2>/dev/null | grep -q '"pinBackend": "x11"' && break; sleep 0.5; done
+  status=$($UMBRACTL status 2>&1)
+  check 'the squatter is not trusted: Umbra restarted on XWayland (pinBackend x11, same data folder)' \
+    'echo "$status" | grep -q "\"pinBackend\": \"x11\"" && echo "$status" | grep -q "\"dataDir\": \"$UMBRA_DATA_DIR\""'
+  check 'the log says why' 'grep -q "came back, but not as this Umbra.s extension: restarting on XWayland" "$UMBRA_DATA_DIR/umbra.log"'
+  kill $squatter 2>/dev/null
   kill $other $icons 2>/dev/null
 fi
 

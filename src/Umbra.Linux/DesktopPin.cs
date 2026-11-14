@@ -55,6 +55,12 @@ interface IDesktopPin
 
     /// <summary>The usable area of the primary monitor (without panels), or null when the session does not say.</summary>
     Rectangle? PrimaryWorkArea();
+
+    /// <summary>
+    /// Shows or hides one of the host's pinned windows. A backend may hold a show back until it can pin the window from
+    /// its first frame (the GNOME extension while it is away) and show it later itself.
+    /// </summary>
+    void SetVisible(Gtk.Window window, bool visible) => window.SetVisible(visible);
 }
 
 /// <summary>The pointer as the display server reports it (logical pixels).</summary>

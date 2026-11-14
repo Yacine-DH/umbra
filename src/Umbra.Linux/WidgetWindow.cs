@@ -130,11 +130,12 @@ sealed partial class WidgetWindow : IWidgetView
     public bool Visible
     {
         get => _window.GetVisible();
-        set { if (!_closed && _window.GetVisible() != value) _window.SetVisible(value); }
+        // Through the pin: it may hold a show back (GNOME extension away), and a hide also cancels a held-back show.
+        set { if (_closed) return; if (!value) _app.Pin.SetVisible(_window, false); else if (!_window.GetVisible()) _app.Pin.SetVisible(_window, true); }
     }
 
     /// <summary>Shows the window without activating it: a widget never takes focus by appearing.</summary>
-    public void Show() => _window.SetVisible(true);
+    public void Show() => _app.Pin.SetVisible(_window, true);
 
     public void Close()
     {
