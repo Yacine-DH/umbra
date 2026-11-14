@@ -4,9 +4,9 @@ namespace Umbra;
 
 /// <summary>
 /// <c>umbra.images</c> (permission <c>saveImages</c>): a widget may hand the host a PNG to keep in its picture folder
-/// (Pictures\Umbra\&lt;widget name&gt;, or another folder the user picked with the host's own folder dialog). The page never
-/// supplies a path or a file name, and never reads anything back.
-/// Pure rules live here so they are unit tested; the dialog and the click gate are in the Windows host.
+/// (Pictures\Umbra\&lt;widget name&gt; on Windows, Pictures/Umbra/&lt;widget name&gt; on Linux, or another folder the user picked
+/// with the host's own folder dialog). The page never supplies a path or a file name, and never reads anything back.
+/// Pure rules live here so they are unit tested; the dialog and the click gate are in the hosts.
 /// </summary>
 public static class ImageArchive
 {
@@ -81,11 +81,43 @@ public sealed class ImageFolders(string path, string? defaultRoot = null)
     static ImageFolders? _shared;
     public static ImageFolders Shared => _shared ??= new(Path.Combine(AppPaths.DataDir, "image-folders.json"), PicturesRoot());
 
-    /// <summary>Pictures\Umbra, or null where the system has no Pictures folder (then a folder has to be picked).</summary>
+    /// <summary>Pictures/Umbra, or null where the system has no Pictures folder (then a folder has to be picked).</summary>
     static string? PicturesRoot()
     {
-        var pictures = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+        var pictures = OperatingSystem.IsWindows()
+            ? Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)
+            : LinuxPicturesDir(Environment.GetEnvironmentVariable, p => File.Exists(p) ? File.ReadAllText(p) : null);
         return string.IsNullOrEmpty(pictures) ? null : Path.Combine(pictures, "Umbra");
+    }
+
+    /// <summary>
+    /// The Linux <c>xdg-user-dir PICTURES</c> path: <c>$XDG_PICTURES_DIR</c>, else <c>XDG_PICTURES_DIR</c> in
+    /// <c>$XDG_CONFIG_HOME/user-dirs.dirs</c>, else <c>$HOME/Pictures</c> (even before that folder exists on disk, whereas
+    /// .NET's <c>SpecialFolder.MyPictures</c> returns empty when neither <c>user-dirs.dirs</c> nor <c>~/Pictures</c> exists yet).
+    /// </summary>
+    public static string? LinuxPicturesDir(Func<string, string?> env, Func<string, string?>? readFile = null)
+    {
+        if (env("XDG_PICTURES_DIR") is { Length: > 0 } xdg && Path.IsPathFullyQualified(xdg) && !xdg.Any(char.IsControl))
+            return Path.GetFullPath(xdg);
+        var home = env("HOME");
+        if (string.IsNullOrEmpty(home)) home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrEmpty(home) || !Path.IsPathFullyQualified(home)) return null;
+        var config = env("XDG_CONFIG_HOME");
+        if (string.IsNullOrEmpty(config) || !Path.IsPathFullyQualified(config)) config = Path.Combine(home, ".config");
+        if (readFile?.Invoke(Path.Combine(config, "user-dirs.dirs")) is { } text)
+        {
+            foreach (var raw in text.Split('\n'))
+            {
+                var line = raw.Trim();
+                if (!line.StartsWith("XDG_PICTURES_DIR=", StringComparison.Ordinal)) continue;
+                var val = line["XDG_PICTURES_DIR=".Length..].Trim().Trim('"');
+                if (val.StartsWith("$HOME/", StringComparison.Ordinal) || val.StartsWith("$HOME\\", StringComparison.Ordinal))
+                    val = Path.Combine(home, val[6..]);
+                else if (val == "$HOME") val = home;
+                if (Path.IsPathFullyQualified(val) && !val.Any(char.IsControl)) return Path.GetFullPath(val);
+            }
+        }
+        return Path.Combine(home, "Pictures");
     }
 
     /// <summary>The default folder for a widget (it may not exist yet), or null without a Pictures folder.</summary>
@@ -165,10 +197,11 @@ public sealed class ImageFolders(string path, string? defaultRoot = null)
             list.RemoveAll(t => at - t > ImageArchive.Window);
             if (list.Count >= ImageArchive.MaxPerWindow) throw new ImageArchiveException("Too many pictures saved in a short time");
             Directory.CreateDirectory(folder);
-            var free = freeBytes?.Invoke(folder) ?? new DriveInfo(Path.GetPathRoot(folder)!).AvailableFreeSpace;
+            var free = freeBytes?.Invoke(folder) ?? new DriveInfo(OperatingSystem.IsWindows() ? Path.GetPathRoot(folder)! : folder).AvailableFreeSpace;
             if (free < bytes.Length + 10_000_000L) throw new ImageArchiveException("The folder's drive is almost full");
-            var name = ImageArchive.FileName(widgetName, at, n => File.Exists(Path.Combine(folder, n)));
-            File.WriteAllBytes(Path.Combine(folder, name), bytes);
+            var name = ImageArchive.FileName(widgetName, at, n => Path.Exists(Path.Combine(folder, n)));
+            using (var fs = new FileStream(Path.Combine(folder, name), FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                fs.Write(bytes);
             list.Add(at);
             return name;
         }

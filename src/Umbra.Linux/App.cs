@@ -313,6 +313,7 @@ sealed class App : IUmbraHost
     public void SyncWindows()
     {
         Groups.Prune(Settings);
+        ImageFolders.Shared.ClearExcept(Manifests.Where(m => m.Permissions.SaveImages).Select(m => m.Id));
         foreach (var m in Manifests)
             foreach (var inst in Settings.Instances(m.Id))
             {

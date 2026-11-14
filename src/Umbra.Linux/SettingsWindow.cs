@@ -259,6 +259,24 @@ sealed class SettingsWindow : ISettingsView
                 SendState(); // no camera on Linux: nothing is ever approved
                 break;
 
+            case "pickImageFolder":
+            case "resetImageFolder":
+            case "openImageFolder":
+            {
+                // A widget's picture folder (permissions.saveImages): Pictures/Umbra/<name> unless the user picks another here.
+                if (ManifestOf(msg) is not { Permissions.SaveImages: true } iw) break;
+                var kind = S(msg, "type");
+                if (kind == "pickImageFolder") await WidgetWindow.PickImageFolderAsync(iw, _window);
+                else if (kind == "resetImageFolder") ImageFolders.Shared.Clear(iw.Id);
+                else if (ImageFolders.Shared.Resolve(iw.Id, iw.Name) is { } dir)
+                {
+                    try { Directory.CreateDirectory(dir); OpenFolder(dir); }
+                    catch (Exception ex) { Log.Write($"open picture folder failed: {ex.Message}"); }
+                }
+                SendState();
+                break;
+            }
+
             case "approveCommand":
             case "revokeCommand":
             {
@@ -712,6 +730,8 @@ sealed class SettingsWindow : ISettingsView
                 ["notifications"] = m.Permissions.Notifications,
                 ["camera"] = m.Permissions.Camera,
                 ["cameraApproved"] = false,
+                ["imageFolder"] = m.Permissions.SaveImages ? ImageFolders.Shared.Resolve(m.Id, m.Name) : null,
+                ["imageFolderPicked"] = m.Permissions.SaveImages && ImageFolders.Shared.Get(m.Id) is not null,
                 ["media"] = new JsonArray(m.Permissions.Media.Select(h => (JsonNode?)h).ToArray()),
                 ["system"] = new JsonArray(m.Permissions.System.Select(h => (JsonNode?)h).ToArray()),
                 ["commands"] = new JsonArray(m.Permissions.Commands.Select(c => (JsonNode?)new JsonObject
