@@ -32,6 +32,7 @@ public sealed class MediaTests
     [Fact]
     public void Only_local_images_within_source_bounds_become_art()
     {
+        if (!OperatingSystem.IsLinux()) return;
         var dir = Directory.CreateTempSubdirectory();
         try
         {
@@ -86,6 +87,7 @@ public sealed class MediaTests
     [Fact]
     public void Decompression_bomb_dimensions_are_refused()
     {
+        if (!OperatingSystem.IsLinux()) return;
         var dir = Directory.CreateTempSubdirectory();
         try
         {
@@ -93,6 +95,13 @@ public sealed class MediaTests
             File.WriteAllBytes(bomb, PngHeaderOnly(30_000, 30_000));
             Assert.Null(LinuxMedia.ArtDataUrl(new Uri(bomb).AbsoluteUri));
             Assert.Null(LinuxMedia.ScaleArt(bomb));
+
+            // A valid, decodable > 512 KB PNG that exceeds MaxArtDimension (8192 px) would decode to JPEG without the cap.
+            var wide = Path.Combine(dir.FullName, "wide.png");
+            File.WriteAllBytes(wide, NoisyPng(9_000, 80));
+            Assert.True(new FileInfo(wide).Length > MediaService.MaxArtBytes);
+            Assert.Null(LinuxMedia.ArtDataUrl(new Uri(wide).AbsoluteUri));
+            Assert.Null(LinuxMedia.ScaleArt(wide));
         }
         finally { dir.Delete(true); }
     }
