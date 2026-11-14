@@ -1,0 +1,40 @@
+{
+  "$schema": "https://raw.githubusercontent.com/AmineChr54/umbra/main/schemas/widget.schema.json",
+  "id": "arxiv-digest",
+  "name": "arXiv Digest",
+  "description": "How many papers arXiv announced today in your field, and the few that matter to you: ranked by your own weighted search, and learning from the papers you save, open and hide. Quantum physics by default; AI and other categories too.",
+  "author": "AmineChr54",
+  "version": "1.0.0",
+  "category": "info",
+  "manifestVersion": 1,
+  "entry": "index.html",
+  "preview": "preview.png",
+  "width": 380,
+  "height": 560,
+  "defaultPosition": { "x": 24, "y": 24 },
+  "permissions": { "hosts": ["rss.arxiv.org", "arxiv.org"] },
+  "options": {
+    "category": { "label": "Category", "type": "select", "default": "quant-ph",
+                  "choices": [
+                    { "value": "quant-ph", "label": "Quantum physics (quant-ph)" },
+                    { "value": "quant-ph+gr-qc", "label": "Quantum physics + gravity (quant-ph, gr-qc)" },
+                    { "value": "gr-qc", "label": "General relativity and quantum cosmology (gr-qc)" },
+                    { "value": "hep-th", "label": "High energy physics, theory (hep-th)" },
+                    { "value": "cs.AI", "label": "Artificial intelligence (cs.AI)" },
+                    { "value": "cs.LG", "label": "Machine learning (cs.LG)" },
+                    { "value": "cs.CL", "label": "Language models and NLP (cs.CL)" },
+                    { "value": "cs.AI+cs.LG", "label": "AI + machine learning (cs.AI, cs.LG)" },
+                    { "value": "custom", "label": "Other (type it below)" }
+                  ] },
+    "customCategory": { "advanced": true, "label": "Other category", "type": "text", "default": "",
+                        "hint": "Used when Category is Other. Any arXiv category, several joined with +. Example: physics.optics+physics.atom-ph" },
+    "query": { "label": "Search", "type": "text", "default": "",
+               "hint": "Comma separated. term^3 weighs a term, -term hides papers, author:Name follows a person, title: and cat: narrow it. Example: quantum gravity^3, collapse model^2, author:Diosi, -NISQ. Empty uses suggested topics for the category (wave-function collapse and quantum gravity for physics, AI research topics for cs)." },
+    "topN": { "label": "Papers to show", "type": "select", "default": "5",
+              "choices": [ { "value": "3", "label": "Top 3" }, { "value": "5", "label": "Top 5" }, { "value": "10", "label": "Top 10" } ] },
+    "showSnippet": { "label": "Show abstract snippets", "type": "toggle", "default": true,
+                     "hint": "Two lines of each abstract with your terms marked. Click a snippet to read the whole abstract." },
+    "learn": { "label": "Learn from my clicks", "type": "toggle", "default": true,
+               "hint": "Papers like the ones you save and open rank higher, papers like the ones you hide lower. Kept on this PC only. Reset it in the Saved tab." }
+  }
+}

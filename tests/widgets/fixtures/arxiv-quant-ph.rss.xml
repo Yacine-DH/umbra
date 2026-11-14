@@ -1,0 +1,232 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<rss xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" version="2.0">
+  <channel>
+    <title>quant-ph updates on arXiv.org</title>
+    <link>http://rss.arxiv.org/rss/quant-ph</link>
+    <description>quant-ph updates on the arXiv.org e-print archive.</description>
+    <atom:link href="http://rss.arxiv.org/rss/quant-ph" rel="self" type="application/rss+xml"/>
+    <docs>http://www.rssboard.org/rss-specification</docs>
+    <language>en-us</language>
+    <lastBuildDate>Fri, 21 Aug 2026 04:00:09 +0000</lastBuildDate>
+    <managingEditor>rss-help@arxiv.org</managingEditor>
+    <pubDate>Fri, 21 Aug 2026 00:00:00 -0400</pubDate>
+    <skipDays>
+      <day>Saturday</day>
+      <day>Sunday</day>
+    </skipDays>
+    <item>
+      <title>Non-Inertial Response of Correlations: From Scalar Bell Observables to an Extended Correlation Tensor</title>
+      <link>https://arxiv.org/abs/2608.19242</link>
+      <description>arXiv:2608.19242v1 Announce Type: new 
+Abstract: A standard Bell observable is a scalar correlation associated with a selected pair of local measurement directions. We formulate it as a projection of the correlation block of a complete two-particle tensor and distinguish two fundamentally different angular sectors. The central result is a reversal of the sign multiplying the angular cosine law: the photon sector has a positive prefactor, whereas the fermionic singlet sector has a negative prefactor. For coincident calibrated settings, the Bell observable is positive for photons and negative for fermions. This sign difference can be used for experimental identification of the two types of objects. For photons, this result follows from averaging two projection amplitudes over the complete non-inertial phase interval; the fermionic sign follows from the negative exchange holonomy of the complete phase--momentum sector. Mapping the phase directions to the physical axes of linear polarizers produces the corresponding double-angle dependence. Accordingly, the two cases are distinguished by their correlation tensors rather than by different definitions of the Bell observable. The photon Stokes correlation tensor has positive linear-polarization components and a negative circular-polarization component, whereas the fermionic singlet is described by an isotropic negative correlation tensor. A motion-dependent extended tensor and its generally frequency-dependent non-inertial susceptibility are introduced. A phase-synchronous experiment with mechanical and equivalent optical modulation is proposed to separate calibrated basis rotations from a residual response of the correlation structure. The same phase construction yields binary joint probabilities and recovers the Tsirelson bound, with opposite signed optimal CHSH combinations for the photon and fermionic sectors.</description>
+      <guid isPermaLink="false">oai:arXiv.org:2608.19242v1</guid>
+      <category>quant-ph</category>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 -0400</pubDate>
+      <arxiv:announce_type>new</arxiv:announce_type>
+      <dc:rights>http://creativecommons.org/licenses/by/4.0/</dc:rights>
+      <dc:creator>Timur F. Kamalov</dc:creator>
+    </item>
+    <item>
+      <title>The HALO Engine: $\mathcal{O}(1)$-Step Compilation and Localized String Rupture for Lattice Gauge Theories on Quantum Hardware</title>
+      <link>https://arxiv.org/abs/2608.19243</link>
+      <description>arXiv:2608.19243v1 Announce Type: new 
+Abstract: Simulating the real-time dynamics of lattice gauge theories (LGTs) represents a challenge for near-term quantum computing. Standard digital simulations rely on Trotterization schemes where circuit depth scales proportionally with lattice size, inevitably colliding with the coherence limits of noisy intermediate-scale quantum (NISQ) hardware. To deal with this depth-scaling bottleneck, we introduce the Hardware-Aware Lattice Optimization (HALO) compiler, an architecture that executes global time-evolution steps in an immutable $\mathcal{O}(1)$ circuit depth per Trotter step. Leveraging this framework, we elevate the digital simulation of the Quantum Link Model (QLM) truncation of the Schwinger model to the mesoscopic scale, utilizing a composite multi-qubit gauge link representation to support non-trivial electric field dynamics. We initialize and execute the non-perturbative dynamics of a heavily stretched $L=15$ meson string on a 16-qubit superconducting transmon processor. By coupling the $\mathcal{O}(1)$ compilation with Zero-Noise Extrapolation (ZNE), we suppress physical hardware decoherence to extract the precise dynamical crossover of localized pair creation, identifying the topological transition at $t \approx 0.790$ lattice units with an $18.3 \pm 2.2\%$ rupture probability. Furthermore, we empirically map the dynamical phase diagram of the mesoscopic lattice, pinpointing the effective confinement phase boundary at precisely $g_c = 1.0$. Finally, we extend the mathematical principles of the HALO engine to higher dimensions, presenting a scalable, constant-depth 2D unit-cell blueprint that eliminates the routing overhead of magnetic plaquettes, paving a direct algorithmic pathway toward the fault-tolerant simulation of two-dimensional Quantum Chromodynamics (QCD).</description>
+      <guid isPermaLink="false">oai:arXiv.org:2608.19243v1</guid>
+      <category>quant-ph</category>
+      <category>hep-lat</category>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 -0400</pubDate>
+      <arxiv:announce_type>new</arxiv:announce_type>
+      <dc:rights>http://arxiv.org/licenses/nonexclusive-distrib/1.0/</dc:rights>
+      <dc:creator>Abhiroop Gohar</dc:creator>
+    </item>
+    <item>
+      <title>Phase information beyond entanglement sudden death in coherence-to-entanglement conversion under post-gate noise</title>
+      <link>https://arxiv.org/abs/2608.19247</link>
+      <description>arXiv:2608.19247v1 Announce Type: new 
+Abstract: An ideal CNOT maps the phase of a coherent qubit onto the coherence between $\ket{00}$ and $\ket{11}$ of a two-qubit state, producing an output that carries both entanglement and estimable phase information. We ask how post-gate noise degrades these two quantities, and find that they are not lost together. For the phase-encoded X states generated by the protocol, the negativity is a thresholded difference of the surviving coherence $z=f\kappa$ and a population penalty $g$, vanishing once $f\kappa\le g$, while the phase quantum Fisher information (QFI) is the smooth ratio $F_\phi=4z^2/(a+b)$, which stays positive for any nonzero coherence. As a result there is an exact region of state space in which the output is separable but still phase-sensitive. We characterize this region, give the residual QFI $F_\phi^\star=4g_\star^2/(1-2g_\star)$ at entanglement death, and show that channels reaching death at the same coordinate share this residual, with global and independent local depolarization forming one such class and $F_\phi^\star=1/6$ at maximal input coherence. Four standard channels appear as trajectories through this common geometry, and asymmetric population transfer adds a third coordinate that changes the entanglement but leaves the QFI unchanged, which marks where the two-coordinate description applies. We identify a measurement that attains the bound and compare with a direct single-qubit probe, which is more precise under matched exposure; the results are therefore reference benchmarks for phase-information retention, not a claim of metrological advantage.</description>
+      <guid isPermaLink="false">oai:arXiv.org:2608.19247v1</guid>
+      <category>quant-ph</category>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 -0400</pubDate>
+      <arxiv:announce_type>new</arxiv:announce_type>
+      <dc:rights>http://creativecommons.org/licenses/by/4.0/</dc:rights>
+      <dc:creator>Asad Ali, Hashir Kuniyil, M. T Rahim, Saif Al-kuwari</dc:creator>
+    </item>
+    <item>
+      <title>Demons on a Budget: Adaptive Measurement Placement at the Entanglement Phase Transition</title>
+      <link>https://arxiv.org/abs/2608.19248</link>
+      <description>arXiv:2608.19248v1 Announce Type: new 
+Abstract: Monitored quantum circuits exhibit a measurement-induced phase transition between volume-law and area-law entanglement as a function of the measurement rate $p$. Prior work places measurements at random locations and treats the rate as the control parameter. We instead fix the measurement budget and vary the placement process, comparing random placement against hand-designed and learned policies in brickwork random Clifford circuits at matched budget. First, placement geometry matters more than placement information. A deterministic contiguous sweep cuts the half-cut entropy by a factor of 3.4 relative to random placement, while equal-coverage unstructured placement and a greedy policy with full state access do far worse. The effect is carried by spatial order alone: measuring the $k$ least recently measured sites gives $4.14 \pm 0.06$ bits with random tie-breaking and $1.29 \pm 0.04$ bits with position-ordered tie-breaking. Second, the sweep eliminates the transition rather than shifting it. Tripartite mutual information crossings recede as $p^* \propto 1/L$, the steady-state entropy saturates at an $L$-independent ceiling near $0.46/p$, and data for $64 \le L \le 512$ collapse onto the form $S = p^{-1} f(pL)$ predicted by a ballistic regrowth argument. Third, in stabilizer dynamics every outcome is deterministic or a fair coin flip, so the record's Shannon entropy is exactly countable; the sweep dominates the entropy-versus-record-cost frontier while paying the same roughly one bit per measurement as random placement. Policies trained by cross-entropy and proximal policy optimization do not find the sweep: score-based policies parameterize which sites to measure, not the order in which degenerate scores are resolved, and the effect lives in that order. The phase diagram of monitored dynamics is a property of the placement process, not only of the measurement rate.</description>
+      <guid isPermaLink="false">oai:arXiv.org:2608.19248v1</guid>
+      <category>quant-ph</category>
+      <category>cs.LG</category>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 -0400</pubDate>
+      <arxiv:announce_type>new</arxiv:announce_type>
+      <dc:rights>http://creativecommons.org/licenses/by/4.0/</dc:rights>
+      <dc:creator>Rohan Pandey</dc:creator>
+    </item>
+    <item>
+      <title>Adaptive Error Budget Allocation for Fault-Tolerant Quantum Resource Estimation: A Metaheuristic Approach</title>
+      <link>https://arxiv.org/abs/2608.19249</link>
+      <description>arXiv:2608.19249v1 Announce Type: new 
+Abstract: System-level resource estimation is a key component of fault-tolerant quantum computing (FTQC) toolchains. Its efficiency depends on how global error tolerance is allocated across logical operations, T-state distillation, and rotation synthesis to minimize physical resource overhead. The commonly used uniform-allocation strategy ignores circuit-specific structure and can overprovision inactive or less critical subsystems, leading to inflated space-time estimates. Prior work aims to address this limitation using supervised models trained on offline-generated datasets. However, this approach incurs additional data-generation costs and limits deployment flexibility. To overcome these drawbacks, we propose a training-free optimization framework that performs derivative-free search directly on the Azure Quantum Resource Estimator (AQRE), enabling instance-specific error budget allocation for previously unseen circuits without requiring offline training data. To evaluate robustness to optimizer choice, we instantiate the framework with two structurally distinct metaheuristics, simulated annealing and quantum particle swarm optimization. We evaluate our framework across 433 circuits spanning 2 to 91 qubits from 31 families in the MQT Bench suite. Across the benchmark suite, both methods reduce space-time cost by more than 33\% on average and agree within 1.34\% points, indicating that the gains are stable across different metaheuristic search strategies. Our analysis further finds that the optimization benefit is driven primarily by error-profile asymmetry rather than circuit scale, and the metric, Gini coefficient of optimized allocation, provides an interpretable diagnostic of expected improvement. Together, these results position adaptive error budget allocation as a system-software optimization layer for FTQC resource estimation pipeline.</description>
+      <guid isPermaLink="false">oai:arXiv.org:2608.19249v1</guid>
+      <category>quant-ph</category>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 -0400</pubDate>
+      <arxiv:announce_type>new</arxiv:announce_type>
+      <dc:rights>http://creativecommons.org/licenses/by-nc-nd/4.0/</dc:rights>
+      <dc:creator>Asif Akhtab Ronggon, Tasnuva Farheen</dc:creator>
+    </item>
+    <item>
+      <title>Quantum Gaussian processes for prediction of channel observations</title>
+      <link>https://arxiv.org/abs/2608.19306</link>
+      <description>arXiv:2608.19306v1 Announce Type: new 
+Abstract: Given a set of input states, we consider the task of predicting the expectation value of a Pauli observable at the output of an unknown quantum evolution, using only a limited number of measurements. Recently, quantum Gaussian process (QGP) regression was introduced for this task across various classes of unitary evolution. Here, we extend the QGP framework beyond unitary dynamics. In particular, we prove convergence of the channel's outputs to a QGP and derive the associated closed-form kernel under a uniform (Lebesgue measure) prior over quantum channels. The kernel's dimensional factor, however, dictates the required observation precision. While manageable when the channel and observable are restricted to small subsystems, exponential suppression precludes learning when the subsystem grows extensively with the system size. Since the Lebesgue prior is overly broad for many applications, we propose an empirical Bayes heuristic that replaces the dimensional factor with a learnable scale parameter while retaining the kernel's state-overlap correlation structure. In numerical simulations of up to 64 qubits, channel QGP regression with the Lebesgue kernel exhibits a strong inductive bias for local channels, enabling faithful extrapolation. For global 64-qubit channels, the rescaled kernel restores learnability, with predictions improving systematically with the shot budget. Results from a noisy quantum computer further demonstrate the robustness of QGP regression under experimental conditions. Beyond regression, we validate QGPs as Bayesian-optimization surrogates for state preparation under noisy XXZ dynamics.</description>
+      <guid isPermaLink="false">oai:arXiv.org:2608.19306v1</guid>
+      <category>quant-ph</category>
+      <category>cs.LG</category>
+      <category>stat.ML</category>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 -0400</pubDate>
+      <arxiv:announce_type>new</arxiv:announce_type>
+      <dc:rights>http://creativecommons.org/licenses/by/4.0/</dc:rights>
+      <dc:creator>Jonas J\"ager, Yaroslav Khmelnitskiy, Paolo Braccia, Artur Miroszewski, Diego Garc\'ia-Mart\'in, M. Cerezo, Piotr Czarnik</dc:creator>
+    </item>
+    <item>
+      <title>Benchmarking Quantum Machine Learning for Power-System Attack Detection: Evaluation Choices Decide the Outcome Before the Models Do</title>
+      <link>https://arxiv.org/abs/2608.15617</link>
+      <description>arXiv:2608.15617v1 Announce Type: cross 
+Abstract: Machine-learning detectors for power-system cyberattacks are themselves attack surfaces, and quantum machine learning has been proposed for them. We benchmark fidelity-kernel SVMs and variational classifiers against six tuned classical models on public power-system attack data (Mississippi State/ORNL), across white-box, transfer, decision-based black-box, and poisoning attacks. Our headline finding is methodological: the benchmark's answers are set by the evaluator's choices before the models. Eight choices -- six in the evaluation protocol, two in the tuning the benchmark itself runs -- each reversed or moved a conclusion at fixed models. The largest is the split: the row-level protocol scores 0.905 macro-F1 where holding whole source files out leaves 0.594, and in the capped matched-dimensionality regime the quantum arm sits within noise of chance with the classical arm 0.024 above it. A fidelity kernel looks most robust until attacked directly (retention 0.886 to 0.064); a mis-fitted surrogate manufactures a 10x asymmetry; an unseeded black-box attack moves 75% between restarts. A positive control explains the accuracy null: the labels, not the pipeline. We give the control that catches each choice and release the seeded benchmark.</description>
+      <guid isPermaLink="false">oai:arXiv.org:2608.15617v1</guid>
+      <category>cs.LG</category>
+      <category>cs.CR</category>
+      <category>quant-ph</category>
+      <category>stat.ML</category>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 -0400</pubDate>
+      <arxiv:announce_type>cross</arxiv:announce_type>
+      <dc:rights>http://arxiv.org/licenses/nonexclusive-distrib/1.0/</dc:rights>
+      <dc:creator>Md Rezwanul Islam</dc:creator>
+    </item>
+    <item>
+      <title>Relational Wigner-Smith Duration in Wheeler-DeWitt Scattering</title>
+      <link>https://arxiv.org/abs/2608.19261</link>
+      <description>arXiv:2608.19261v1 Announce Type: cross 
+Abstract: A closed Friedmann-Lemaitre-Robertson-Walker Wheeler-DeWitt model is formulated as an exact reflection problem. The derivative of its reflection phase defines a relational crossing duration whose first two clock moments follow from a covariant scalar-clock observable. An analytic expression is obtained for this duration, its classical recollapse limit, and the leading quantum correction. A finite spectral packet also gives an operational, equal-prior minimum error probability for distinguishing the two orientations of recollapse with a geometric reading. The construction is extended to a bounded finite quantum detector. Its multichannel reflection matrix yields probe transitions, spectral-probe correlations, and a matrix duration. A direct weak-coupling calculation verifies the predicted transition and duration scalings. Scalar-clock conditioning and oriented geometric sections are shown to be local representations of the same positive-frequency Dirac sector. These results define duration and transition observables entirely through correlations and scattering records of a stationary constrained state, without introducing a background clock.</description>
+      <guid isPermaLink="false">oai:arXiv.org:2608.19261v1</guid>
+      <category>gr-qc</category>
+      <category>hep-th</category>
+      <category>quant-ph</category>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 -0400</pubDate>
+      <arxiv:announce_type>cross</arxiv:announce_type>
+      <dc:rights>http://arxiv.org/licenses/nonexclusive-distrib/1.0/</dc:rights>
+      <dc:creator>Daulet Berkimbayev</dc:creator>
+    </item>
+    <item>
+      <title>On trace invariance and energy-dependent entanglement in muon decay</title>
+      <link>https://arxiv.org/abs/2608.19287</link>
+      <description>arXiv:2608.19287v1 Announce Type: cross 
+Abstract: We revisit a proposed correction to the muon magnetic anomaly measurement and compare it with energy-binned scans reported by the Fermilab $g-2$ collaboration. The central point is that, for a relativistic three-body decay inferred from an ensemble of detected positrons, the relevant neutrino partial trace is defined on the asymptotic state at the detector, not on an idealised state at the decay vertex. Because the fitted positron sample mixes events with different decay times, flight times, energies and acceptances, tracing over the unobserved neutrino helicities leaves a time-dependent mixed state in the observed sector. Using angular-momentum balance, we obtain an energy-dependent correction in the positron energy interval $E_p \in (1.5,2.9)$ GeV. The corrected experimental interval for the muon anomaly moves towards the BaBar- and $\tau$-based determinations, while remaining compatible at the $1\sigma$ level with both data-driven and lattice-based Standard Model evaluations. We then fit digitised public $R(E_p)$ scans for Fermilab's runs $1$ to $6$, with two one-parameter hypotheses: a constant shift and the entanglement-motivated energy-dependent shift. Within digitisation accuracy, the differences in $\chi^2$ remain modest and the current binned data do not provide decisive discrimination between them.</description>
+      <guid isPermaLink="false">oai:arXiv.org:2608.19287v1</guid>
+      <category>hep-ph</category>
+      <category>quant-ph</category>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 -0400</pubDate>
+      <arxiv:announce_type>cross</arxiv:announce_type>
+      <dc:rights>http://arxiv.org/licenses/nonexclusive-distrib/1.0/</dc:rights>
+      <dc:creator>Saulo Carneiro, Fernando C\'esar Sobrinho</dc:creator>
+    </item>
+    <item>
+      <title>Criteria for Davies Irreducibility of Markovian Quantum Dynamics</title>
+      <link>https://arxiv.org/abs/2310.17641</link>
+      <description>arXiv:2310.17641v4 Announce Type: replace 
+Abstract: The dynamics of Markovian open quantum systems are described by Lindblad master equations, generating a quantum dynamical semigroup. An important concept for such systems is (Davies) irreducibility, i.e., the question whether there exist non-trivial invariant subspaces. Steady states of irreducible systems are unique and faithful, i.e., they have full rank. In the 1970s, Frigerio showed that a system is irreducible if the Lindblad operators span a self-adjoint set with trivial commutant. We discuss a more general and powerful algebraic criterion, showing that a system is irreducible if and only if the multiplicative algebra generated by the Lindblad operators $L_a$ and the operator $K=iH+\sum_a L^\dagger_aL_a/2$, involving the Hamiltonian $H$, is the entire operator space. Examples for two-level systems, show that a change of Hamiltonian terms as well as the addition or removal of dissipators can render a reducible system irreducible and vice versa. Examples for many-body systems show that a large class of spin chains can be rendered irreducible by dissipators on just one or two sites. Additionally, we discuss the decisive differences between (Davies) reducibility and Evans reducibility for quantum channels and dynamical semigroups which has lead to some confusion in the recent physics literature, especially, in the context of boundary-driven systems. We give a criterion for quantum reducibility in terms of associated classical Markov processes and, lastly, discuss the relation of the main result to the stabilization of pure states and argue that systems with local Lindblad operators cannot stabilize pure Fermi-sea states.</description>
+      <guid isPermaLink="false">oai:arXiv.org:2310.17641v4</guid>
+      <category>quant-ph</category>
+      <category>cond-mat.stat-mech</category>
+      <category>math-ph</category>
+      <category>math.MP</category>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 -0400</pubDate>
+      <arxiv:announce_type>replace</arxiv:announce_type>
+      <dc:rights>http://arxiv.org/licenses/nonexclusive-distrib/1.0/</dc:rights>
+      <arxiv:DOI>10.1088/1751-8121/ad2a1e</arxiv:DOI>
+      <arxiv:journal_reference>J. Phys. A: Math. Theor. 57, 115301 (2024)</arxiv:journal_reference>
+      <dc:creator>Yikang Zhang, Thomas Barthel</dc:creator>
+    </item>
+    <item>
+      <title>Influence of Trotterization error on single-particle tunneling</title>
+      <link>https://arxiv.org/abs/2312.04735</link>
+      <description>arXiv:2312.04735v3 Announce Type: replace 
+Abstract: Existing superconducting quantum devices struggle to simulate spatial quantum tunneling as it is exponentially slow and inherently nonlocal. The Suzuki-Trotter algorithm (STA) offers a practical solution for existing quantum hardware by approximating nonlocal evolution with a local two-qubit gate sequence that requires no ancilla qubits and preserves physical interpretability. However, estimating the required gate count from naive fidelity-based error bounds yields values exceeding the constraints imposed by noise and decoherence in real devices. Here, we fully characterize STA for a semiclassical tunneling model by adapting the Wentzel-Kramers-Brillouin approximation. We find that, in the general case, tunneling is suppressed by resonance detuning. In contrast, if STA preserves the target resonance, tunneling rates are exponentially enhanced via non-perturbative renormalization, dramatically reducing the gate count required to observe tunneling and thus benefiting from large Trotter steps$\unicode{x2013}$equally natural for existing quantum hardware. However, for the latter regime, we further find that Floquet mixing of quasi-energy levels reconstructs the low-energy spectrum and strongly deforms tunneling dynamics by introducing additional allowed regions. Based on the semiclassical picture, we conjecture interplay of tunneling and large-step STA in the presence of topology-altering modifications, such as staggered potential modulation$\unicode{x2013}$a subject of future work. Our findings enable direct tunneling simulations on existing superconducting platforms, providing a controlled platform for studying the nontrivial interplay of tunneling and STA, with the possibility of addressing the effects of noise, disorder, and interaction.</description>
+      <guid isPermaLink="false">oai:arXiv.org:2312.04735v3</guid>
+      <category>quant-ph</category>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 -0400</pubDate>
+      <arxiv:announce_type>replace</arxiv:announce_type>
+      <dc:rights>http://creativecommons.org/licenses/by/4.0/</dc:rights>
+      <dc:creator>Anton V. Khvalyuk, Kostyantyn Kechedzhi, Vadim S. Smelyansky, Lev B. Ioffe</dc:creator>
+    </item>
+    <item>
+      <title>Convergence guarantee for linearly-constrained combinatorial optimization with a quantum alternating operator ansatz</title>
+      <link>https://arxiv.org/abs/2409.18829</link>
+      <description>arXiv:2409.18829v2 Announce Type: replace 
+Abstract: We present a quantum alternating operator ansatz (QAOA$^+$) that solves a class of linearly constrained optimization problems by evolving a quantum state within a Hilbert subspace of feasible problem solutions. Our main focus is on a class of problems with a linear constraint containing sequential integer coefficients. For problems in this class, we devise QAOA$^+$ circuits that provably converge to the optimal solution as the number of circuit layers increases, generalizing previous guarantees for solving unconstrained problems or problems with symmetric constraints. Our approach includes asymmetric ``mixing" Hamiltonians that drive transitions between feasible states, as well as a method to incorporate an arbitrary known feasible solution as the initial state, each of which can be applied beyond the specific linear constraints considered here. This analysis extends QAOA$^+$ performance guarantees to a more general set of linearly-constrained problems and provides tools for future generalizations.</description>
+      <guid isPermaLink="false">oai:arXiv.org:2409.18829v2</guid>
+      <category>quant-ph</category>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 -0400</pubDate>
+      <arxiv:announce_type>replace</arxiv:announce_type>
+      <dc:rights>http://creativecommons.org/licenses/by-nc-nd/4.0/</dc:rights>
+      <dc:creator>Brayden Goldstein-Gelb, Phillip C. Lotshaw</dc:creator>
+    </item>
+    <item>
+      <title>An Accurate Lanczos Method for the Matrix Product State Representation</title>
+      <link>https://arxiv.org/abs/2504.21786</link>
+      <description>arXiv:2504.21786v5 Announce Type: replace-cross 
+Abstract: We improve the convergence of the Lanczos algorithm using the matrix product state representation. As an alternative to the density matrix renormalization group (DMRG), the Lanczos algorithm avoids local minima and can directly find multiple low-lying eigenstates. However, its performance and accuracy are affected by the truncation required to maintain the efficiency of the tensor network representation. In this work, we propose the modified thick-block Lanczos method to enhance the convergence of the Lanczos algorithm with MPS representation. We benchmark our method on one-dimensional instances of the Fermi-Hubbard model and the Heisenberg model in an external field, using numerical experiments targeting the first five lowest eigenstates. Across these tests, our approach attains the best possible accuracy permitted by the given bond dimension. This work establishes the Lanczos method as a reliable and accurate framework for finding multiple low-lying states within a tensor-network representation</description>
+      <guid isPermaLink="false">oai:arXiv.org:2504.21786v5</guid>
+      <category>cond-mat.str-el</category>
+      <category>physics.comp-ph</category>
+      <category>quant-ph</category>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 -0400</pubDate>
+      <arxiv:announce_type>replace-cross</arxiv:announce_type>
+      <dc:rights>http://creativecommons.org/licenses/by/4.0/</dc:rights>
+      <dc:creator>Yu Wang, Zhangyu Yang, Xingyao Wu, Christian B. Mendl</dc:creator>
+    </item>
+    <item>
+      <title>Small Clusters of $^4$He Atoms in Finite-Cutoff Effective Field Theory</title>
+      <link>https://arxiv.org/abs/2511.12538</link>
+      <description>arXiv:2511.12538v2 Announce Type: replace-cross 
+Abstract: Small clusters of $^4$He atoms are benchmark systems for universal few-body physics near the unitary limit. We study these systems using a finite-cutoff effective field theory calibrated to low-energy observables from the realistic LM2M2 potential. The chosen two-body cutoff reproduces both the atom--atom scattering length and effective range, while a regulated three-body interaction is adjusted to the trimer and tetramer ground-state energies. We distinguish total binding energies from the one-atom separation energies $S_A^*=B_A^*-B_{A-1}$ of the shallow excited states. Ground-state energies through $A=8$ are reproduced at the few-percent level, but threshold-sensitive observables are less accurate. In particular, the calculated tetramer separation energy is $S_4^*=2.85$~mK, compared with $0.92$--$0.96$~mK in converged LM2M2 calculations, and the atom--trimer scattering length differs substantially from modern LM2M2 benchmarks. For $A\ge5$, the available excited-state benchmarks are sparse and strongly method dependent. Comparison with another soft-core interaction suggests that the discrepancies primarily reflect short-distance physics and higher-order operators omitted from the finite-cutoff Hamiltonian rather than numerical convergence of the stochastic variational calculation. Finite-cutoff EFT therefore provides an efficient description of ground-state systematics, whereas shallow excited states and atom--cluster scattering require a controlled higher-order and cutoff-dependence analysis.</description>
+      <guid isPermaLink="false">oai:arXiv.org:2511.12538v2</guid>
+      <category>cond-mat.quant-gas</category>
+      <category>physics.atom-ph</category>
+      <category>quant-ph</category>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 -0400</pubDate>
+      <arxiv:announce_type>replace-cross</arxiv:announce_type>
+      <dc:rights>http://creativecommons.org/licenses/by-nc-nd/4.0/</dc:rights>
+      <dc:creator>Betzalel Bazak</dc:creator>
+    </item>
+    <item>
+      <title>On the existence of the KMS spectral gap in Gaussian quantum Markov semigroups</title>
+      <link>https://arxiv.org/abs/2512.23414</link>
+      <description>arXiv:2512.23414v2 Announce Type: replace-cross 
+Abstract: In arXiv:2405.04947, it was shown that a Gaussian quantum Markov semigroup on the $d$-mode bosonic Fock space with a unique faithful normal invariant state has a positive GNS spectral gap if and only if the matrix $[U \overline{V}]$, formed from the coefficients of the Kraus operators, has $2d$ linearly independent columns. In this paper, we establish the corresponding criterion for the KMS spectral gap. After standardizing the invariant Gaussian state and grouping the modes according to their inverse temperatures, let $U_n$ and $V_n$ denote the submatrices of $U$ and $V$, respectively, corresponding to the $n$-th equal-temperature block. We prove that $\ker U_n=\ker V_n$ for every $n$, and that the KMS spectral gap is positive if and only if this common kernel is trivial for every equal-temperature block. Thus, whereas the GNS spectral gap requires a global maximal-rank condition on the Kraus coefficients, the KMS spectral gap requires maximal column rank only within each equal-temperature block.</description>
+      <guid isPermaLink="false">oai:arXiv.org:2512.23414v2</guid>
+      <category>math.FA</category>
+      <category>quant-ph</category>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 -0400</pubDate>
+      <arxiv:announce_type>replace-cross</arxiv:announce_type>
+      <dc:rights>http://creativecommons.org/licenses/by/4.0/</dc:rights>
+      <dc:creator>Zheng Li</dc:creator>
+    </item>
+    <item>
+      <title>Conditions for Unitarity in Timeless Quantum Theory</title>
+      <link>https://arxiv.org/abs/2504.01579</link>
+      <description>arXiv:2504.01579v4 Announce Type: replace 
+Abstract: Quantum timeless approaches solve the problem of time by recovering the usual unitary evolution of quantum theory relative to a clock in a stationary quantum Universe. For some Hamiltonians of the Universe, such as those including an interaction term with the clock, the dynamics is substantially altered and can be non-unitary. This work derives necessary and sufficient conditions for the relative dynamics to be unitary and finds the general form of the unitary evolution operator. A physical interpretation of these conditions is given in terms of the clock's rate. Unitary dynamics is associated with rates that are constant in time and independent of the clock's internal structure.</description>
+      <guid isPermaLink="false">oai:arXiv.org:2504.01579v4</guid>
+      <category>quant-ph</category>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 -0400</pubDate>
+      <arxiv:announce_type>replace</arxiv:announce_type>
+      <dc:rights>http://arxiv.org/licenses/nonexclusive-distrib/1.0/</dc:rights>
+      <arxiv:DOI>10.1103/kpzt-jvnk</arxiv:DOI>
+      <arxiv:journal_reference>Phys. Rev. D 114, 045012 (2026)</arxiv:journal_reference>
+      <dc:creator>Simone Rijavec</dc:creator>
+    </item>
+  </channel>
+</rss>

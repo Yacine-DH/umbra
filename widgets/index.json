@@ -2,6 +2,30 @@
   "schema": 1,
   "widgets": [
     {
+      "id": "arxiv-digest",
+      "name": "arXiv Digest",
+      "description": "How many papers arXiv announced today in your field, and the few that matter to you: ranked by your own weighted search, and learning from the papers you save, open and hide. Quantum physics by default; AI and other categories too.",
+      "author": "AmineChr54",
+      "version": "1.0.0",
+      "category": "info",
+      "manifestVersion": 1,
+      "preview": "preview.png",
+      "hosts": [
+        "rss.arxiv.org",
+        "arxiv.org"
+      ],
+      "files": [
+        "feed.js",
+        "index.html",
+        "learn.js",
+        "main.js",
+        "preview.png",
+        "query.js",
+        "style.css",
+        "widget.json"
+      ]
+    },
+    {
       "id": "calendar-glance",
       "name": "Calendar glance",
       "description": "Upcoming events (1 day to 1 month, default 1 week) from an iCal (.ics) link, with recurring events. Works with Google, Outlook, Zoho, Proton or a raw GitHub link.",

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>arXiv Digest</title>
+  <link rel="stylesheet" href="https://umbra.local/shared/umbra.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="ax" id="app">
+    <header class="head">
+      <div class="top">
+        <span class="src" id="src">arXiv</span>
+        <span class="date num" id="date"></span>
+        <umbra-status placement="below-end"></umbra-status>
+      </div>
+      <div class="hero">
+        <div class="count">
+          <span class="big num" id="big">–</span>
+          <span class="unit" id="unit">papers</span>
+        </div>
+        <svg class="spark" id="spark" viewBox="0 0 96 34" preserveAspectRatio="none" aria-hidden="true"></svg>
+      </div>
+      <div class="break num" id="break">&nbsp;</div>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab on" id="tab-today" data-view="today" data-no-drag role="tab" type="button">Top picks <span class="n num" id="n-today"></span></button>
+      <button class="tab" id="tab-saved" data-view="saved" data-no-drag role="tab" type="button">Saved <span class="n num" id="n-saved"></span></button>
+    </nav>
+
+    <section class="list" id="list" aria-live="polite"></section>
+
+    <footer class="foot" id="foot">
+      <span class="foot-l num" id="foot-l"></span>
+      <button class="foot-r" id="foot-r" data-no-drag type="button" hidden></button>
+    </footer>
+  </main>
+
+  <script src="https://umbra.local/shared/umbra.js"></script>
+  <script src="feed.js"></script>
+  <script src="query.js"></script>
+  <script src="learn.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
