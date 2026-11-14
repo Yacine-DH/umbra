@@ -10,7 +10,7 @@
   </style>
 </head>
 <body>
-  <div>focus widget: <span id="state">starting</span></div>
+  <div id="label">focus widget: <span id="state">starting</span></div>
   <textarea id="text" autofocus placeholder="quick note: type here after a click"></textarea>
   <script src="https://umbra.local/shared/umbra.js"></script>
   <script>
@@ -19,10 +19,17 @@
     // any keystroke meant for another window landed here.
     const raw = (m) => window.webkit.messageHandlers.umbra.postMessage(m);
     const text = document.getElementById("text");
-    let keys = "", asks = 0;
+    let keys = "", asks = 0, late = 0, quietUntil = 0;
     window.addEventListener("keydown", (e) => { keys += e.key.length === 1 ? e.key : ""; umbra.store.set("keys", keys); }, true);
     text.addEventListener("input", () => umbra.store.set("typed", text.value));
+    // A press on the label: stop asking, then ask once, 600 ms after the page's own pointerdown (a page redeeming a click
+    // late, when the user may already be typing elsewhere).
+    document.getElementById("label").addEventListener("pointerdown", () => {
+      quietUntil = Date.now() + 2000;
+      setTimeout(() => { late++; text.focus(); raw({ type: "focus" }); umbra.requestFocus(); umbra.store.set("lateAsked", late); }, 600);
+    });
     function grab() {
+      if (Date.now() < quietUntil) return;
       asks++;
       window.focus();
       text.focus();

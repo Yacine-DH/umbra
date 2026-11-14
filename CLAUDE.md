@@ -122,9 +122,10 @@ New automation goes through the control protocol so the CLI, MCP and tests stay 
   inherits its command approvals (per id + command hash). Local installs are recorded in `local-installs.json` and never get catalog updates.
 - Widget windows never activate themselves. They get keyboard focus only right after a physical mouse press on them
   (`WidgetWindow.TakeKeyboardFocus`), so a widget can't pull focus while the user types elsewhere.
-  On Linux the policy is `FocusGate` (one for all pin backends): granted only when the page asks within 1 s of a press GTK
-  delivered to that view, one press one grant; revoked when the window loses the keyboard, when a grant isn't taken within
-  1.5 s, and when the window is hidden or closed. Backends only switch "focusable": X11 input hint (and no `WM_TAKE_FOCUS`,
+  On Linux the policy is `FocusGate` (one for all pin backends): granted only while a press GTK delivered to that view is
+  current (button still down, at most 1 s, or released at most 250 ms ago; any button, as on Windows), one press one grant;
+  revoked when the window loses the keyboard, when a grant isn't taken within 1.5 s, when the window is hidden or closed,
+  and at once when it becomes active without a grant (X11 then moves the focus off it). Backends only switch "focusable": X11 input hint (and no `WM_TAKE_FOCUS`,
   so a click alone never focuses), layer-shell keyboard mode NONE/ON_DEMAND, the GNOME extension's `SetFocusable` (which
   re-checks the compositor's own press and hands any other focus back).
 - A widget can't resize or zoom itself: the page's `resize` and `zoom` messages are honoured only in edit mode, for an

@@ -107,6 +107,7 @@ sealed unsafe partial class X11Pin : IDesktopPin
     [LibraryImport(X11)] private static partial int XFree(IntPtr data);
     [LibraryImport(X11)] private static partial int XRaiseWindow(IntPtr display, nuint window);
     [LibraryImport(X11)] private static partial int XSetInputFocus(IntPtr display, nuint window, int revertTo, nuint time);
+    [LibraryImport(X11)] private static partial int XGetInputFocus(IntPtr display, out nuint focus, out int revertTo);
     [LibraryImport(X11)] private static partial int XQueryPointer(IntPtr display, nuint window, out nuint root, out nuint child,
         out int rootX, out int rootY, out int winX, out int winY, out uint mask);
 
@@ -256,6 +257,11 @@ sealed unsafe partial class X11Pin : IDesktopPin
         if (xid == 0) return;
         var hints = new XWMHints { Flags = InputHint, Input = on ? 1 : 0 };
         XSetWMHints(_display, xid, &hints);
+        // Not focusable while it has the keyboard (the user moved on, or something focused it without a grant): take it
+        // off the window. To None, not PointerRoot (that would send keys to the window under the pointer, maybe this one);
+        // the window manager then falls back to the window the user had.
+        if (!on && XGetInputFocus(_display, out var focus, out _) != 0 && focus == xid)
+            XSetInputFocus(_display, 0 /* None */, 0 /* RevertToNone */, 0 /* CurrentTime */);
         XFlush(_display);
     }
 

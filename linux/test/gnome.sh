@@ -206,6 +206,13 @@ EOF
   check "clicked the widget and 200 ms later the normal window: it keeps the focus over 2 s of asking (has: $(focus))" 'focus_is "a normal window" && never_umbra 2'
   type "q1"; sleep 0.5
   check "typing goes to the normal window, not the widget (keys|typed: $(fkeys))" 'grep -q "q1" "$tmp/other-typed.txt" && [ "$(fkeys)" = "hi|hi" ]'
+  # A late redeem: a click on its label (the page asks once, 600 ms later), then the normal window at ~300 ms.
+  flate() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("lateAsked",0))' "$fdata" 2>/dev/null || echo 0; }
+  lb=$(flate)
+  click 320 608; sleep 0.05; clickon "a normal window"; sleep 1
+  check "the page asked late, after the click on the normal window (late asks $lb -> $(flate)), and did not get the keyboard (has: $(focus))" '[ "$(flate)" -gt "$lb" ] && focus_is "a normal window" && never_umbra 1'
+  type "r2"; sleep 0.5
+  check "typing goes to the normal window, not the widget (keys|typed: $(fkeys))" 'grep -q "r2" "$tmp/other-typed.txt" && [ "$(fkeys)" = "hi|hi" ]'
   # The focus falling back when the active window closes, with the pointer resting over the widget (no press). Every
   # other normal window is closed first, so the fallback has only the widget (or the stand-in desktop window) to go to:
   # the widget must not keep it, and the extension must not count that focus as a press.

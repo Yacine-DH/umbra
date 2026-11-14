@@ -33,6 +33,7 @@ sealed partial class WidgetWindow
         {
             _pressedAt = Environment.TickCount64;
             _focus.Pressed(_pressedAt);
+            WatchRelease(_pressedAt);
             // The click gate of the host prompts (notifications, later camera and pictures): a left press outside edit mode.
             if (g.GetCurrentButton() == 1 && !_app.EditMode) _leftPressAt = _pressedAt;
         };
@@ -76,9 +77,14 @@ sealed partial class WidgetWindow
             switch (e.Pspec.GetName())
             {
                 case "is-active" when _window.IsActive:
-                    // Without a grant the backend already keeps the window unfocusable (the GNOME extension hands a
-                    // click-to-focus back by itself unless the grant follows); this is only worth a line in the log.
-                    if (!_focus.Activated()) Log.Verbose($"[{Instance}] became active without a focus grant");
+                    // Without a grant (a window manager that ignores the input hint, a late focus event): the backend
+                    // takes the keyboard away again (X11 moves the focus off the window; layer-shell NONE drops it; the
+                    // GNOME extension hands it back to the user's window, as it already does for a click-to-focus).
+                    if (!_focus.Activated())
+                    {
+                        Log.Write($"[{Instance}] became active without a focus grant: taking the keyboard back");
+                        _app.Pin.SetFocusable(_window, false);
+                    }
                     break;
                 case "is-active":
                     _focus.Deactivated();
@@ -89,6 +95,23 @@ sealed partial class WidgetWindow
                     break;
             }
         };
+    }
+
+    /// <summary>
+    /// Tells the focus gate when the button of this press goes up, read from the display server like the drag does (GTK's
+    /// click gesture on the web view never reports the release: the view takes the sequence). Unknown counts as up.
+    /// </summary>
+    void WatchRelease(long pressedAt)
+    {
+        bool Check()
+        {
+            if (_closed || _pressedAt != pressedAt) return false;
+            var now = Environment.TickCount64;
+            if (_app.Pin.Pointer() is { ButtonDown: true } && now - pressedAt <= FocusGate.PressMs) return true;
+            _focus.Released(now);
+            return false;
+        }
+        if (Check()) UiThread.Every(16, Check);
     }
 
     /// <summary>Edit mode turned on or off (called with every settings push): an unused press or a pending grant ends.</summary>
@@ -177,10 +200,11 @@ sealed partial class WidgetWindow
     /// </summary>
     void TakeKeyboardFocus()
     {
-        switch (_focus.Request(Environment.TickCount64, _window.GetVisible(), out var token))
+        var down = _app.Pin.Pointer() is { ButtonDown: true };
+        switch (_focus.Request(Environment.TickCount64, _window.GetVisible(), down, out var token))
         {
             case FocusDecision.Ignore:
-                Log.Verbose($"[{Instance}] focus ignored: no unused mouse press on the widget");
+                Log.Verbose($"[{Instance}] focus ignored: no current, unused mouse press on the widget");
                 return;
             case FocusDecision.Inside:
                 _view.GrabFocus();

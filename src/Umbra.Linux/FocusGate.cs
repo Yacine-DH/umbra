@@ -18,8 +18,11 @@ enum FocusDecision
 /// <list type="bullet">
 /// <item>Not focusable is the normal state: a window never takes the keyboard by appearing, by a page call (<c>focus()</c>,
 /// <c>autofocus</c>, <c>umbra.requestFocus()</c>, a raw <c>focus</c> message) or on a timer.</item>
-/// <item>Granted only when the page asks within <see cref="PressMs"/> of a physical mouse press GTK delivered to this view,
-/// and one press is one grant: a page asking again later (after the user clicked elsewhere) gets nothing.</item>
+/// <item>Granted only while a physical mouse press GTK delivered to this view is current: the button is still down (at
+/// most <see cref="PressMs"/>), or it was released at most <see cref="ReleaseMs"/> ago. One press is one grant: a page
+/// asking again later gets nothing. Holding a press briefly is what keeps a page from redeeming a click on its label
+/// after the user went on to click another application (Windows checks the foreground window instead). Any button
+/// counts, as on Windows (<c>WM_MOUSEACTIVATE</c>).</item>
 /// <item>Revoked when the window loses the keyboard (the user clicked or switched elsewhere), when a grant was not taken
 /// within <see cref="LeaseMs"/> (so a later focus fallback cannot hand it the keyboard), when the window is hidden or
 /// closed (a disabled widget's window closes). Edit mode turning on or off ends an unused press and a pending grant; a
@@ -29,13 +32,17 @@ enum FocusDecision
 /// </summary>
 sealed class FocusGate
 {
-    /// <summary>How long after a physical press the page may ask for the keyboard.</summary>
+    /// <summary>The longest a press may have started before the page asks, button still down.</summary>
     public const long PressMs = 1000;
+
+    /// <summary>How long after the release of that press the page may still ask (its pointerdown/click handler).</summary>
+    public const long ReleaseMs = 250;
 
     /// <summary>How long a grant keeps the window focusable without it becoming active.</summary>
     public const uint LeaseMs = 1500;
 
     long _pressAt = long.MinValue / 2;
+    long _releasedAt = long.MinValue / 2;
     bool _pressUnused;
     bool _granted;   // the backend was told "focusable"
     bool _active;    // the window has the keyboard
@@ -49,23 +56,36 @@ sealed class FocusGate
     public void Pressed(long now)
     {
         _pressAt = now;
+        _releasedAt = long.MinValue / 2;
         _pressUnused = true;
     }
 
-    /// <summary>The page asked for the keyboard. <paramref name="token"/> is the lease for <see cref="LeaseExpired"/>.</summary>
-    public FocusDecision Request(long now, bool shown, out long token)
+    /// <summary>The button of that press went up.</summary>
+    public void Released(long now)
+    {
+        if (_pressUnused && now >= _pressAt) _releasedAt = now;
+    }
+
+    /// <summary>
+    /// The page asked for the keyboard. <paramref name="buttonDown"/>: a mouse button is physically down now, as the
+    /// display server reports it. <paramref name="token"/> is the lease for <see cref="LeaseExpired"/>.
+    /// </summary>
+    public FocusDecision Request(long now, bool shown, bool buttonDown, out long token)
     {
         token = 0;
         if (_closed || !shown) return FocusDecision.Ignore;
         if (_active) return FocusDecision.Inside;
         if (!_pressUnused || now - _pressAt is < 0 or > PressMs) return FocusDecision.Ignore;
+        var released = _releasedAt >= _pressAt;
+        var current = released ? now - _releasedAt is >= 0 and <= ReleaseMs : buttonDown;
+        if (!current) return FocusDecision.Ignore;
         _pressUnused = false; // one press, one grant
         _granted = true;
         token = ++_lease;
         return FocusDecision.Grant;
     }
 
-    /// <summary>The window got the keyboard. Returns false when it was never granted (the backend must take it back).</summary>
+    /// <summary>The window got the keyboard. Returns false when it was never granted: the host takes it back.</summary>
     public bool Activated()
     {
         if (!_granted) return false;
