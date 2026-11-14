@@ -123,9 +123,9 @@ ctl capture settings:about "$out/settings-open.png"
 is_png "$out/settings-open.png" && pass 'capture of the open window' || fail "capture with the window open: $ctl_out"
 
 step 'not on Linux yet: a clear message, not a crash'
-ctl peek
-if [ $ctl_code != 0 ] && echo "$ctl_out" | grep -qi "not available on Linux yet"; then pass "peek: $ctl_out"
-else fail "peek should fail clearly, got exit $ctl_code: $ctl_out"; fi
+ctl peek 1
+if [ $ctl_code = 0 ] && echo "$ctl_out" | grep -q '"peeking": true'; then pass "peek works on X11 (#361)"
+else fail "peek should lift the widgets on X11, got exit $ctl_code: $ctl_out"; fi
 ctl status
 [ $ctl_code = 0 ] && pass 'umbra still answers' || fail 'umbra stopped answering after the unsupported commands'
 
