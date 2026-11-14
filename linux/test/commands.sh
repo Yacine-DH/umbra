@@ -13,7 +13,10 @@ here=$(cd "$(dirname "$0")" && pwd)
   result() { $UMBRACTL data $w result; }
   clear() { $UMBRACTL data $w --remove result >/dev/null 2>&1; }
   # Approve one command through the prompt, the way a person would: click the widget, move onto Allow, click it.
+  last_prompt=0
   approve() {
+    # A widget gets at most one prompt per 20 s (CommandService.MinPromptInterval): wait out the previous one.
+    wait_s=$((last_prompt + 21 - $(date +%s))); [ "$wait_s" -gt 0 ] && sleep "$wait_s"
     $UMBRACTL data $w next "$1" >/dev/null; clear
     xdotool mousemove 450 350 click 1; sleep 1.5
     win=$(xdotool search --name "allow this widget to run" | head -1)
@@ -25,6 +28,7 @@ here=$(cd "$(dirname "$0")" && pwd)
     xdotool mousemove $((ax - 200)) $((ay - 100)); sleep 0.3
     xdotool mousemove $ax $ay; sleep 1.2
     xdotool click 1; sleep 2
+    last_prompt=$(date +%s)
   }
   $UMBRACTL data $w next hello >/dev/null; $UMBRACTL data $w go 1 >/dev/null; sleep 1.5
   result | grep -q "Click the widget" && echo "ok    a first run without a click is refused" || fail "no-click run: $(result)"
@@ -41,7 +45,7 @@ here=$(cd "$(dirname "$0")" && pwd)
   for i in $(seq 1 20); do result | grep -q "timedOut" && break; sleep 0.5; done
   result | grep -q "\"timedOut\": true" && echo "ok    the hanging command timed out" || fail "hang: $(result)"
   sleep 1
-  if pgrep -f "sleep 600" >/dev/null; then pgrep -af "sleep 600"; fail "children of the timed-out command survived"; fi
+  if pgrep -f "^sleep 600" >/dev/null; then pgrep -af "^sleep 600"; fail "children of the timed-out command survived"; fi
   echo "ok    its children were killed with it (no sleep 600 left)"
   echo "COMMANDS TEST PASSED"
 '
