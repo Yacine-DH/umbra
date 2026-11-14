@@ -73,7 +73,7 @@ export WORK="$work"
   w=$(review); [ -n "$w" ] || fail "no review for the hosts package"
   shot review-hosts
   timeout 15 "$UMBRA_BIN" "$WORK/plain.umbrawidget"; sleep 1.5
-  log | grep -q "Install review already open" || fail "a second request while the review is open was not ignored"
+  log | grep -q "already open; open-package request ignored" || fail "a second request while the review is open was not ignored"
   ok "one review at a time"
   log | grep -q "Reviewing hosts-pkg" || fail "hosts review not logged"
   xdotool windowactivate --sync "$w" 2>/dev/null; xdotool key Escape; sleep 1.5

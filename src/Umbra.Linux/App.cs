@@ -715,7 +715,7 @@ sealed class App : IUmbraHost
             Log.Write($"Ignored open-package request ({bad}): '{Dialogs.Clean(path, 200)}'");
             return false;
         }
-        if (_reviewing) { Log.Write("Install review already open; open-package request ignored"); return false; }
+        if (_reviewing || Dialogs.IsOpen) { Log.Write("Install review or another host dialog already open; open-package request ignored"); return false; }
         _reviewing = true;
         string? copy = null;
         try
@@ -740,7 +740,8 @@ sealed class App : IUmbraHost
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             Log.Write($"Open package failed: {ex.Message}");
-            await Dialogs.InfoAsync(null, $"Not installed: {ex.Message}");
+            // Never stacked over another host dialog (an approval prompt opened meanwhile): the log keeps the reason.
+            if (!Dialogs.IsOpen) await Dialogs.InfoAsync(null, $"Not installed: {ex.Message}");
             return false;
         }
         finally

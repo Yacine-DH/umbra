@@ -9,6 +9,9 @@ static class Dialogs
 {
     static bool _open;
 
+    /// <summary>A host dialog (approval, confirm, notifications, URL box) is open: callers that would add a second one wait or skip.</summary>
+    public static bool IsOpen => _open;
+
     /// <summary>Widget-controlled text for a dialog: control characters removed, at most <paramref name="max"/> characters.</summary>
     public static string Clean(string? s, int max)
     {
