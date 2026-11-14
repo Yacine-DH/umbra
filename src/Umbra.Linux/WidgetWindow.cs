@@ -303,6 +303,10 @@ sealed partial class WidgetWindow : IWidgetView
                     HandleScriptControl(type, msg);
                     break;
 
+                case "images":
+                    await HandleImages(msg);
+                    break;
+
                 case null:
                     break;
 
@@ -340,6 +344,81 @@ sealed partial class WidgetWindow : IWidgetView
         reply["ok"] = error is null;
         if (error is not null) reply["error"] = error;
         Post(reply);
+    }
+
+    static bool _pickingImageFolder;
+
+    /// <summary>
+    /// umbra.images (needs permissions.saveImages): folder (the picture folder's name: the picked one, else the default
+    /// Pictures/Umbra/&lt;name&gt;), chooseFolder (host folder dialog, only after a physical left click) and save (a small PNG,
+    /// written by the host into that folder under a name the host picks). The page never gives a path or a name and never reads a file back.
+    /// </summary>
+    async Task HandleImages(JsonNode msg)
+    {
+        var reply = new JsonObject { ["type"] = "imagesResult", ["id"] = msg["id"]?.DeepClone() };
+        try
+        {
+            if (!Manifest.Permissions.SaveImages) throw new ImageArchiveException("This widget has no permissions.saveImages");
+            if (!(Alive && Ws.Enabled)) throw new ImageArchiveException("The widget is disabled");
+            var op = msg["op"] is JsonValue o && o.GetValueKind() == System.Text.Json.JsonValueKind.String ? o.GetValue<string>() : null;
+            switch (op)
+            {
+                case "folder":
+                    reply["data"] = new JsonObject { ["folder"] = ImageArchive.Label(ImageFolders.Shared.Resolve(Manifest.Id, Manifest.Name)) };
+                    break;
+                case "chooseFolder":
+                    if (!RecentLeftClick()) throw new ImageArchiveException("Click the widget first: the folder dialog opens only from a physical click");
+                    reply["data"] = await ChooseImageFolder();
+                    break;
+                case "save":
+                    var png = msg["png"] is JsonValue p && p.GetValueKind() == System.Text.Json.JsonValueKind.String ? p.GetValue<string>() : null;
+                    var file = await Task.Run(() => ImageFolders.Shared.Save(Manifest.Id, Manifest.Name, png));
+                    reply["data"] = new JsonObject { ["file"] = file, ["folder"] = ImageArchive.Label(ImageFolders.Shared.Resolve(Manifest.Id, Manifest.Name)) };
+                    break;
+                default:
+                    throw new ImageArchiveException("Unknown images operation");
+            }
+            reply["ok"] = true;
+        }
+        catch (Exception ex)
+        {
+            reply["ok"] = false;
+            reply["error"] = ex is ImageArchiveException ? ex.Message : "Saving pictures is not available";
+            Log.Write($"[{Instance}] images {msg["op"]} failed: {ex.Message}");
+        }
+        Post(reply);
+    }
+
+    async Task<JsonObject> ChooseImageFolder()
+    {
+        if (await PickImageFolderAsync(Manifest, null) is { } picked)
+        {
+            _app.SettingsChangedElsewhere();
+            return new JsonObject { ["folder"] = ImageArchive.Label(picked), ["changed"] = true };
+        }
+        return new JsonObject { ["folder"] = ImageArchive.Label(ImageFolders.Shared.Resolve(Manifest.Id, Manifest.Name)), ["changed"] = false };
+    }
+
+    /// <summary>
+    /// The host's folder dialog for a widget's pictures (the widget's button after a click, or Settings > My widgets). Opens on
+    /// the current folder, saves the user's pick and returns it, or null when cancelled.
+    /// </summary>
+    internal static async Task<string?> PickImageFolderAsync(WidgetManifest m, Gtk.Window? parent)
+    {
+        if (_pickingImageFolder || Dialogs.IsOpen) return null;
+        _pickingImageFolder = true;
+        try
+        {
+            var current = ImageFolders.Shared.Resolve(m.Id, m.Name);
+            var initial = current is not null && Directory.Exists(current)
+                ? current
+                : ImageFolders.LinuxPicturesDir(Environment.GetEnvironmentVariable, p => File.Exists(p) ? File.ReadAllText(p) : null);
+            var picked = await Dialogs.PickFolderAsync(parent, $"Where should \"{Dialogs.Clean(m.Name, 40)}\" save pictures?", initial);
+            if (picked is null || !Path.IsPathFullyQualified(picked) || !Directory.Exists(picked)) return null;
+            ImageFolders.Shared.Set(m.Id, picked);
+            return picked;
+        }
+        finally { _pickingImageFolder = false; }
     }
 
     /// <summary>

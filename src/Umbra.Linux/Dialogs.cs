@@ -9,6 +9,9 @@ static class Dialogs
 {
     static bool _open;
 
+    /// <summary>True while a host-drawn dialog is on screen.</summary>
+    public static bool IsOpen => _open;
+
     /// <summary>Widget-controlled text for a dialog: control characters removed, at most <paramref name="max"/> characters.</summary>
     public static string Clean(string? s, int max)
     {

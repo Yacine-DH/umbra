@@ -1,0 +1,13 @@
+{
+  "id": "images-widget",
+  "name": "Hearth",
+  "description": "Test only: exercises umbra.images when linux/test/images.sh asks. Never installed.",
+  "author": "Umbra tests",
+  "version": "1.0.0",
+  "manifestVersion": 1,
+  "entry": "index.html",
+  "width": 260,
+  "height": 140,
+  "defaultPosition": { "x": 380, "y": 280 },
+  "permissions": { "hosts": [], "saveImages": true }
+}
