@@ -83,6 +83,34 @@ public sealed class MediaTests
         finally { dir.Delete(true); }
     }
 
+    [Fact]
+    public void Decompression_bomb_dimensions_are_refused()
+    {
+        var dir = Directory.CreateTempSubdirectory();
+        try
+        {
+            var bomb = Path.Combine(dir.FullName, "bomb.png");
+            File.WriteAllBytes(bomb, PngHeaderOnly(30_000, 30_000));
+            Assert.Null(LinuxMedia.ArtDataUrl(new Uri(bomb).AbsoluteUri));
+            Assert.Null(LinuxMedia.ScaleArt(bomb));
+        }
+        finally { dir.Delete(true); }
+    }
+
+    static byte[] PngHeaderOnly(int width, int height)
+    {
+        using var ms = new MemoryStream();
+        ms.Write([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+        var ihdr = new byte[13];
+        BinaryPrimitives.WriteInt32BigEndian(ihdr.AsSpan(0, 4), width);
+        BinaryPrimitives.WriteInt32BigEndian(ihdr.AsSpan(4, 4), height);
+        ihdr[8] = 8;
+        ihdr[9] = 6;
+        WriteChunk(ms, "IHDR"u8, ihdr);
+        WriteChunk(ms, "IEND"u8, []);
+        return ms.ToArray();
+    }
+
     static byte[] NoisyPng(int width, int height)
     {
         using var ms = new MemoryStream();
