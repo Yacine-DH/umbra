@@ -23,7 +23,7 @@ public sealed record BatteryInfo(string Name, int Percent, string Status, long? 
 }
 
 /// <summary>Parsers for the <c>/proc</c> and <c>/sys</c> text files behind <c>umbra.system()</c>. Pure: they take the file text.</summary>
-public static class ProcParsers
+public static partial class ProcParsers
 {
     /// <summary>
     /// The aggregate <c>cpu</c> line of <c>/proc/stat</c>: Total = user+nice+system+idle+iowait+irq+softirq+steal (guest time is
