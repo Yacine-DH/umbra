@@ -31,19 +31,29 @@ static class UmbraClient
     /// <summary>The app's file name: Umbra.exe on Windows, umbra on Linux.</summary>
     static string AppFileName => OperatingSystem.IsWindows() ? "Umbra.exe" : "umbra";
 
-    static string? FindUmbraExe()
+    static string? FindUmbraExe() =>
+        Candidates(OperatingSystem.IsWindows(), Environment.GetEnvironmentVariable("UMBRA_EXE"), AppContext.BaseDirectory,
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))
+            .FirstOrDefault(File.Exists);
+
+    /// <summary>
+    /// Where the app may be, in order: UMBRA_EXE, next to umbractl, then the per-user install. Windows: the installer's
+    /// %LOCALAPPDATA%\Programs\Umbra. Linux: the tarball layout (umbractl/ and umbra/ side by side, so ../umbra/umbra from
+    /// umbractl's real folder; ~/.local/bin/umbractl is a symlink that resolves there) and install.sh's ~/.local/opt/umbra.
+    /// </summary>
+    internal static IEnumerable<string> Candidates(bool windows, string? umbraExe, string baseDir, string localAppData, string home)
     {
-        // Next to umbractl first; then the per-user install folder (Windows installer, or the Linux tarball's install.sh).
-        var installed = OperatingSystem.IsWindows()
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Umbra", AppFileName)
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "lib", "umbra", AppFileName);
-        string?[] candidates =
+        if (!string.IsNullOrEmpty(umbraExe)) yield return umbraExe;
+        var name = windows ? "Umbra.exe" : "umbra";
+        yield return Path.Combine(baseDir, name);
+        if (windows)
         {
-            Environment.GetEnvironmentVariable("UMBRA_EXE"),
-            Path.Combine(AppContext.BaseDirectory, AppFileName),
-            installed,
-        };
-        return candidates.FirstOrDefault(p => !string.IsNullOrEmpty(p) && File.Exists(p));
+            yield return Path.Combine(localAppData, "Programs", "Umbra", name);
+            yield break;
+        }
+        yield return Path.GetFullPath(Path.Combine(baseDir, "..", "umbra", name));
+        yield return Path.Combine(home, ".local", "opt", "umbra", "umbra", name);
     }
 
     /// <summary>The community widgets folder (mirrors AppPaths in Umbra.exe, including UMBRA_DATA_DIR).</summary>

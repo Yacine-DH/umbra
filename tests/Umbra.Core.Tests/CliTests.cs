@@ -490,3 +490,24 @@ public class ScaffoldTests
         Assert.True(unmapped.Count == 0, "No command line mapping for: " + string.Join(", ", unmapped));
     }
 }
+
+public class UmbraClientLocateTests
+{
+    [LinuxFact]
+    public void Linux_finds_the_app_from_the_tarball_layout_and_the_install_folder()
+    {
+        var c = cli::Umbra.Cli.UmbraClient.Candidates(false, null, "/home/u/.local/opt/umbra/umbractl/", "", "/home/u").ToList();
+        Assert.Equal("/home/u/.local/opt/umbra/umbractl/umbra", c[0]);
+        Assert.Contains("/home/u/.local/opt/umbra/umbra/umbra", c);
+        Assert.DoesNotContain(c, p => p.Contains("/.local/lib/"));
+    }
+
+    [Fact]
+    public void Umbra_exe_wins_and_windows_keeps_the_installer_folder()
+    {
+        Assert.Equal("/x/umbra", cli::Umbra.Cli.UmbraClient.Candidates(false, "/x/umbra", "/b/", "", "/h").First());
+        var w = cli::Umbra.Cli.UmbraClient.Candidates(true, null, @"C:\b", @"C:\L", @"C:\H").ToList();
+        Assert.Equal(Path.Combine(@"C:\L", "Programs", "Umbra", "Umbra.exe"), w[^1]);
+        Assert.Equal(2, w.Count);
+    }
+}
