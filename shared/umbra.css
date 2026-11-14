@@ -1,5 +1,14 @@
 /* Umbra design tokens - shared by every widget and the Settings panel.
    Surfaces are true black: on OLED those pixels are off, so widgets melt into a dark wallpaper. */
+/* Inter (SIL OFL 1.1, fonts/Inter-LICENSE.txt), bundled for systems without Segoe UI (Linux). It comes after the Segoe names,
+   so Windows keeps Segoe (Inter is fetched there only for a character Segoe lacks). An installed Inter is used first. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  src: local("Inter Variable"), local("InterVariable"), url("fonts/InterVariable.woff2") format("woff2");
+}
+
 :root {
   color-scheme: dark;
 
@@ -26,7 +35,7 @@
   --radius-m: 12px;
   --radius-l: 18px;
 
-  /* Segoe first so Windows is unchanged; the rest are common Linux UI fonts (Inter, Cantarell on GNOME, Noto Sans on KDE, Ubuntu, Roboto) before the generic fallback. */
+  /* Segoe first so Windows is unchanged; the rest are Linux UI fonts (Inter, bundled above, then Cantarell on GNOME, Noto Sans on KDE, Ubuntu, Roboto) before the generic fallback. */
   --font: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Inter", "Cantarell", "Noto Sans", "Ubuntu", "Roboto", "DejaVu Sans", system-ui, sans-serif;
   --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", "Inter", "Cantarell", "Noto Sans", "Ubuntu", "Roboto", "DejaVu Sans", system-ui, sans-serif;
 
