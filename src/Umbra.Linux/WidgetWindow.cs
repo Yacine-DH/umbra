@@ -404,7 +404,7 @@ sealed partial class WidgetWindow : IWidgetView
     /// </summary>
     internal static async Task<string?> PickImageFolderAsync(WidgetManifest m, Gtk.Window? parent)
     {
-        if (_pickingImageFolder) return null;
+        if (_pickingImageFolder || Dialogs.IsOpen) return null;
         _pickingImageFolder = true;
         try
         {

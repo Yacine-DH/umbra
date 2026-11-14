@@ -5,6 +5,10 @@
 #   linux/test/images.sh
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
+pics=$(mktemp -d "${TMPDIR:-/tmp}/umbra-pics.XXXXXX")
+trap 'rm -rf "$pics"' EXIT
+export XDG_PICTURES_DIR="$pics/Pictures"
+
 "$here/headless.sh" -w "$here/images-widget" -s 4 -- bash -c '
   set -u
   fail() { echo "FAIL  $*"; exit 1; }
@@ -16,7 +20,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 
   r=$(go save)
   echo "$r" | grep -q "\"ok\": true" && echo "ok    valid PNG saved" || fail "save: $r"
-  ls "$HOME/Pictures/Umbra/Hearth"/Hearth*.png >/dev/null 2>&1 && echo "ok    PNG written in ~/Pictures/Umbra/Hearth" || fail "file not in ~/Pictures/Umbra/Hearth"
+  ls "$XDG_PICTURES_DIR/Umbra/Hearth"/Hearth*.png >/dev/null 2>&1 && echo "ok    PNG written in \$XDG_PICTURES_DIR/Umbra/Hearth" || fail "file not in $XDG_PICTURES_DIR/Umbra/Hearth"
 
   r=$(go save-bad)
   echo "$r" | grep -q "Only PNG pictures can be saved" && echo "ok    non-PNG rejected" || fail "save-bad: $r"
