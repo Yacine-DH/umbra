@@ -171,34 +171,11 @@ sealed unsafe partial class LayerShellPin : IDesktopPin
     }
 
     /// <summary>
-    /// NONE (never focused) or ON_DEMAND (the compositor may give it the keyboard on a click), only right after a physical
-    /// press. The edit code turns it back to NONE once the window loses the focus; if the compositor never focused it,
-    /// the <see cref="FocusLease"/> timer does, so a later focus fallback cannot hand it the keyboard. More is #188.
+    /// NONE (never focused) or ON_DEMAND (the compositor may give it the keyboard on a click). When to switch, including
+    /// taking a grant back that the compositor never used, is <see cref="FocusGate"/>'s decision.
     /// </summary>
-    public void SetFocusable(Gtk.Window window, bool on)
-    {
-        var w = H(window);
-        if (!_leases.TryGetValue(w, out var lease)) _leases[w] = lease = new FocusLease();
-        if (!on)
-        {
-            lease.End();
-            gtk_layer_set_keyboard_mode(w, KeyboardNone);
-            return;
-        }
-        gtk_layer_set_keyboard_mode(w, KeyboardOnDemand);
-        var token = lease.Lend();
-        UiThread.Every(FocusLease.Milliseconds, () =>
-        {
-            if (_leases.TryGetValue(w, out var l) && l == lease && lease.ShouldRevoke(token, window.IsActive))
-            {
-                lease.End();
-                gtk_layer_set_keyboard_mode(w, KeyboardNone);
-            }
-            return false;
-        });
-    }
-
-    readonly Dictionary<IntPtr, FocusLease> _leases = new();
+    public void SetFocusable(Gtk.Window window, bool on) =>
+        gtk_layer_set_keyboard_mode(H(window), on ? KeyboardOnDemand : KeyboardNone);
 
     /// <summary>A layer surface cannot ask for the focus; with ON_DEMAND the compositor gives it on the user's click.</summary>
     public void Focus(Gtk.Window window) { }
@@ -212,7 +189,6 @@ sealed unsafe partial class LayerShellPin : IDesktopPin
         var w = H(window);
         _monitorOf.Remove(w);
         _pending.Remove(w);
-        if (_leases.Remove(w, out var lease)) { lease.End(); gtk_layer_set_keyboard_mode(w, KeyboardNone); }
         if (SurfaceOf(window) is var s && s != IntPtr.Zero) _origins.Remove(s);
     }
 }
