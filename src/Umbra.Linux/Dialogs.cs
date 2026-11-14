@@ -287,6 +287,8 @@ static class Dialogs
             var dlg = Gtk.AlertDialog.NewWithProperties([]);
             dlg.SetMessage(message);
             dlg.SetButtons(["OK"]);
+            dlg.SetDefaultButton(0); // Return and Esc close it, as with every other dialog
+            dlg.SetCancelButton(0);
             dlg.SetModal(true);
             await dlg.ChooseAsync(parent!);
         }

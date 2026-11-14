@@ -699,10 +699,55 @@ sealed class App : IUmbraHost
 
     // ---------- packages, camera ----------
 
-    public Task<bool> OpenPackageAsync(string path)
+    bool _reviewing;
+
+    /// <summary>
+    /// Opens a .umbrawidget from the file manager (#365; the <c>open-package</c> pipe line of a second <c>umbra &lt;file&gt;</c>, or
+    /// the first instance's own argument): a private copy of the file (<see cref="PackageOpen.CopyForReview"/>), the full install
+    /// checks (<see cref="Community.PrepareLocal"/>), then the host-drawn GTK review, the same one Settings > Install from file shows.
+    /// Nothing is written before the user clicks Install; declared access is always shown and never accepted for them.
+    /// One review at a time: a request while one is open is ignored. Runs on the UI thread.
+    /// </summary>
+    public async Task<bool> OpenPackageAsync(string path)
     {
-        NotYet("Installing a .umbrawidget package with its review", 184);
-        return Task.FromResult(false);
+        if (PackageOpen.CheckPath(path) is { } bad)
+        {
+            Log.Write($"Ignored open-package request ({bad}): '{Dialogs.Clean(path, 200)}'");
+            return false;
+        }
+        if (_reviewing) { Log.Write("Install review already open; open-package request ignored"); return false; }
+        _reviewing = true;
+        string? copy = null;
+        try
+        {
+            using var pending = await Task.Run(() => Community.PrepareLocal(copy = PackageOpen.CopyForReview(path)));
+            var id = pending.Manifest.Id;
+            if (Manifests.Any(m => m.Id == id && m.Source == WidgetSource.BuiltIn))
+                throw new InvalidOperationException($"'{id}' is the id of a built-in widget");
+            var source = $"the file {Path.GetFileName(path)}";
+            Log.Write($"Reviewing {id} {pending.Manifest.Version} from {path}");
+            var accepted = pending.NeedsApproval
+                ? await Dialogs.ConfirmNewAccessAsync(null, pending, source)
+                : await Dialogs.ConfirmAsync(null, Dialogs.PlainReview(pending, source), yes: pending.IsUpdate ? "Replace" : "Install");
+            if (!accepted) { Log.Write($"Install of {id} from {Path.GetFileName(path)} cancelled"); return false; }
+            CloseWidget(id);
+            pending.Commit();
+            ReloadWidgets();
+            SettingsChangedElsewhere();
+            Log.Write($"Installed {id} {pending.Manifest.Version} from {path}");
+            return true;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Log.Write($"Open package failed: {ex.Message}");
+            await Dialogs.InfoAsync(null, $"Not installed: {ex.Message}");
+            return false;
+        }
+        finally
+        {
+            PackageOpen.DeleteCopy(copy);
+            _reviewing = false;
+        }
     }
 
     /// <summary>The camera has no Linux backend, so no widget is ever approved for it.</summary>
