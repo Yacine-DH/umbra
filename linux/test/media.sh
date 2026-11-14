@@ -10,7 +10,9 @@ repo=$(cd "$here/../.." && pwd)
   set -u
   fail() { echo "FAIL  $*"; exit 1; }
   calls="$UMBRA_DATA_DIR/mpris.txt"; : > "$calls"
-  python3 '"$here"'/fake-mpris.py "$calls" '"$repo"'/linux/icons/hicolor/64x64/apps/io.github.aminechr54.Umbra.png & ppid=$!
+  art="$UMBRA_DATA_DIR/art.png"
+  cp '"$repo"'/linux/icons/hicolor/64x64/apps/io.github.aminechr54.Umbra.png "$art"
+  python3 '"$here"'/fake-mpris.py "$calls" "$art" & ppid=$!
   trap "kill $ppid 2>/dev/null" EXIT
   sleep 1
   w=media-widget
@@ -22,6 +24,12 @@ repo=$(cd "$here/../.." && pwd)
   echo "$r" | grep -q "\"playing\": true" && echo "ok    playing" || fail "playing"
   echo "$r" | grep -q "\"canPrevious\": false" && echo "ok    Can* mapped" || fail "can*"
   echo "$r" | grep -q "data:image/png;base64" && echo "ok    file:// art as a data URL" || fail "art"
+  python3 -c "import os, zlib, struct
+raw = b\"\".join(b\"\x00\" + os.urandom(800*4) for _ in range(600))
+chunk = lambda t, d: struct.pack(\">I\", len(d)) + t + d + struct.pack(\">I\", zlib.crc32(t + d) & 0xffffffff)
+open(\"$art\", \"wb\").write(b\"\x89PNG\r\n\x1a\n\" + chunk(b\"IHDR\", struct.pack(\">IIBBBBB\", 800, 600, 8, 6, 0, 0, 0)) + chunk(b\"IDAT\", zlib.compress(raw, 0)) + chunk(b\"IEND\", b\"\"))"
+  r=$(go get)
+  echo "$r" | grep -q "data:image/jpeg;base64" && echo "ok    large (>512 KB) file:// art scaled down to JPEG" || fail "large art not scaled: $(echo "$r" | cut -c1-200)"
   r=$(go toggle); echo "$r" | grep -q "Click the widget first" && echo "ok    control refused without a click" || fail "control without click: $r"
   grep -q PlayPause "$calls" && fail "the player got a command without a click"
   xdotool mousemove 450 350 click 1; sleep 1.5
