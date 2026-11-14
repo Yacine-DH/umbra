@@ -289,6 +289,10 @@ sealed partial class WidgetWindow : IWidgetView
                     await HandleMedia(msg);
                     break;
 
+                case "images":
+                    await HandleImages(msg);
+                    break;
+
                 case "run":
                     await HandleRun(msg);
                     break;
@@ -300,10 +304,6 @@ sealed partial class WidgetWindow : IWidgetView
                 case "stop":
                 case "commandOutput":
                     HandleScriptControl(type, msg);
-                    break;
-
-                case "images":
-                    await HandleImages(msg);
                     break;
 
                 case null:

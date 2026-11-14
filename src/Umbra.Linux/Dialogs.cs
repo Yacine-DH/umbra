@@ -9,7 +9,7 @@ static class Dialogs
 {
     static bool _open;
 
-    /// <summary>True while a host-drawn dialog is on screen.</summary>
+    /// <summary>A host dialog (approval, confirm, notifications, URL box) is open: callers that would add a second one wait or skip.</summary>
     public static bool IsOpen => _open;
 
     /// <summary>Widget-controlled text for a dialog: control characters removed, at most <paramref name="max"/> characters.</summary>
