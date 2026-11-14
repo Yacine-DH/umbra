@@ -73,7 +73,12 @@ sealed class App : IUmbraHost
         Settings = Settings.Load();
         try { WidgetTrash.Purge(); } catch (Exception ex) { Log.Write($"Trash purge failed: {ex.Message}"); }
         Prefs.Configure(Settings.General);
-        _updater = LinuxUpdater.Create(() => Settings.General.CheckForUpdates, () => _ui.Post(_ => SettingsChangedElsewhere(), null));
+        InstallStats.Enabled = () => Settings.General.CountInstalls; // read at each install: the switch in Data & privacy
+        _updater = LinuxUpdater.Create(() => Settings.General.CheckForUpdates, () => _ui.Post(_ =>
+        {
+            if (Settings.General.CheckForUpdates) _ = CheckWidgetUpdatesAsync();
+            SettingsChangedElsewhere();
+        }, null));
         Manifests = WidgetManifest.DiscoverAll();
         WebHost.Manifests = () => Manifests;
         if (!WebHost.SandboxAvailable)
@@ -233,6 +238,15 @@ sealed class App : IUmbraHost
             yield return new TrayItem { Label = $"Download Umbra v{up.Version}", Click = () => WebHost.OpenExternal(up.PageUrl) };
             yield return TrayItem.Line();
         }
+        if (Settings.General.CheckForUpdates && WidgetUpdateCount is > 0 and var pending)
+        {
+            yield return new TrayItem
+            {
+                Label = pending == 1 ? "Update 1 widget" : $"Update {pending} widgets",
+                Click = () => _ = UpdateAllFromTrayAsync(),
+            };
+            yield return TrayItem.Line();
+        }
         var scripts = Commands.RunningServices();
         if (scripts.Count > 0)
         {
@@ -364,15 +378,25 @@ sealed class App : IUmbraHost
         RefreshTray();
     }
 
-    /// <summary>Settings on a normal start; the first run also shows the welcome tour once.</summary>
+    /// <summary>Settings on a normal start; a first run shows the welcome tour, and an existing profile that never saw it gets a one-time offer.</summary>
     public void OpenSettingsOnStart(bool firstRun)
     {
-        var win = ShowSettings();
-        if (!firstRun || Settings.General.TourDone) return;
-        Settings.General.TourDone = true;
-        SaveSettings();
-        _ = win.ShowPageAsync("welcome").ContinueWith(t => Log.Write($"Welcome tour failed: {t.Exception?.GetBaseException().Message}"),
-            TaskContinuationOptions.OnlyOnFaulted);
+        var win = (SettingsWindow)ShowSettings();
+        switch (Tour.Decide(Settings.General.TourDone, firstRun, SafeMode))
+        {
+            case Tour.Plan.ShowNow:
+                Settings.General.TourDone = true;
+                SaveSettings();
+                _ = win.ShowPageAsync("welcome").ContinueWith(t => Log.Write($"Welcome tour failed: {t.Exception?.GetBaseException().Message}"),
+                    TaskContinuationOptions.OnlyOnFaulted);
+                break;
+            case Tour.Plan.Offer:
+                Settings.General.TourDone = true;
+                SaveSettings();
+                _ = win.OfferTourAsync().ContinueWith(t => Log.Write($"Welcome tour offer failed: {t.Exception?.GetBaseException().Message}"),
+                    TaskContinuationOptions.OnlyOnFaulted);
+                break;
+        }
     }
 
     /// <summary>Whether some copy of the widget has a window (it is on, and not held back by safe mode).</summary>
@@ -809,7 +833,42 @@ sealed class App : IUmbraHost
         SaveSettings();
     }
 
+    /// <summary>The community catalog as last fetched (daily check, Browse, update all). Null until the first fetch.</summary>
+    JsonArray? _catalogSeen;
     bool _updatingAll;
+
+    /// <summary>Remember a freshly fetched catalog so the tray can offer "Update n widgets" without another request.</summary>
+    public void NoteCatalog(JsonArray catalog)
+    {
+        _catalogSeen = catalog;
+        RefreshTray();
+    }
+
+    /// <summary>How many installed community widgets have a newer catalog version, judged against the last fetched catalog.</summary>
+    public int WidgetUpdateCount => _catalogSeen is null ? 0 : Community.Outdated(_catalogSeen, Manifests).Count;
+
+    /// <summary>The automatic check: refreshes the catalog quietly (offline is fine) so the tray count stays current.</summary>
+    public async Task CheckWidgetUpdatesAsync()
+    {
+        try
+        {
+            _catalogSeen = await Community.FetchCatalogAsync();
+            _ui.Post(_ => RefreshTray(), null);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { Log.Write($"Widget update check failed: {ex.Message}"); }
+    }
+
+    async Task UpdateAllFromTrayAsync()
+    {
+        try
+        {
+            var r = await UpdateAllWidgetsAsync();
+            Log.Write(r.Failed.Count == 0
+                ? $"Updated {r.Updated.Count} widget(s) from the tray"
+                : $"Updated {r.Updated.Count} widget(s) from the tray, failed: {string.Join(", ", r.Failed.Select(f => f.Id))}");
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { Log.Write($"Widget update failed: {ex.Message}"); }
+    }
 
     public async Task<UpdateAllResult> UpdateAllWidgetsAsync(Action<int, int, string>? progress = null)
     {
@@ -817,11 +876,12 @@ sealed class App : IUmbraHost
         _updatingAll = true;
         try
         {
-            var catalog = await Community.FetchCatalogAsync();
+            _catalogSeen = await Community.FetchCatalogAsync();
             // Never silently accepts new access: such an update is reported as skipped and the widget keeps running.
-            var result = await Community.UpdateAllAsync(Community.Outdated(catalog, Manifests),
+            var result = await Community.UpdateAllAsync(Community.Outdated(_catalogSeen, Manifests),
                 entry => Community.UpdateWithoutNewAccessAsync(entry, CloseWidget), progress);
             ReloadWidgets(); // also reopens a widget whose update failed
+            SettingsChangedElsewhere();
             return result;
         }
         finally { _updatingAll = false; }

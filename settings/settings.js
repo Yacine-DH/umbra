@@ -126,8 +126,11 @@ function applyPlatform() {
   if (!can("tray")) {
     text("#homeHint", "Close this window and your widgets keep running; open Umbra again from your app menu to come back.");
     title("#arrangeBox", "Widgets are locked unless you arrange them. Also on the Done pill on your desktop.");
-    WELCOME[2].title = "Umbra keeps running";
-    WELCOME[2].text = "Close this window and your widgets keep running. Open Umbra from your app menu to come back to Settings.";
+    WELCOME[WELCOME.length - 1].title = "Umbra keeps running";
+    WELCOME[WELCOME.length - 1].text = "Close this window and your widgets keep running. Open Umbra from your app menu to come back to Settings.";
+  } else {
+    WELCOME[WELCOME.length - 1].title = "Umbra stays in the tray";
+    WELCOME[WELCOME.length - 1].text = "Close this window and your widgets keep running. Click the tray icon to come back. You can replay this tour from About.";
   }
   const accent = rowOf("pf-accentWindows");
   if (accent) {
@@ -1826,6 +1829,9 @@ bridge && bridge.listen((m) => {
     }
     case "layoutDeleted":
       toast(`Deleted layout ${m.name}`, false, { label: "Undo", run: () => post({ type: "undoDeleteLayout" }) });
+      break;
+    case "offerTour":
+      toast("New: take a quick tour of Umbra?", false, { label: "Take tour", run: () => welcome(1) });
       break;
     case "commandError":
       toast(m.error, true);
