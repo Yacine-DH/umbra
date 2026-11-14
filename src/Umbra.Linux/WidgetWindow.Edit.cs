@@ -30,7 +30,8 @@ sealed partial class WidgetWindow
         press.OnPressed += (g, e) =>
         {
             _pressedAt = Environment.TickCount64;
-            if (g.GetCurrentButton() == 3) NoteRightPress(e.X, e.Y);
+            _pressButton = g.GetCurrentButton();
+            if (_pressButton == 3) NoteRightPress(e.X, e.Y);
             // The click gate of the host prompts (notifications, later camera and pictures): a left press outside edit mode.
             if (g.GetCurrentButton() == 1 && !_app.EditMode) _leftPressAt = _pressedAt;
         };
@@ -53,7 +54,8 @@ sealed partial class WidgetWindow
             _shiftAtKey = (e.State & Gdk.ModifierType.ShiftMask) != 0;
             switch (e.Keyval)
             {
-                case 0xff1b: // Escape: ends edit mode, like the pill's Done (the widget only has the focus after a real press)
+                case 0xff1b: // Escape: closes the widget menu if it is open, else ends edit mode, like the pill's Done
+                    if (_menu is not null) { CloseMenu(); return true; }
                     _escapeAt = now;
                     if (_app.EditMode) { _app.SetEditMode(false); return true; }
                     break;
@@ -147,6 +149,12 @@ sealed partial class WidgetWindow
     /// </summary>
     void TakeKeyboardFocus()
     {
+        // A right press opens the host menu, which has the keyboard: the page's focus request from that press is not a grant.
+        if (_pressButton == 3 || _menu is not null)
+        {
+            Log.Verbose($"[{Instance}] focus ignored: right press or widget menu open");
+            return;
+        }
         if (Environment.TickCount64 - _pressedAt > 1000)
         {
             Log.Verbose($"[{Instance}] focus ignored: no mouse press on the widget");

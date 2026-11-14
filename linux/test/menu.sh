@@ -59,6 +59,17 @@ export SHOTS=${1:-} HERE="$here"
   $UMBRACTL edit-mode off >/dev/null; sleep 1 # windows are re-stacked as edit mode ends
   ok "Arrange widgets turns edit mode on"
 
+  # 4b. In edit mode a right press opens the menu, the page gets no keyboard focus from it, and Esc closes the menu
+  #     instead of ending edit mode (review of #395).
+  $UMBRACTL edit-mode on >/dev/null; sleep 1
+  menu "$W" menu-widget
+  xdotool key Escape; sleep 0.8
+  xdotool search --onlyvisible --name "^umbra\$" >/dev/null 2>&1 && fail "Esc did not close the menu in edit mode"
+  $UMBRACTL status | grep -q "\"editMode\": true" || fail "Esc with the menu open ended edit mode"
+  [ "$(xdotool getwindowfocus 2>/dev/null)" = "$(win "$W")" ] && fail "the right press gave the widget keyboard focus"
+  $UMBRACTL edit-mode off >/dev/null; sleep 1
+  ok "edit mode: right press opens the menu without focus, Esc closes only the menu"
+
   # 5. Add to tab group > New group makes a group of this widget.
   menu "$W" menu-widget; for _ in 1 2 3; do xdotool key Down; sleep 0.1; done; xdotool key Return; sleep 0.6; xdotool key Down; sleep 0.1; xdotool key Return; sleep 1.2 # the submenu opens on its "back" row
   $UMBRACTL groups | grep -q "menu-widget" || fail "New group did not make a group: $($UMBRACTL groups)"

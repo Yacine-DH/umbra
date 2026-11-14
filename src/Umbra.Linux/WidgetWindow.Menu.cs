@@ -9,6 +9,7 @@ namespace Umbra;
 sealed partial class WidgetWindow
 {
     long _rightPressAt = long.MinValue / 2;
+    uint _pressButton; // the button of the last physical press on this window (1 left, 3 right)
     double _rightX, _rightY;
     Gtk.PopoverMenu? _menu;
 
