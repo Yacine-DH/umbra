@@ -274,6 +274,29 @@ sealed class App : IUmbraHost
 
     public bool StartupEnabled { get => _autostart.IsEnabled(); set => _autostart.Set(value); }
 
+    /// <summary>Each monitor as "WxH at 150% (DP-1, primary)": GDK's integer scale times the fractional factor where the session reports one.</summary>
+    IEnumerable<string> MonitorLines()
+    {
+        if (Gdk.Display.GetDefault() is not { } display) yield break;
+        var monitors = display.GetMonitors();
+        for (uint i = 0; i < monitors.GetNItems(); i++)
+        {
+            if (monitors.GetObject(i) is not Gdk.Monitor m) continue;
+            m.GetGeometry(out var g);
+            var scale = Math.Round(m.GetScale() * 100);
+            yield return $"{g.Width}x{g.Height} at {scale}% ({m.GetConnector() ?? "?"}{(i == 0 ? ", primary" : "")})";
+        }
+    }
+
+    /// <summary>Folders hidden in the diagnostics log tail, longest first wins (see <see cref="LogScrub"/>).</summary>
+    static List<(string Path, string Token)> DiagnosticRoots()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var roots = new List<(string, string)> { (AppPaths.AppDir, "<umbra>"), (AppPaths.DataDir, "<data>") };
+        if (home.Length > 1) roots.Add((home, "~"));
+        return roots;
+    }
+
     public string Diagnostics()
     {
         var sb = new System.Text.StringBuilder();
@@ -281,9 +304,20 @@ sealed class App : IUmbraHost
         sb.AppendLine($"- System: {System.Runtime.InteropServices.RuntimeInformation.OSDescription}, {System.Runtime.InteropServices.RuntimeInformation.OSArchitecture}");
         sb.AppendLine($"- Session: {Environment.GetEnvironmentVariable("XDG_SESSION_TYPE") ?? "unknown"}, desktop {Environment.GetEnvironmentVariable("XDG_CURRENT_DESKTOP") ?? "unknown"}");
         sb.AppendLine($"- GTK {Gtk.Functions.GetMajorVersion()}.{Gtk.Functions.GetMinorVersion()}.{Gtk.Functions.GetMicroVersion()}, WebKitGTK {WebKit.Functions.GetMajorVersion()}.{WebKit.Functions.GetMinorVersion()}.{WebKit.Functions.GetMicroVersion()}");
-        sb.AppendLine($"- Monitors: {string.Join(", ", Monitors().Select(m => $"{m.Bounds.Width}x{m.Bounds.Height}"))}");
+        sb.AppendLine($"- Monitors: {string.Join(", ", MonitorLines())}");
+        sb.AppendLine($"- Desktop pinning: {Pin.Name}; tray: {(TrayShown ? "yes" : "no")}; hotkeys: {Linux.HotkeyRules.Name(Hotkeys.Backend)}");
         var enabled = Manifests.Where(m => Settings.Instances(m.Id).Any(i => Settings.For(m, i).Enabled)).Select(m => $"{m.Id} {m.Version}");
         sb.AppendLine($"- Widgets on: {string.Join(", ", enabled)}");
+        // The last log lines, redacted like on Windows (folders, home paths, URL queries, user and host names).
+        var log = LogScrub.Scrub(Log.Tail(30), DiagnosticRoots(),
+            [(Environment.UserName, "<user>"), (Environment.MachineName, "<machine>")]);
+        sb.AppendLine();
+        sb.AppendLine($"<details><summary>Last {log.Count} log lines</summary>");
+        sb.AppendLine();
+        sb.AppendLine("```");
+        foreach (var line in log) sb.AppendLine(line.Replace("```", "'''"));
+        sb.AppendLine("```");
+        sb.AppendLine("</details>");
         return sb.ToString();
     }
 
@@ -694,6 +728,16 @@ sealed class App : IUmbraHost
 
     readonly Dictionary<string, GroupTabs> _tabStrips = new();
     readonly Dictionary<string, long> _tabSwitchedAt = new();
+
+    /// <summary>A widget's own tab icon suggestion (umbra.setTabIcon, already checked); the user's pick still wins. Strips redraw on the next tick.</summary>
+    public void SuggestTabIcon(string instance, string? icon)
+    {
+        if (!Settings.Widgets.TryGetValue(instance, out var ws) || ws.SuggestedTabIcon == icon) return;
+        ws.SuggestedTabIcon = icon;
+        SaveSettings();
+        Log.Write($"[{instance}] suggests the tab icon {icon ?? "(none)"}");
+        SettingsChangedElsewhere();
+    }
 
     /// <summary>
     /// Every tick: keeps a group's tab strip on its visible widget (hidden with it) and switches groups that have a cycle
