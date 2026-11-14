@@ -32,7 +32,10 @@ function since() {
   const s = opt("--since");
   if (s === "all") return { label: "all merged Linux PRs", date: null };
   if (s && /^\d{4}-\d{2}-\d{2}/.test(s)) return { label: `PRs merged since ${s}`, date: s };
-  if (s) return { label: `PRs merged since ${s}`, date: run("git", ["log", "-1", "--format=%cI", s]).trim() };
+  if (s) {
+    if (!/^[\w][\w.\/-]*$/.test(s)) throw new Error(`--since: not a tag, date or "all": ${s}`); // never an option to git
+    return { label: `PRs merged since ${s}`, date: run("git", ["log", "-1", "--format=%cI", "--end-of-options", s]).trim() };
+  }
   if (fixture) return { label: "all PRs in the --prs file", date: null };
   for (const r of gh(["release", "list", "--limit", "40", "--json", "tagName,publishedAt"])) {
     if (r.tagName === `v${ver}`) continue;
@@ -46,10 +49,14 @@ function since() {
 // An issue of the Linux epic (#172-#200) named in the title ("(#192)") or by "Closes/Fixes/Part of #N" in the body.
 const epicIssues = (pr) =>
   [...`${pr.title} ${pr.body ?? ""}`.matchAll(/(?:\(|\b(?:closes|fixes|resolves|part of)\s+)#(\d+)/gi)].map((m) => Number(m[1]));
+// Every issue labelled "platform: linux" (the epic's children and later parity issues such as #360-#369), so a PR that
+// closes one counts even without "Linux" in its title. Offline (--prs) only the epic range is known.
+const linuxIssues = new Set(fixture ? [] : JSON.parse(run("gh", ["issue", "list", "-R", repo, "--label", "platform: linux",
+  "--state", "all", "--limit", "500", "--json", "number"])).map((i) => i.number));
 const isLinux = (pr) =>
   (pr.labels ?? []).some((l) => l.name === "platform: linux") ||
   /\blinux\b/i.test(pr.title) ||
-  epicIssues(pr).some((n) => n >= 172 && n <= 200);
+  epicIssues(pr).some((n) => (n >= 172 && n <= 200) || linuxIssues.has(n));
 
 // The bullets of a "## Human check(s)" section (nested lines joined to their bullet), plus lines elsewhere that name a
 // human check ("Human check: ...", "... is a human check"). The PR template's "Needs a human check on real hardware" line
