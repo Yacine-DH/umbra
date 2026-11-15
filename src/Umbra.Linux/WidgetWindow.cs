@@ -181,6 +181,7 @@ sealed partial class WidgetWindow : IWidgetView
     {
         if (_closed) return;
         _closed = true;
+        EndFocus();
         _closing.Cancel(); // running commands of this copy are killed
         CrashRecovery.SetStopped(Instance, false);
         Closed?.Invoke();
@@ -621,6 +622,7 @@ sealed partial class WidgetWindow : IWidgetView
     public void PushSettings()
     {
         if (_closed) return;
+        NoteEditMode();
         ApplySize();
         Place();
         if (_ready) Post(new JsonObject { ["type"] = "settings", ["settings"] = SettingsPayload() });
