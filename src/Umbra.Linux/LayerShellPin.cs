@@ -102,7 +102,9 @@ sealed unsafe partial class LayerShellPin : IDesktopPin
     static (uint, uint) Version()
     {
         try { return (gtk_layer_get_major_version(), gtk_layer_get_minor_version()); }
-        catch (EntryPointNotFoundException) { return (0, 0); }
+        // Runs in the type initializer (RespectCloseAvailable), which TryCreate triggers on every start: without
+        // libgtk4-layer-shell installed (most X11 setups) the library is missing, and that must not end the process.
+        catch (Exception ex) when (ex is EntryPointNotFoundException or DllNotFoundException) { return (0, 0); }
     }
 
     public void Prepare(Gtk.Window window, bool overlay = false) { }
