@@ -42,7 +42,10 @@ public class LinuxLiveTests
             Assert.True(o["disk"]!["writeBytesPerSec"]!.GetValue<long>() >= 0);
         }
         var drives = o["disk"]!["drives"]!.AsArray();
-        Assert.Contains(drives, d => d!["name"]!.GetValue<string>() == "/"); // the root file system is always a drive
+        // The root file system is a drive wherever it is a real disk; in a container (the local CI's Docker job) it is an
+        // overlay, which DriveMounts skips on purpose.
+        var mounts = ProcParsers.DriveMounts(ProcParsers.ParseMounts(File.ReadAllText("/proc/self/mounts")));
+        if (mounts.Any(m => m.MountPoint == "/")) Assert.Contains(drives, d => d!["name"]!.GetValue<string>() == "/");
         Assert.DoesNotContain(drives, d => d!["name"]!.GetValue<string>().StartsWith("/snap/", StringComparison.Ordinal));
         Assert.All(drives, d =>
         {
