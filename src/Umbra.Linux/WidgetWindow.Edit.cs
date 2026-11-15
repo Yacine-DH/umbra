@@ -216,6 +216,7 @@ sealed partial class WidgetWindow
         _app.SaveSettings();
         _app.RefreshEditPills();
         Log.Verbose($"[{Instance}] moved to {Left},{Top}");
+        RunPendingRelayout(); // a display change arrived during the drag: lay out from the position just saved
     }
 
     // ---------- resize ----------
@@ -248,6 +249,12 @@ sealed partial class WidgetWindow
     void EndResize(Size before)
     {
         _resizing = false;
+        try { SaveHandResize(before); }
+        finally { if (Alive) RunPendingRelayout(); } // a display change arrived during the resize
+    }
+
+    void SaveHandResize(Size before)
+    {
         if (!Alive) return;
         // Edit mode may have been turned off during the drag: put the saved size back.
         if (!CanArrange) { ApplySize(); return; }
