@@ -74,8 +74,8 @@ abstract class OverlayWindow
         }
     }
 
-    public void Show() { if (!_closed && !Window.GetVisible()) Window.SetVisible(true); }
-    public void Hide() { if (!_closed && Window.GetVisible()) Window.SetVisible(false); }
+    public void Show() { if (!_closed && !Window.GetVisible()) App.Pin.SetVisible(Window, true); }
+    public void Hide() { if (!_closed) App.Pin.SetVisible(Window, false); }
 
     public void Close()
     {
@@ -99,7 +99,7 @@ abstract class OverlayWindow
         UiThread.Every(50, () =>
         {
             _restackQueued = false;
-            foreach (var o in Live.Where(o => o.Visible).ToList()) { o.Window.SetVisible(false); o.Window.SetVisible(true); }
+            foreach (var o in Live.Where(o => o.Visible).ToList()) { o.App.Pin.SetVisible(o.Window, false); o.App.Pin.SetVisible(o.Window, true); }
             return false;
         });
     }
