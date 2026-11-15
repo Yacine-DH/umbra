@@ -10,7 +10,7 @@
 // Edit the notes in the PR if you like: when it is merged, release.yml builds the installer, creates the tag and the
 // GitHub release, and uses the PR body (above the end-of-notes marker) as the release notes.
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -46,6 +46,25 @@ function replaceVersion(text, re, version, file) {
 }
 export const bumpProps = (text, v) => replaceVersion(text, /<Version>\s*([^<\s]+)\s*<\/Version>/, v, "Directory.Build.props");
 export const bumpIss = (text, v) => replaceVersion(text, /#define\s+AppVersion\s+"([^"]+)"/, v, "installer/Umbra.iss");
+
+/**
+ * Adds a `<release>` entry for `version` (dated `date`, YYYY-MM-DD) at the top of the AppStream metainfo's `<releases>`,
+ * in the indentation and line endings of the newest entry, so check-versions.mjs agrees. Unchanged when already listed.
+ */
+/** Today as YYYY-MM-DD in the maintainer's own time zone (toISOString would be the UTC day, off by one near midnight). */
+const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+export function bumpMetainfo(xml, version, date) {
+  if (xml.includes(`<release version="${version}"`)) return xml;
+  const m = /([ \t]*)<release version="[^"]+"[^>]*>\r?\n([ \t]*)<url /.exec(xml);
+  if (!m) throw new Error("metainfo: no <release> entry found");
+  const eol = xml.includes("\r\n") ? "\r\n" : "\n";
+  const [, ind, inner] = m;
+  const entry = `${ind}<release version="${version}" date="${date}">${eol}`
+    + `${inner}<url type="details">https://github.com/${REPO}/releases/tag/v${version}</url>${eol}`
+    + `${ind}</release>${eol}`;
+  return xml.slice(0, m.index) + entry + xml.slice(m.index);
+}
 export const propsVersion = (text) => /<Version>\s*([^<\s]+)\s*<\/Version>/.exec(text)?.[1];
 
 /**
@@ -86,6 +105,7 @@ function main(argv) {
   if (!bump) { console.error("Usage: node scripts/release.mjs <patch|minor|major|X.Y.Z> [--dry-run] [--no-test]"); process.exit(2); }
 
   const propsPath = join(root, "Directory.Build.props"), issPath = join(root, "installer", "Umbra.iss");
+  const metaRel = "linux/io.github.aminechr54.Umbra.metainfo.xml", metaPath = join(root, metaRel);
   const props = readFileSync(propsPath, "utf8"), iss = readFileSync(issPath, "utf8");
   const current = propsVersion(props);
   const version = nextVersion(current, bump);
@@ -112,6 +132,7 @@ function main(argv) {
   step(`Bumping to ${version}`);
   writeFileSync(propsPath, bumpProps(props, version), "utf8");
   writeFileSync(issPath, bumpIss(iss, version), "utf8");
+  if (existsSync(metaPath)) writeFileSync(metaPath, bumpMetainfo(readFileSync(metaPath, "utf8"), version, localDate()), "utf8");
   run("node", ["scripts/check-versions.mjs"], { show: true });
   run("node", ["scripts/catalog.mjs", "--check"], { show: true });
   if (!noTest) {
@@ -122,7 +143,7 @@ function main(argv) {
 
   step(`Committing on ${branch} and opening the release PR`);
   git("switch", "--quiet", "-c", branch);
-  git("commit", "--quiet", "-m", `Release ${tag}`, "--", "Directory.Build.props", "installer/Umbra.iss");
+  git("commit", "--quiet", "-m", `Release ${tag}`, "--", "Directory.Build.props", "installer/Umbra.iss", ...(existsSync(metaPath) ? [metaRel] : []));
   git("push", "--quiet", "-u", "origin", branch);
   mkdirSync(join(root, "dist"), { recursive: true });
   const bodyFile = join(root, "dist", "release-pr.md");

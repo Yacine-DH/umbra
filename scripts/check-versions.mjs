@@ -23,8 +23,8 @@ for (const f of readdirSync(join(root, "winget")).filter((n) => n.endsWith(".yam
   }
 }
 
-// The Linux AppStream metainfo (Flatpak/Flathub, #196): its newest <release> must be this version. The file doesn't exist
-// yet (TODO #196: the Flatpak half), so this only runs once it lands; release.mjs must then add the new <release> entry.
+// The Linux AppStream metainfo (#399, shipped in the tarball and used by Flatpak/Flathub, #196): its newest <release> must
+// be this version. release.mjs adds that entry with every version bump.
 const metainfo = "linux/io.github.aminechr54.Umbra.metainfo.xml";
 if (existsSync(join(root, metainfo))) {
   const rel = /<release\b[^>]*\bversion="([^"]+)"/.exec(read(metainfo))?.[1];

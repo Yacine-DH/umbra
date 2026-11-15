@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { nextVersion, bumpProps, bumpIss, propsVersion, draftNotes, notesFromBody, NOTES_END, UNSIGNED } from "../../scripts/release.mjs";
+import { nextVersion, bumpProps, bumpIss, bumpMetainfo, propsVersion, draftNotes, notesFromBody, NOTES_END, UNSIGNED } from "../../scripts/release.mjs";
 
 const root = join(import.meta.dirname, "..", "..");
 
@@ -57,4 +57,15 @@ test("the release notes are the PR body above the end marker", () => {
   assert.equal(notesFromBody(body), "## Added\n\n- Zoom");
   assert.equal(notesFromBody("## Fixed\n\n- A bug\n"), "## Fixed\n\n- A bug");
   assert.equal(notesFromBody(null), "");
+});
+
+test("the metainfo gets a <release> entry on top, once, in its own indentation and line endings", () => {
+  const xml = "<component>\r\n  <releases>\r\n    <release version=\"1.17.0\" date=\"2026-11-12\">\r\n      <url type=\"details\">https://github.com/AmineChr54/umbra/releases/tag/v1.17.0</url>\r\n    </release>\r\n  </releases>\r\n</component>\r\n";
+  const out = bumpMetainfo(xml, "1.18.0", "2026-11-15");
+  assert.equal(out, xml.replace("    <release version=\"1.17.0\"",
+    "    <release version=\"1.18.0\" date=\"2026-11-15\">\r\n      <url type=\"details\">https://github.com/AmineChr54/umbra/releases/tag/v1.18.0</url>\r\n    </release>\r\n    <release version=\"1.17.0\""));
+  assert.equal(bumpMetainfo(out, "1.18.0", "2026-11-16"), out, "already listed: unchanged");
+  assert.throws(() => bumpMetainfo("<releases/>", "1.0.1", "2026-01-01"), /no <release>/);
+  const real = readFileSync(join(root, "linux", "io.github.aminechr54.Umbra.metainfo.xml"), "utf8");
+  assert.match(bumpMetainfo(real, "99.0.0", "2030-01-01"), /<release version="99\.0\.0" date="2030-01-01">/);
 });

@@ -14,7 +14,8 @@ merge commit of the release PR), never from a hand-pushed tag.
    or the protocol. Preview with `node scripts/release.mjs minor --dry-run`: it prints the next version and the draft notes
    and changes nothing.
 3. **Start it** on a clean, up-to-date `main`: `node scripts/release.mjs minor` (or `patch`, `major`, `X.Y.Z`). It:
-   - bumps `Directory.Build.props` and `installer/Umbra.iss` (keeping line endings and BOM);
+   - bumps `Directory.Build.props` and `installer/Umbra.iss` (keeping line endings and BOM) and adds the new `<release>`
+     entry to the Linux AppStream metainfo (`linux/io.github.aminechr54.Umbra.metainfo.xml`);
    - runs `check-versions.mjs`, `catalog.mjs --check`, the build with `-warnaserror` and the tests (`--no-test` skips the
      last two; CI still runs them);
    - commits `Release vX.Y.Z` on `release/vX.Y.Z` as the user (no co-author trailer), pushes, and opens the PR with
@@ -34,8 +35,7 @@ merge commit of the release PR), never from a hand-pushed tag.
    `gh release create vX.Y.Z dist/UmbraSetup-X.Y.Z.exe dist/Umbra-X.Y.Z-portable.zip dist/umbra-X.Y.Z-linux-x64.tar.gz dist/umbra-X.Y.Z-linux-x64.tar.gz.sha256 dist/umbra-X.Y.Z-linux-arm64.tar.gz dist/umbra-X.Y.Z-linux-arm64.tar.gz.sha256 --target <merge sha> --title "Umbra X.Y.Z" --notes-file <notes> --latest`.
    The installer is unsigned (no signing secrets here). Linux copies only notify: once the release has their arch's tarball,
    Settings > About and the tray say "Update available" and open the release page (`LinuxUpdater`); a release without the
-   tarballs is never announced to Linux. TODO(#196): the Flatpak bundle joins these assets once the manifest and metainfo exist
-   (then `check-versions.mjs` also checks the metainfo `<release>`, and `release.mjs` must add that entry).
+   tarballs is never announced to Linux. TODO(#196): the Flatpak bundle joins these assets once its manifest exists.
 7. **Website:** `node scripts/deploy-site.mjs` on the updated `main`, so the site shows the new version and every widget change since the
    last deploy (Actions is off, nothing else deploys it). Check `https://aminechr54.github.io/umbra/` afterwards.
 8. **Verify:** `gh release view vX.Y.Z --json assets -q ".assets[].name"` lists `UmbraSetup-X.Y.Z.exe` (about 90 MB),

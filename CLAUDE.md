@@ -247,7 +247,7 @@ Use `umbractl capture <widget-id|settings:<page>> out.png`, then look at the PNG
 - Contributors without write access work from a fork (`gh repo fork AmineChr54/umbra --clone`, then
   `gh pr create --repo AmineChr54/umbra`). They can't set labels, assignees or the board, and never merge; the
   maintainer does that, and runs CI for their PR on the maintainer's PC only after reading the diff (`-TrustFork`: CI runs their code).
-- Releases: `node scripts/release.mjs <patch|minor|major>` bumps `Directory.Build.props` and `installer/Umbra.iss`, runs the
+- Releases: `node scripts/release.mjs <patch|minor|major>` bumps `Directory.Build.props`, `installer/Umbra.iss` and the metainfo `<release>`, runs the
   checks and opens the `Release vX.Y.Z` PR with draft notes as its body. After it merges, `build.ps1` runs on the maintainer's PC and
   `gh release create` publishes the installer and portable zip with the PR body as notes (GitHub Actions, and so `release.yml`, is off; see `.claude/skills/release`).
 
