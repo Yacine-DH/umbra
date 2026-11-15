@@ -48,6 +48,22 @@ interface IDesktopPin
     void MoveLive(Gtk.Window window, int x, int y) => Move(window, x, y);
 
     /// <summary>
+    /// Puts the window at these logical bounds again after the scale or the monitors changed. X11 coordinates are device
+    /// pixels, so a scale change moves every window and leaves its X window at the old device size unless it is asked for
+    /// again (seen as a stale, larger copy around the new frame). The default is a plain <see cref="Move"/>, for backends
+    /// where the compositor sizes windows in logical pixels.
+    /// </summary>
+    void Relayout(Gtk.Window window, Rectangle bounds) => Move(window, bounds.X, bounds.Y);
+
+    /// <summary>
+    /// True when <see cref="Relayout"/> only takes effect on a window that is not mapped, so the host hides a visible window
+    /// around it. Mutter ignores a mapped XWayland window's move and resize requests after XWayland's scale changed (it
+    /// keeps the old device size, drawn as a stale, larger copy behind the new frame); a window it does not manage at that
+    /// moment gets the request straight from the X server, and maps again with it.
+    /// </summary>
+    bool RemapOnRelayout => false;
+
+    /// <summary>
     /// True when a widget window that maps again may end up above the overlays (layer-shell: the stacking inside a layer is
     /// up to the compositor), so the host shows the visible overlays again after it.
     /// </summary>
@@ -91,6 +107,7 @@ sealed unsafe partial class X11Pin : IDesktopPin
     [LibraryImport(X11, StringMarshalling = StringMarshalling.Utf8)] private static partial nuint XInternAtom(IntPtr display, string name, int onlyIfExists);
     [LibraryImport(X11)] private static partial int XChangeProperty(IntPtr display, nuint window, nuint property, nuint type, int format, int mode, nuint* data, int count);
     [LibraryImport(X11)] private static partial int XMoveWindow(IntPtr display, nuint window, int x, int y);
+    [LibraryImport(X11)] private static partial int XMoveResizeWindow(IntPtr display, nuint window, int x, int y, uint width, uint height);
     [LibraryImport(X11)] private static partial int XLowerWindow(IntPtr display, nuint window);
     [LibraryImport(X11)] private static partial int XFlush(IntPtr display);
     [LibraryImport(X11)] private static partial int XSendEvent(IntPtr display, nuint window, int propagate, nint mask, XClientMessageEvent* e);
@@ -127,7 +144,7 @@ sealed unsafe partial class X11Pin : IDesktopPin
 
     const int PropModeReplace = 0, ClientMessage = 33;
     const nint SubstructureRedirectMask = 1 << 20, SubstructureNotifyMask = 1 << 19;
-    const nint InputHint = 1, USPosition = 1, PPosition = 4;
+    const nint InputHint = 1, USPosition = 1, USSize = 2, PPosition = 4, PSize = 8;
     const nuint XaAtom = 4, XaCardinal = 6;
     const nuint AllDesktops = 0xFFFFFFFF;
 
@@ -138,6 +155,8 @@ sealed unsafe partial class X11Pin : IDesktopPin
     X11Pin(IntPtr display, nuint root, bool utility) { _display = display; _root = root; _utility = utility; }
 
     public string Name => _utility ? "x11 (utility, below)" : "x11";
+
+    public bool RemapOnRelayout => true;
 
     /// <summary>
     /// The X11 backend when GDK runs on X11 (a real X session or XWayland), else null.
@@ -251,11 +270,24 @@ sealed unsafe partial class X11Pin : IDesktopPin
     {
         var xid = Xid(window);
         if (xid == 0) return;
-        var k = Scale(window);
+        var at = WidgetPlacement.ToDevice(new Rectangle(x, y, 1, 1), Scale(window));
         // "The user chose this position": without it a window manager may place the window itself when it maps.
-        var hints = new XSizeHints { Flags = USPosition | PPosition, X = x * k, Y = y * k };
+        var hints = new XSizeHints { Flags = USPosition | PPosition, X = at.X, Y = at.Y };
         XSetWMNormalHints(_display, xid, &hints);
-        XMoveWindow(_display, xid, x * k, y * k);
+        XMoveWindow(_display, xid, at.X, at.Y);
+        XFlush(_display);
+    }
+
+    public void Relayout(Gtk.Window window, Rectangle bounds)
+    {
+        var xid = Xid(window);
+        if (xid == 0 || bounds.Width <= 0 || bounds.Height <= 0) return;
+        var r = WidgetPlacement.ToDevice(bounds, Scale(window));
+        // Position and size in one request, with the "user chose this" hints Move writes: the window manager otherwise keeps
+        // the device size the window had under the old scale.
+        var hints = new XSizeHints { Flags = USPosition | PPosition | USSize | PSize, X = r.X, Y = r.Y, Width = r.Width, Height = r.Height };
+        XSetWMNormalHints(_display, xid, &hints);
+        XMoveResizeWindow(_display, xid, r.X, r.Y, (uint)r.Width, (uint)r.Height);
         XFlush(_display);
     }
 
