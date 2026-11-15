@@ -4,7 +4,7 @@ description: A page-by-page tour of Umbra's Settings window, with keyboard short
 sidebar: { order: 1 }
 ---
 
-Open Settings from the tray icon, from the Start menu, or by launching Umbra a second time (a second launch opens Settings in the running copy). The window reopens where you left it: size, monitor, maximized state and last page.
+Open Settings from the tray icon, from the Start or app menu, or by launching Umbra a second time (a second launch opens Settings in the running copy). The window reopens with its size, maximized state, zoom and last page (and on Windows, its monitor and position; on Linux, the compositor places the window).
 
 ## Pages
 

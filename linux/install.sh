@@ -23,6 +23,7 @@ if [ "${1:-}" = "--uninstall" ]; then
   command -v update-mime-database >/dev/null && [ -d "$share/mime/packages" ] && update-mime-database "$share/mime" 2>/dev/null || true
   command -v update-desktop-database >/dev/null && [ -d "$share/applications" ] && update-desktop-database -q "$share/applications" || true
   find "$share/icons/hicolor" -name "$id*.png" -delete 2>/dev/null || true
+  rm -f "$share/metainfo/$id.metainfo.xml"
   rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/autostart/$id.desktop"
   if [ -d "$ext_dir" ]; then
     rm -rf "$ext_dir"
@@ -69,6 +70,8 @@ cp "$here/$id.xml" "$share/mime/packages/$id.xml" # application/x-umbra-widget (
 cp -r "$app/umbra/icons/hicolor" "$share/icons/" 2>/dev/null || { mkdir -p "$share/icons"; cp -r "$app/umbra/icons/hicolor" "$share/icons/"; }
 rm -f "$share/icons/hicolor/index.theme" # the system theme's index wins; ours only lists our own folders
 command -v update-desktop-database >/dev/null && update-desktop-database -q "$share/applications" || true
+# AppStream metadata, so a software centre can show Umbra with its description and screenshots.
+[ -f "$here/$id.metainfo.xml" ] && mkdir -p "$share/metainfo" && cp "$here/$id.metainfo.xml" "$share/metainfo/"
 command -v update-mime-database >/dev/null && update-mime-database "$share/mime" 2>/dev/null || true
 command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q -t "$share/icons/hicolor" 2>/dev/null || true
 
