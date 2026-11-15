@@ -354,6 +354,18 @@ sealed class App : IUmbraHost
         return win;
     }
 
+    /// <summary>Opens Settings on About with the "Report a problem" box (tray, a widget's "stopped working" page).</summary>
+    public void OpenReport(ReportContext ctx)
+    {
+        if (ShowSettings() is not SettingsWindow win) return;
+        _ = Open().ContinueWith(t => Log.Write($"Report box failed: {t.Exception?.GetBaseException().Message}"), TaskContinuationOptions.OnlyOnFaulted);
+        async Task Open()
+        {
+            await win.ShowPageAsync("about");
+            win.OpenReport(ctx);
+        }
+    }
+
     /// <summary>The manifest and instance id for a widget id or an instance id ("sp500#2"), or null when unknown.</summary>
     public (WidgetManifest Manifest, string Instance)? Resolve(string id)
     {
@@ -457,6 +469,7 @@ sealed class App : IUmbraHost
         yield return TrayItem.Line();
         yield return new TrayItem { Label = "Refresh all", Click = () => { foreach (var w in _windows.Values) w.RefreshData(); } };
         yield return new TrayItem { Label = "Open data folder", Click = () => OpenWithDesktop(AppPaths.DataDir) };
+        yield return new TrayItem { Label = "Report a problem...", Click = () => OpenReport(new ReportContext("tray")) };
         yield return new TrayItem { Label = "Restart Umbra", Click = Restart };
         yield return new TrayItem { Label = "Quit", Click = Quit };
     }

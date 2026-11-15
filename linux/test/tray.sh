@@ -28,7 +28,7 @@ here=$(cd "$(dirname "$0")" && pwd)
   prop IconThemePath | grep -q "/icons" && echo "ok    IconThemePath $(prop IconThemePath)" || fail "IconThemePath"
   prop ToolTip | grep -q "widget" && echo "ok    tooltip $(prop ToolTip)" || fail "ToolTip: $(prop ToolTip)"
   layout=$(gdbus call --session -d "$service" -o /MenuBar -m com.canonical.dbusmenu.GetLayout -- 0 -1 "[]")
-  for label in "Settings..." "Arrange widgets (unlock)" "Hide widgets" "Layouts" "Save current layout" "Refresh all" "Restart Umbra" "Quit"; do
+  for label in "Settings..." "Arrange widgets (unlock)" "Hide widgets" "Layouts" "Save current layout" "Refresh all" "Report a problem..." "Restart Umbra" "Quit"; do
     echo "$layout" | grep -qF "$label" || fail "menu has no \"$label\": $layout"
   done
   echo "ok    the menu has the Windows items"

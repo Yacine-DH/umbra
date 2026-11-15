@@ -14,12 +14,15 @@
 //
 // Stats (see stats.js): anonymous install counts from the app and page views from the website, no ids of any kind.
 //   GET /stats/install?w=ID   GET /stats/view?p=PATH&r=HOST   GET /stats/installs   GET /stats/summary (Bearer token)
+// Problem reports (see reports.js): what a user typed into Settings > Report a problem, no ids of any kind.
+//   POST /stats/report (JSON body)   GET|POST /stats/reports (Bearer token: list, mark done, delete)
 //
-// GET only, because widgets can only fetch with GET. Every response is JSON with status 200, errors as { error }
+// GET only (except the two report routes), because widgets can only fetch with GET. Every response is JSON with status 200, errors as { error }
 // (the host's fetch throws away the body of a non-2xx answer).
 
 import { GRACE_MS, handleHearth } from "./hearth.js";
 import { STATS_ROUTES, handleStats } from "./stats.js";
+import { REPORT_ROUTES, REPORT_LIMITS, handleReports } from "./reports.js";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no I, L, O, 0, 1
 const CODE_TTL_MS = 10 * 60 * 1000;
@@ -60,7 +63,8 @@ export default {
     }
     if (u.pathname.startsWith("/stats/")) {
       // Read from the website and the app: CORS for any origin, never a non-2xx (except the preflight's 204).
-      const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization", "access-control-max-age": "86400" };
+      const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type",
+        "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-max-age": "86400" };
       if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
       const out = (o, cache) => {
         const r = json(o);
@@ -70,6 +74,20 @@ export default {
       };
       try {
         const name = u.pathname.slice("/stats/".length);
+        if (REPORT_ROUTES.has(name)) {
+          // The report body goes to the "reports" object as the body of an internal POST; nothing else of the request does.
+          if (req.method !== "GET" && req.method !== "POST") return out({ error: "GET or POST only" });
+          if (Number(req.headers.get("content-length") || 0) > REPORT_LIMITS.body) return out({ error: "too long" });
+          const body = req.method === "POST" ? await req.text() : "";
+          if (new TextEncoder().encode(body).length > REPORT_LIMITS.body) return out({ error: "too long" });
+          const stub = room("reports");
+          const r = await stub.fetch("https://room/reports/" + name, {
+            method: "POST",
+            headers: { "x-method": req.method, "x-auth": req.headers.get("authorization") || "" },
+            body,
+          }).then((x) => x.json());
+          return out(r);
+        }
         if (!STATS_ROUTES.has(name)) return out({ error: "not found" });
         if (req.method !== "GET" && req.method !== "HEAD") return out({ error: "GET only" });
         if (req.url.length > 1000) return out({ error: "too long" });
@@ -120,6 +138,10 @@ export class Room {
     const u = new URL(req.url);
     const q = u.searchParams;
     const now = this.clock();
+    if (u.pathname.startsWith("/reports/")) {
+      const body = await req.text();
+      return Response.json(await handleReports(this.s, u.pathname.slice("/reports/".length), req.headers.get("x-method"), body, this.env, now, req.headers.get("x-auth")));
+    }
     if (u.pathname.startsWith("/stats/")) {
       return Response.json(await handleStats(this.s, u.pathname.slice("/stats/".length), q, this.env, now, q.get("auth")));
     }

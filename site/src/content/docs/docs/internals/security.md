@@ -50,7 +50,7 @@ The control pipe uses `PipeOptions.CurrentUserOnly`. **Never add a network liste
 
 ## Privacy
 
-No account and no tracking. The network traffic Umbra itself makes is the daily GitHub release check, the catalog (and its install counts) when Browse is open, an anonymous +1 per fresh catalog install (`InstallStats`: the widget id only, off in Data & privacy), and requests widgets make to hosts they declared. Backups never include command approvals, and diagnostics contain no option values, proxy address or widget data.
+No account and no tracking. The network traffic Umbra itself makes is the daily GitHub release check, the catalog (and its install counts) when Browse is open, an anonymous +1 per fresh catalog install (`InstallStats`: the widget id only, off in Data & privacy), a problem report when the user presses Send in **Report a problem** (`ProblemReport`: the typed text, Umbra version, OS, where it was opened and the widget's id and version; error text scrubbed of user folders and names; no ids; no control command, umbractl or MCP tool can send one), and requests widgets make to hosts they declared. Backups never include command approvals, and diagnostics contain no option values, proxy address or widget data.
 
 ## Related
 

@@ -4,11 +4,12 @@ using System.Text.Json.Nodes;
 namespace Umbra;
 
 /// <summary>
-/// The one thing Umbra reports about itself: an anonymous "+1" for a catalog widget when it is freshly installed (not on
+/// The one thing Umbra reports on its own: an anonymous "+1" for a catalog widget when it is freshly installed (not on
 /// updates, reinstalls over an existing folder or file/folder/URL installs), so Browse and the website can show install
 /// counts. The request is <c>GET {relay}/stats/install?w=&lt;widget id&gt;</c>: no user or machine id, no version, nothing
 /// else; the relay stores only the per-widget counts (tools/umbra-relay/stats.js). Off with
 /// <see cref="GeneralSettings.CountInstalls"/>. Nothing is sent until the host sets <see cref="Enabled"/> (tests never do).
+/// The only other report, <see cref="ProblemReport"/>, is sent only when the user presses Send.
 /// </summary>
 public static class InstallStats
 {

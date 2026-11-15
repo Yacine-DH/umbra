@@ -767,14 +767,31 @@ sealed class App : ApplicationContext, IUmbraHost
             try { System.Diagnostics.Process.Start("explorer.exe", $"\"{AppPaths.DataDir}\""); }
             catch (Exception ex) { Log.Write($"Open data folder failed: {ex.Message}"); }
         });
+        menu.Items.Add("Report a problem...", null, (_, _) => OpenReport(new ReportContext("tray")));
         menu.Items.Add("Restart Umbra", null, (_, _) => Restart());
         menu.Items.Add("Exit", null, (_, _) => ExitThread());
+    }
+
+    /// <summary>Opens Settings on About with the "Report a problem" box (tray, error balloons, a widget's "stopped working" page).</summary>
+    public void OpenReport(ReportContext ctx)
+    {
+        var win = ShowSettings();
+        _ = ObserveAsync(OpenReportAsync(win, ctx), "Report box");
+    }
+
+    static async Task OpenReportAsync(SettingsWindow win, ReportContext ctx)
+    {
+        await win.ShowPageAsync("about");
+        win.OpenReport(ctx);
     }
 
     /// <summary>A balloon from Umbra itself (not a widget), e.g. a failed update.</summary>
     public void ShowTrayMessage(string text, ToolTipIcon icon)
     {
-        ShowBalloon(5000, "Umbra", text, icon, null);
+        // An error balloon is a way in to "Report a problem": clicking it opens the box with the error filled in.
+        if (icon == ToolTipIcon.Error)
+            ShowBalloon(6000, "Umbra", $"{text}" + Environment.NewLine + "Click to report this problem.", icon, () => OpenReport(new ReportContext("error", Error: text)));
+        else ShowBalloon(5000, "Umbra", text, icon, null);
     }
 
     /// <summary>The one place a tray balloon is shown: resets the click target first, so clicking an unrelated balloon never opens an earlier balloon's URL.</summary>

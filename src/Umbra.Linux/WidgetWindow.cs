@@ -324,6 +324,11 @@ sealed partial class WidgetWindow : IWidgetView
                     ReloadAfterStop();
                     break;
 
+                case "report": // the "stopped working" page's Report button; only that host page is loaded while stopped
+                    if (_stopped && !_recovering && Alive)
+                        _app.OpenReport(new ReportContext("crash", Manifest.Id, Error: "The widget kept crashing and was stopped."));
+                    break;
+
                 case "openUrl":
                     if (msg["url"]?.GetValue<string>() is { } url) WebHost.OpenExternal(url);
                     break;

@@ -65,7 +65,7 @@ export function createRelay(vars = {}) {
           const storage = new FakeStorage();
           objects.set(name, { storage, room: new Room({ storage }, env) });
         }
-        return { fetch: (url) => objects.get(name).room.fetch(new Request(url)) };
+        return { fetch: (url, init) => objects.get(name).room.fetch(new Request(url, init)) };
       },
     },
   };

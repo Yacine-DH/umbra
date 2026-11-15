@@ -425,6 +425,14 @@ sealed class SettingsWindow : Form, ISettingsView
                 break;
             }
 
+            case "reportOpen": // the page's own entry points (About, an error toast); the box opens on the host's answer
+                OpenReport(ReportContext.FromMessage(msg));
+                break;
+
+            case "sendReport":
+                Post(await ProblemReport.SendMessageAsync(msg, _app.Manifests));
+                break;
+
             case "restart":
                 _app.Restart();
                 break;
@@ -876,11 +884,29 @@ sealed class SettingsWindow : Form, ISettingsView
             await _view.CoreWebView2.ExecuteScriptAsync($"welcome({slide})");
             return;
         }
+        if (page == "report") // the "Report a problem" box over About (captures)
+        {
+            await ShowPageAsync("about");
+            OpenReport(new ReportContext("about"));
+            await Task.Delay(400);
+            return;
+        }
         if (!Pages.Contains(page)) throw new ArgumentException($"Unknown Settings page '{page}'. Pages: {string.Join(", ", Pages)}");
         await _loaded.Task.WaitAsync(TimeSpan.FromSeconds(20));
         if (page == "browse") _catalogSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
         if (page == "themes") _themesSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
         await _view.CoreWebView2.ExecuteScriptAsync($"show('{page}')");
+    }
+
+    /// <summary>Opens the "Report a problem" box over the current page (tray, crash page, About, error toasts).</summary>
+    public async void OpenReport(ReportContext ctx)
+    {
+        try
+        {
+            await _loaded.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            Post(ProblemReport.OpenMessage(ctx, _app.Manifests));
+        }
+        catch (Exception ex) { Log.Write($"Could not open the report box: {ex.Message}"); }
     }
 
     /// <summary>Shows My widgets scrolled to one copy's card, which is highlighted for a moment (the page's own focusWidget function).</summary>

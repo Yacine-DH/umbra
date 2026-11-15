@@ -1,7 +1,8 @@
 # Umbra relay
 
 A small Cloudflare Worker plus one Durable Object class. It is the only server Umbra has. Two widgets use it, and it
-also keeps Umbra's anonymous install counts and the website's page views ([Stats](#stats)):
+also keeps Umbra's anonymous install counts, the website's page views ([Stats](#stats)) and the problem reports users
+send from the app ([Problem reports](#problem-reports)):
 
 - **Buddy** (`widgets/buddy`): pairs two people with a one-time code and shows whether the other one is online.
 - **Hearth** (epic #207): a long-distance couples widget. The relay keeps the couple's names, together-since date,
@@ -266,6 +267,25 @@ Stored: `t` = all-time installs per widget, and `d:<YYYY-MM-DD>` = that UTC day'
 path (`v`) and referrer hosts (`r`), at most 500 widgets, 300 paths and 100 hosts a day (new keys past that are ignored).
 Days older than 400 days are deleted when a new day starts. Counts are not authenticated, so they are a signal, not an
 audit: anyone can add to them. Tests: `tests/relay/stats.test.mjs`.
+
+## Problem reports
+
+`reports.js`, in its own Durable Object named `reports` (the same `Room` class, so no migration). What a user typed into
+Settings > **Report a problem** (`ProblemReport.cs`), sent only when they press Send. The two report routes are the only
+POSTs the relay takes; every answer is still status-200 JSON with CORS for any origin.
+
+| Call | Who | Response |
+|---|---|---|
+| `POST /stats/report`, JSON body (at most 4 KB) `{ text, version, os, where, widget?, widgetVersion?, error? }` | the app | `{ ok }`, or `{ error }` (too short/long, bad field, `busy, try again tomorrow`) |
+| `GET /stats/reports` with `Authorization: Bearer <STATS_TOKEN>` | the private dashboard | `{ reports: [{ id, at, text, version, os, where, widget?, widgetVersion?, error?, done }], newCount, total, now }`, newest first, at most 500 |
+| `POST /stats/reports` with the token, body `{ op: "done" \| "undone" \| "delete", id }` | the private dashboard | `{ ok }`, or `{ error }` |
+
+Fields: `text` 10-2000 characters (control characters removed), `version`/`widgetVersion` like `1.2.3`, `os` up to 60
+plain characters, `where` one of `about`, `tray`, `error`, `crash`, `widget` a widget id, `error` up to 300 characters
+(the app scrubs user folders and names first). Unknown fields are dropped. Stored: `r:<ms>-<4 hex>` per report and
+`c:<YYYY-MM-DD>` = that day's count. No IP address, user agent, header or id is stored or derived. At most 100 reports a
+day from everyone together and 1000 kept (oldest dropped first); reports older than 180 days are deleted. Tests:
+`tests/relay/reports.test.mjs`.
 
 ## Deploy
 

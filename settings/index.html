@@ -320,7 +320,7 @@
           <div class="row">
             <div class="row-text">
               <div class="row-title">Count my widget installs</div>
-              <div class="row-sub">When you install a widget from the catalog, Umbra sends one anonymous +1 for that widget, so Browse can show how many people use it. Nothing else: no id, no version, nothing about you or this PC, and updates aren't counted. Off also stops Browse from loading the counts.</div>
+              <div class="row-sub">When you install a widget from the catalog, Umbra sends one anonymous +1 for that widget, so Browse can show how many people use it. Nothing else: no id, no version, nothing about you or this PC, and updates aren't counted. Off also stops Browse from loading the counts. (A problem report is sent only when you write one in About > Report a problem and press Send.)</div>
             </div>
             <label class="switch"><input type="checkbox" id="countInstalls"><span></span></label>
           </div>
@@ -353,7 +353,7 @@
           </div>
           <div class="about-links">
             <button class="btn" data-url="repo"><span class="ico" data-icon="github"></span>Source code</button>
-            <button class="btn" id="reportIssue"><span class="ico" data-icon="bug"></span>Report an issue</button>
+            <button class="btn" id="reportProblem"><span class="ico" data-icon="bug"></span>Report a problem</button>
             <button class="btn" id="copyDiagnostics" title="Copies your Umbra and Windows versions, monitors and the last log lines to the clipboard. No settings values, proxy address or widget data."><span class="ico" data-icon="copy"></span>Copy diagnostics</button>
             <button class="btn" id="replayTour"><span class="ico" data-icon="info"></span>Replay welcome tour</button>
             <button class="btn" data-url="contribute"><span class="ico" data-icon="plus"></span>Build a widget</button>
@@ -399,6 +399,39 @@
       <button class="btn small primary" id="helpPopBrowse" type="button"><span class="ico" data-icon="compass"></span>Open Browse</button>
       <button class="btn small ghost" data-url="contribute" type="button">Build a widget</button>
     </div>
+  </div>
+
+  <!-- Report a problem: what the user types goes to the maintainer anonymously (ProblemReport.cs). The host fills in
+       the "Also sent" line, so the page never builds the version/OS text itself. -->
+  <div class="report" id="report" hidden>
+    <form class="report-card" id="reportForm" role="dialog" aria-modal="true" aria-labelledby="reportTitle" aria-describedby="reportSub" novalidate>
+      <div class="report-head">
+        <span class="report-badge"><span class="ico" data-icon="bug"></span></span>
+        <div class="report-titles">
+          <h2 id="reportTitle">Report a problem</h2>
+          <p id="reportSub">Goes straight to the developer, anonymously. No name, email or account.</p>
+        </div>
+        <button class="report-x" type="button" id="reportClose" aria-label="Close"><span class="ico" data-icon="x"></span></button>
+      </div>
+      <blockquote class="report-error" id="reportError" hidden></blockquote>
+      <div class="report-field">
+        <textarea id="reportText" rows="6" maxlength="2000" spellcheck="true" aria-label="What happened"
+          placeholder="What happened, and what did you expect instead?"></textarea>
+        <span class="report-count" id="reportCount" aria-hidden="true"></span>
+      </div>
+      <p class="report-meta"><span class="ico" data-icon="info"></span><span>Also sent: <span id="reportMeta"></span></span></p>
+      <p class="report-msg" id="reportMsg" role="alert"></p>
+      <div class="report-foot">
+        <button class="report-link" type="button" id="reportGithub">Prefer GitHub? Open an issue</button>
+        <button class="btn ghost" type="button" id="reportCancel">Cancel</button>
+        <button class="btn primary" type="submit" id="reportSend"><span class="ico" data-icon="send"></span>Send</button>
+      </div>
+      <div class="report-done" id="reportDone" hidden aria-live="polite">
+        <svg viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="23" /><path d="m16 27 7 7 13-15" /></svg>
+        <strong>Thanks, it's on its way.</strong>
+        <span>Every report gets read.</span>
+      </div>
+    </form>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

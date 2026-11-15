@@ -28,7 +28,12 @@ Umbra has no account and doesn't track you. Its own network traffic is limited t
    user or machine id, no version and nothing about your PC, and updates or file installs aren't counted. The Umbra relay
    keeps only the total per widget. Turn it off with **Count my widget installs** in **Data & privacy**; that also stops
    Browse from loading the counts,
-4. requests that widgets make to hosts they declared in their `widget.json`.
+4. a problem report, only when you write one in **Report a problem** (Settings > About, the tray menu, the **Report**
+   button on an error message or on a widget's "stopped working" page) and press **Send**: your text, the Umbra version,
+   the OS (for example "Windows 11 (26200)") and, when it was about a widget, that widget's id and version, plus the error
+   message you saw with your user folder and name taken out. No name, email, user or machine id, log or settings. The box
+   shows exactly what is added before you send. Reports are kept at most 180 days and only the developer can read them,
+5. requests that widgets make to hosts they declared in their `widget.json`.
 
 This website counts page views the same way: the page's path and the referring site's name, no cookie, no id, and
 nothing at all when your browser sends Do Not Track or Global Privacy Control.

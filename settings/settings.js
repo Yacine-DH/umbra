@@ -29,6 +29,7 @@ const ICONS = {
   layers: '<path d="m12 4 8.5 4.5L12 13 3.5 8.5z"/><path d="m3.5 12.5 8.5 4.5 8.5-4.5M3.5 16.5 12 21l8.5-4.5"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
   x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  send: '<path d="M20.5 3.5 10 14M20.5 3.5 14 20.5l-4-6.5-6.5-4z"/>',
   copy: '<rect x="8" y="8" width="11" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h1"/>',
 };
 function icons(root = document) {
@@ -81,6 +82,7 @@ $$(".nav button[data-page]").forEach((b) => b.addEventListener("click", () => sh
 let toastTimer;
 // With an action ({ label, run }) the toast stays longer and shows a button (Undo).
 function toast(text, error = false, action = null) {
+  if (error && !action) action = { label: "Report", run: () => openReport({ where: "error", error: text }) };
   const t = $("#toast");
   t.textContent = text;
   t.classList.toggle("error", error);
@@ -160,7 +162,7 @@ function openLink(key) {
   const urls = { repo, issues: `${repo}/issues`, contribute: `${repo}/blob/main/CONTRIBUTING.md` };
   post({ type: "openUrl", url: urls[key] || key });
 }
-$("#reportIssue").addEventListener("click", () => post({ type: "reportIssue" }));
+$("#reportProblem").addEventListener("click", () => openReport({ where: "about" }));
 $("#copyDiagnostics").addEventListener("click", () => post({ type: "copyDiagnostics" }));
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-url]");
@@ -254,6 +256,95 @@ function arrowNav(container, pick) {
 }
 arrowNav($("#nav"), false);
 arrowNav($("#interval"), true);
+
+// ---------- Report a problem ----------
+// The page asks the host to open the box (reportOpen); the host answers openReport with the cleaned context and the
+// "Also sent" line, so the tray, the crash page and this page all open it the same way. Sending is the host's job too:
+// the page never talks to the network.
+let reportCtx = null, reportBusy = false, reportFocusBack = null, reportTimer = 0;
+function openReport(ctx) { post({ type: "reportOpen", ...ctx }); }
+function showReport(ctx, summary) {
+  const box = $("#report");
+  const again = !box.hidden;
+  reportCtx = ctx || { where: "about" };
+  clearTimeout(reportTimer);
+  if (!again) reportFocusBack = document.activeElement;
+  $("#reportDone").hidden = true;
+  $("#reportMsg").textContent = "";
+  $("#reportMeta").textContent = summary || "";
+  const err = $("#reportError");
+  err.hidden = !reportCtx.error;
+  err.textContent = reportCtx.error || "";
+  if (!again) $("#reportText").value = "";
+  setReportBusy(false);
+  reportCount();
+  box.hidden = false;
+  requestAnimationFrame(() => $("#reportText").focus());
+}
+function closeReport() {
+  if ($("#report").hidden) return;
+  clearTimeout(reportTimer);
+  $("#report").hidden = true;
+  reportBusy = false;
+  if (reportFocusBack && document.contains(reportFocusBack)) reportFocusBack.focus();
+}
+function setReportBusy(on) {
+  reportBusy = on;
+  const b = $("#reportSend");
+  b.disabled = on;
+  b.innerHTML = on ? '<span class="spin"></span>Sending' : '<span class="ico" data-icon="send"></span>Send';
+  icons(b);
+  $("#reportText").readOnly = on;
+}
+const reportLen = () => [...$("#reportText").value.trim()].length;
+function reportCount() {
+  const n = reportLen(), c = $("#reportCount");
+  c.textContent = `${n} / 2000`;
+  c.classList.toggle("show", n > 1500);
+  c.classList.toggle("near", n > 1900);
+}
+$("#reportText").addEventListener("input", () => { reportCount(); $("#reportMsg").textContent = ""; });
+$("#reportText").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("#reportForm").requestSubmit(); }
+});
+$("#reportForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  if (reportBusy) return;
+  if (reportLen() < 10) {
+    $("#reportMsg").textContent = "Please write a little more, so the problem can be found and fixed.";
+    $("#reportText").focus();
+    return;
+  }
+  setReportBusy(true);
+  post({ type: "sendReport", text: $("#reportText").value, ...reportCtx });
+});
+$("#reportCancel").addEventListener("click", closeReport);
+$("#reportClose").addEventListener("click", closeReport);
+$("#reportGithub").addEventListener("click", () => { post({ type: "reportIssue" }); closeReport(); });
+$("#report").addEventListener("mousedown", (e) => { if (e.target === e.currentTarget && !reportBusy) closeReport(); });
+// Capture phase: Esc closes only the box (not Settings), and Tab stays inside it.
+document.addEventListener("keydown", (e) => {
+  if ($("#report").hidden) return;
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); if (!reportBusy) closeReport(); return; }
+  if (e.key === "Tab") {
+    const f = $$("#reportForm button:not([disabled]), #reportForm textarea", $("#report")).filter((x) => x.offsetParent);
+    if (!f.length) return;
+    const i = f.indexOf(document.activeElement);
+    const next = e.shiftKey ? (i <= 0 ? f.at(-1) : f[i - 1]) : (i === -1 || i === f.length - 1 ? f[0] : f[i + 1]);
+    e.preventDefault();
+    next.focus();
+  }
+}, true);
+function reportResult(m) {
+  if (!m.ok) {
+    setReportBusy(false);
+    $("#reportMsg").textContent = m.error || "Couldn't send the report.";
+    return;
+  }
+  reportBusy = false;
+  $("#reportDone").hidden = false;
+  reportTimer = setTimeout(closeReport, 1900);
+}
 
 // ---------- Updates (About) ----------
 function renderUpdate() {
@@ -1554,7 +1645,9 @@ function renderCatalog() {
   const grid = $("#catalog");
   renderBrowseBar();
   if (catalogError) {
-    grid.innerHTML = `<div class="empty" style="grid-column:1/-1">Couldn't reach the community catalog.<br><small>${escapeHtml(catalogError)}</small></div>`;
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1">Couldn't reach the community catalog.<br><small>${escapeHtml(catalogError)}</small>`
+      + `<br><button class="report-link" type="button" data-report-error>Report this problem</button></div>`;
+    grid.querySelector("[data-report-error]").addEventListener("click", () => openReport({ where: "error", error: `Couldn't reach the community catalog: ${catalogError}` }));
     return;
   }
   if (!catalog) {
@@ -1837,6 +1930,12 @@ bridge && bridge.listen((m) => {
       break;
     case "commandError":
       toast(m.error, true);
+      break;
+    case "openReport":
+      showReport(m.ctx, m.summary);
+      break;
+    case "reportResult":
+      reportResult(m);
       break;
     case "updateError":
       toast(`Update failed: ${m.error}`, true);

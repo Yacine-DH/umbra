@@ -416,6 +416,14 @@ sealed class SettingsWindow : ISettingsView
                     + $"&windows={Uri.EscapeDataString(App.SystemLine())}");
                 break;
 
+            case "reportOpen": // the page's own entry points (About, an error toast); the box opens on the host's answer
+                OpenReport(ReportContext.FromMessage(msg));
+                break;
+
+            case "sendReport":
+                Post(await ProblemReport.SendMessageAsync(msg, _app.Manifests));
+                break;
+
             case "restart":
                 _app.Restart();
                 break;
@@ -866,6 +874,13 @@ sealed class SettingsWindow : ISettingsView
             await Eval($"welcome({slide})");
             return;
         }
+        if (page == "report") // the "Report a problem" box over About (captures)
+        {
+            await ShowPageAsync("about");
+            OpenReport(new ReportContext("about"));
+            await Task.Delay(400);
+            return;
+        }
         if (!Pages.Contains(page)) throw new Control.CommandException($"Unknown Settings page '{page}'. Pages: {string.Join(", ", Pages)}");
         await _loaded.Task.WaitAsync(TimeSpan.FromSeconds(20));
         if (page == "browse") _catalogSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -879,6 +894,17 @@ sealed class SettingsWindow : ISettingsView
         if (!InstanceId.IsValid(instance)) throw new ArgumentException($"Invalid widget id '{instance}'");
         await _loaded.Task.WaitAsync(TimeSpan.FromSeconds(20));
         await Eval($"focusWidget({System.Text.Json.JsonSerializer.Serialize(instance)})");
+    }
+
+    /// <summary>Opens the "Report a problem" box over the current page (tray, crash page, About, error toasts).</summary>
+    public async void OpenReport(ReportContext ctx)
+    {
+        try
+        {
+            await _loaded.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            Post(ProblemReport.OpenMessage(ctx, _app.Manifests));
+        }
+        catch (Exception ex) { Log.Write($"Could not open the report box: {ex.Message}"); }
     }
 
     public async Task<byte[]> CaptureAsync(string page)

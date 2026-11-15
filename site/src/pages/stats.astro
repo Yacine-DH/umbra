@@ -1,6 +1,7 @@
 ---
-// Private stats dashboard. The page holds no data: it asks the relay's /stats/summary with the maintainer's token
-// (wrangler secret STATS_TOKEN), kept only in this browser's localStorage, and GitHub's public release download counts.
+// Private stats dashboard. The page holds no data: it asks the relay's /stats/summary and /stats/reports (problem reports
+// sent from the app's "Report a problem" box) with the maintainer's token (wrangler secret STATS_TOKEN), kept only in this
+// browser's localStorage, and GitHub's public release download counts.
 // Not linked anywhere, not indexed and not counted as a page view.
 import Base from "../layouts/Base.astro";
 import { RELAY } from "../lib/beacon.mjs";
@@ -11,7 +12,7 @@ import { RELAY } from "../lib/beacon.mjs";
     <div class="wrap">
       <p class="kicker">Private</p>
       <h1 class="h2">Stats</h1>
-      <p class="sub">Anonymous counts only: catalog installs per widget, site page views per path and referrer, and GitHub release downloads.</p>
+      <p class="sub">Anonymous only: problem reports from the app, catalog installs per widget, site page views per path and referrer, and GitHub release downloads.</p>
 
       <form class="token" id="tokenForm">
         <input id="token" type="password" autocomplete="off" placeholder="Stats token" aria-label="Stats token" />
@@ -21,6 +22,17 @@ import { RELAY } from "../lib/beacon.mjs";
       </form>
 
       <div id="dash" hidden>
+        <section class="panel inbox" id="inbox">
+          <div class="inbox-head">
+            <h2>Problem reports <span class="pill" id="newPill" hidden></span></h2>
+            <div class="seg" role="group" aria-label="Show reports">
+              <button type="button" data-filter="new" aria-pressed="true">New</button>
+              <button type="button" data-filter="done">Done</button>
+              <button type="button" data-filter="all">All</button>
+            </div>
+          </div>
+          <div class="reports" id="reports"></div>
+        </section>
         <div class="range" role="group" aria-label="Time range">
           <button type="button" data-days="7">7 days</button>
           <button type="button" data-days="30" aria-pressed="true">30 days</button>
@@ -46,6 +58,7 @@ import { RELAY } from "../lib/beacon.mjs";
   const KEY = "umbraStatsToken";
   const nf = new Intl.NumberFormat("en");
   let summary = null, releases = null, days = 30;
+  let reports = null, reportsError = "", filter = "new", token = "";
 
   const store = { get: () => { try { return localStorage.getItem(KEY) || ""; } catch { return ""; } },
     set: (v) => { try { v ? localStorage.setItem(KEY, v) : localStorage.removeItem(KEY); } catch { /* private window */ } } };
@@ -57,6 +70,7 @@ import { RELAY } from "../lib/beacon.mjs";
         fetch(RELAY + "/stats/summary", { headers: { authorization: "Bearer " + token }, credentials: "omit" }).then((x) => x.json()),
         fetch("https://api.github.com/repos/AmineChr54/umbra/releases?per_page=40").then((x) => (x.ok ? x.json() : [])).catch(() => []),
       ]);
+      loadReports(token);
       if (s.error) { $("status").textContent = s.error === "unauthorized" ? "Wrong token." : s.error; $("dash").hidden = true; return; }
       store.set(token);
       $("forget").hidden = false;
@@ -68,6 +82,116 @@ import { RELAY } from "../lib/beacon.mjs";
       $("status").textContent = "Could not reach the relay.";
     }
   }
+
+  // ---------- problem reports ----------
+  const api = (method, body) => fetch(RELAY + "/stats/reports", {
+    method, credentials: "omit",
+    headers: { authorization: "Bearer " + token, ...(body ? { "content-type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  }).then((x) => x.json());
+
+  async function loadReports(t) {
+    token = t;
+    try {
+      const r = await api("GET");
+      if (r.error) { reports = null; reportsError = r.error === "not found" ? "The relay doesn't have reports yet: deploy tools/umbra-relay." : r.error; }
+      else { reports = r.reports; reportsError = ""; }
+    } catch { reports = null; reportsError = "Could not load reports."; }
+    renderReports();
+  }
+
+  const WHERE = { about: "Settings", tray: "Tray menu", error: "From an error", crash: "Widget crashed" };
+  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+  function ago(ms) {
+    const s = (ms - Date.now()) / 1000;
+    for (const [u, n] of [["year", 31557600], ["month", 2629800], ["week", 604800], ["day", 86400], ["hour", 3600], ["minute", 60]])
+      if (Math.abs(s) >= n) return rtf.format(Math.round(s / n), u);
+    return "just now";
+  }
+
+  function issueUrl(r) {
+    const first = r.text.split("\n")[0].trim();
+    const title = (r.widget ? `[${r.widget}] ` : "") + (first.length > 70 ? first.slice(0, 67) + "…" : first);
+    const body = [
+      r.text, "",
+      ...(r.error ? ["**Error shown:**", "> " + r.error.replace(/\n/g, "\n> "), ""] : []),
+      "### Context",
+      `- **Umbra:** ${r.version}`,
+      `- **OS:** ${r.os}`,
+      ...(r.widget ? [`- **Widget:** ${r.widget}${r.widgetVersion ? " " + r.widgetVersion : ""}`] : []),
+      `- **Reported from:** ${WHERE[r.where] || r.where}, ${new Date(r.at).toISOString().slice(0, 10)}`,
+      "", "_Reported anonymously from the app._",
+    ].join("\n");
+    return `https://github.com/AmineChr54/umbra/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+  }
+
+  function renderReports() {
+    const el = $("reports"), pill = $("newPill");
+    const fresh = reports ? reports.filter((r) => !r.done).length : 0;
+    pill.hidden = !fresh;
+    pill.textContent = `${fresh} new`;
+    if (!reports) { el.innerHTML = `<p class="none"></p>`; el.firstChild.textContent = reportsError || "Loading…"; return; }
+    const list = reports.filter((r) => filter === "all" || (filter === "done") === !!r.done);
+    if (!list.length) {
+      el.innerHTML = `<p class="none"></p>`;
+      el.firstChild.textContent = filter === "new" ? "Inbox zero. Nothing new." : "Nothing here.";
+      return;
+    }
+    el.replaceChildren(...list.map(card));
+  }
+
+  function card(r) {
+    const c = document.createElement("article");
+    c.className = "report" + (r.done ? " done" : "");
+    c.innerHTML = `<header><span class="when"></span><span class="chips"></span></header><p class="text"></p>
+      <blockquote class="err" hidden></blockquote>
+      <footer><button type="button" class="act" data-op="done"></button><a class="act" target="_blank" rel="noopener">Open as issue</a>
+      <button type="button" class="act danger" data-op="delete">Delete</button></footer>`;
+    const when = c.querySelector(".when");
+    when.textContent = ago(r.at);
+    when.title = new Date(r.at).toLocaleString();
+    const chips = [`v${r.version}`, r.os, WHERE[r.where] || r.where, r.widget && `${r.widget}${r.widgetVersion ? " " + r.widgetVersion : ""}`].filter(Boolean);
+    c.querySelector(".chips").replaceChildren(...chips.map((t, i) => {
+      const s = document.createElement("span");
+      s.className = "chip" + (i === 3 ? " w" : "");
+      s.textContent = t;
+      return s;
+    }));
+    c.querySelector(".text").textContent = r.text;
+    if (r.error) { const q = c.querySelector(".err"); q.hidden = false; q.textContent = r.error; }
+    const done = c.querySelector('[data-op="done"]');
+    done.textContent = r.done ? "Mark as new" : "Done";
+    done.addEventListener("click", () => act(r, r.done ? "undone" : "done", done));
+    c.querySelector("a.act").href = issueUrl(r);
+    const del = c.querySelector('[data-op="delete"]');
+    del.addEventListener("click", () => {
+      if (del.dataset.sure) return act(r, "delete", del);
+      del.dataset.sure = "1";
+      del.textContent = "Sure? Delete";
+      setTimeout(() => { if (del.isConnected) { delete del.dataset.sure; del.textContent = "Delete"; } }, 3000);
+    });
+    return c;
+  }
+
+  async function act(r, op, btn) {
+    btn.disabled = true;
+    try {
+      const res = await api("POST", { op, id: r.id });
+      if (res.error) throw new Error(res.error);
+      if (op === "delete") reports = reports.filter((x) => x.id !== r.id);
+      else r.done = op === "done";
+      renderReports();
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = "Failed: " + (e.message || "try again");
+    }
+  }
+
+  for (const b of document.querySelectorAll(".seg button")) b.addEventListener("click", () => {
+    filter = b.dataset.filter;
+    for (const o of document.querySelectorAll(".seg button")) o.setAttribute("aria-pressed", String(o === b));
+    renderReports();
+  });
 
   /** The last `n` UTC days ending at the relay's today, with zeros for days nobody counted. */
   function lastDays(n) {
@@ -217,4 +341,29 @@ import { RELAY } from "../lib/beacon.mjs";
   .statspage .none { color: var(--text3); margin: 0; font-size: .88rem; }
   .statspage .tip { position: fixed; z-index: 10; pointer-events: none; padding: 6px 10px; border-radius: 8px; background: var(--s3); border: 1px solid var(--line2); color: var(--text); font-size: .8rem; font-variant-numeric: tabular-nums; }
   .statspage .tip[hidden] { display: none; }
+  .statspage .inbox { margin-bottom: 22px; }
+  .statspage .inbox-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .statspage .inbox-head h2 { margin: 0; display: flex; align-items: center; gap: 10px; }
+  .statspage .pill { font-size: .75rem; font-weight: 600; color: var(--text); background: var(--accs); border: 1px solid rgba(139, 147, 255, .5); border-radius: 999px; padding: 2px 9px; }
+  .statspage .pill[hidden] { display: none; }
+  .statspage .seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 999px; background: var(--s3); }
+  .statspage .seg button { font: inherit; font-size: .82rem; color: var(--text2); background: none; border: 0; border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+  .statspage .seg button[aria-pressed="true"] { color: var(--text); background: var(--s1); box-shadow: 0 0 0 1px var(--line2); }
+  .statspage .reports { display: grid; gap: 10px; }
+  .statspage .report { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: color-mix(in srgb, var(--s3) 40%, transparent); }
+  .statspage .report.done { opacity: .62; }
+  .statspage .report header { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-bottom: 8px; }
+  .statspage .report .when { color: var(--text2); font-size: .82rem; font-variant-numeric: tabular-nums; }
+  .statspage .report .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .statspage .report .chip { font-size: .75rem; color: var(--text3); border: 1px solid var(--line2); border-radius: 6px; padding: 1px 7px; }
+  .statspage .report .chip.w { color: var(--text); border-color: rgba(139, 147, 255, .5); }
+  .statspage .report .text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; font-size: .92rem; }
+  .statspage .report .err { margin: 10px 0 0; padding: 7px 11px; border-left: 2px solid #ff8a8e; border-radius: 4px 8px 8px 4px; background: rgba(255, 90, 95, .08); color: #ffb3b5; font-size: .82rem; overflow-wrap: anywhere; }
+  .statspage .report .err[hidden] { display: none; }
+  .statspage .report footer { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .statspage .report .act { font: inherit; font-size: .8rem; color: var(--text2); background: var(--s1); border: 1px solid var(--line2); border-radius: 8px; padding: 5px 11px; cursor: pointer; text-decoration: none; }
+  .statspage .report .act:hover { color: var(--text); border-color: rgba(139, 147, 255, .6); }
+  .statspage .report .act.danger { margin-left: auto; }
+  .statspage .report .act.danger:hover { color: #ff9a9d; border-color: rgba(255, 90, 95, .5); }
+  .statspage .report .act[disabled] { opacity: .5; pointer-events: none; }
 </style>

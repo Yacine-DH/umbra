@@ -611,6 +611,11 @@ sealed class WidgetWindow : Form, IWidgetView
                 ReloadAfterStop();
                 break;
 
+            case "report": // the "stopped working" page's Report button; only that host page is loaded while stopped
+                if (_stopped && !_recovering && Alive)
+                    _app.OpenReport(new ReportContext("crash", Manifest.Id, Error: "The widget kept crashing and was stopped."));
+                break;
+
             case "drag":
                 if (!CanArrange || _resizing) return;
                 Native.ReleaseCapture();

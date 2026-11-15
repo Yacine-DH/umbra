@@ -43,7 +43,7 @@ function bump(map, key, cap) {
 }
 
 /** Constant-time string compare (the token is short; this avoids leaking how much of it matched). */
-function same(a, b) {
+export function same(a, b) {
   if (typeof a !== "string" || typeof b !== "string" || !a || a.length !== b.length) return false;
   let d = 0;
   for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
