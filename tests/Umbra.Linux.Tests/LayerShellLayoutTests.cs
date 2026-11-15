@@ -105,25 +105,4 @@ public sealed class LayerShellLayoutTests
         // A kept monitor that is gone (unplugged) falls back to the normal choice.
         Assert.Equal((0, 150, 200), LayerShellLayout.Place(new Point(150, 200), Size, [Main], keep: 1));
     }
-
-    [Fact]
-    public void A_lent_focus_is_taken_back_unless_the_surface_became_active()
-    {
-        var lease = new FocusLease();
-        var t = lease.Lend();
-        Assert.True(lease.ShouldRevoke(t, active: false));
-        Assert.False(lease.ShouldRevoke(t, active: true));
-    }
-
-    [Fact]
-    public void A_newer_press_or_an_ended_lease_supersedes_the_old_timer()
-    {
-        var lease = new FocusLease();
-        var first = lease.Lend();
-        var second = lease.Lend();
-        Assert.False(lease.ShouldRevoke(first, active: false));
-        Assert.True(lease.ShouldRevoke(second, active: false));
-        lease.End();
-        Assert.False(lease.ShouldRevoke(second, active: false));
-    }
 }

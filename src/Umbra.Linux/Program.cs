@@ -68,6 +68,8 @@ static partial class Program
     /// umbra --background start without opening Settings (the autostart entry uses it)
     /// umbra --safe       start with community widgets off (not saved; the next normal start restores them)
     /// umbra --restart    started by Settings > Restart: waits for the old instance to exit, then starts without opening Settings
+    /// umbra FILE.umbrawidget  opened from the file manager (the .desktop entry's %f, MIME type application/x-umbra-widget):
+    ///                    the running instance (or this one, if none runs) shows the host-drawn install review
     /// Automation: umbractl / umbractl mcp talk to the running instance over the control socket (Protocol.cs).
     /// </summary>
     static int Main(string[] args)
@@ -75,11 +77,16 @@ static partial class Program
         var background = args.Contains("--background", StringComparer.OrdinalIgnoreCase);
         var safe = args.Contains("--safe", StringComparer.OrdinalIgnoreCase);
         var restart = args.Contains(RestartArg, StringComparer.OrdinalIgnoreCase);
+        // Resolved here, against this process's working folder, so the running instance gets a full path.
+        var package = PackageOpen.FromArgs(args, Environment.CurrentDirectory);
+        if (package is not null && PackageOpen.CheckPath(package) is { } bad) { Log.Write($"Ignored package argument: {bad}"); package = null; }
 
         // One Umbra per user and data folder: the same named mutex and per-user control socket as on Windows.
         using var instance = new SingleInstance(waitForPrevious: restart);
         if (!instance.IsFirst)
         {
+            // Not a control command: the running instance only opens its review for it (Control.HandleLineAsync).
+            if (package is not null) { SingleInstance.SignalFirst(Control.OpenPackagePrefix + package); return 0; }
             if (safe)
             {
                 try { Protocol.SendAsync(Protocol.Request("safe-mode", new JsonObject { ["on"] = true })).GetAwaiter().GetResult(); }
@@ -111,9 +118,10 @@ static partial class Program
             app = new App(gtk, ui, safe);
             app.SaveSettings();
             // No tray yet (#191): a normal start (the app menu, a second launch) opens Settings; autostart and restart stay quiet.
-            if (!background && !restart) app.OpenSettingsOnStart(firstRun);
+            if (!background && !restart && package is null) app.OpenSettingsOnStart(firstRun);
             gtk.Hold(); // widgets are plain windows, not application windows: keep the loop alive until Quit
             instance.Listen(new Control(app).HandleLineAsync);
+            if (package is not null) { var opened = app; ui.Post(async _ => await opened.OpenPackageAsync(package), null); }
         };
         return gtk.Run([]);
     }

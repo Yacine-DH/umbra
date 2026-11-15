@@ -3,6 +3,14 @@ namespace Umbra.Linux.Tests;
 /// <summary>The pure rules of the session watcher (#193): the portal accent and clock-jump detection.</summary>
 public sealed class SessionTests
 {
+    [Theory]
+    [InlineData(0, false)]   // on
+    [InlineData(1, true)]    // standby
+    [InlineData(2, true)]    // suspend
+    [InlineData(3, true)]    // off
+    [InlineData(-1, false)]  // unknown: never pause on a guess
+    public void Mutter_power_save_mode_maps_to_display_off(long mode, bool off) => Assert.Equal(off, LinuxSession.DisplayOff(mode));
+
     [Fact]
     public void Portal_accent_becomes_a_readable_pair()
     {

@@ -517,10 +517,11 @@ and runs the same widgets with the same API and sandbox. Write one widget for bo
 - **`umbra.run` / `permissions.commands`**: same rules, approvals and limits. Declare programs that exist on Linux (and set
   `platforms` if they don't). The command leads its own process group, killed on timeout. In a Flatpak build (none exists yet)
   commands are refused.
-- **`umbra.system()`** returns `cpu`, `memory` and `network` on Linux; `gpu` and `disk` are not read there yet, so their keys are
-  missing. Check before you use them.
-- **Not on Linux yet:** `umbra.timelapse` (camera) and `umbra.images` (`saveImages`) reject with "Not available on Linux yet";
-  `umbra.setTabIcon` is ignored.
+- **`umbra.system()`** reads `/proc` and `/sys` (#178, #364), in the same JSON shape. `disk` comes from `/proc/diskstats` (whole disks:
+  rates summed, `activePercent` of the busiest) and `drives` from the mounted disks with their mount point as `name` (`"/"`, `"/home"`,
+  `"/media/you/My Stick"`; snaps, pseudo file systems and `/boot` skipped), so show `name` as text, never as HTML. `gpu` comes from
+  amdgpu's sysfs files or NVIDIA's NVML; on Intel and nouveau `percent` and `memoryUsedBytes` are `null`.
+- **Not on Linux yet:** `umbra.timelapse` (camera) rejects with "Not available on Linux yet".
 - **Fonts:** `umbra.css` names Segoe UI Variable first, then Inter, bundled with Umbra (`shared/fonts`, OFL), then common Linux UI
   fonts. Use the tokens (`var(--font)`, `var(--font-display)`) and `.num` for tabular numbers; don't hard-code a font by name.
   Emoji need a colour emoji font on the user's system.

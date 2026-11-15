@@ -15,16 +15,29 @@ Complements `.claude/skills/release` (which does the bump, tag and workflow watc
 4. From each body, collect every line matching `needs human check` (case-insensitive, also "human check"), prefixed with `#<number>`.
 5. Write `dist/release-checklist-<ver>.md` (create `dist/`): the template below with `<ver>` filled in and the collected lines added as extra rows in the human table. Tick boxes (`- [ ]`) stay empty for the user; tick the automated ones yourself only after running them.
 
-## Linux release (epic #172)
+## Linux section (epic #172, issue #200)
 
-When the release ships Linux assets (tarball or Flatpak, issues #196/#197; same tag and release as the Windows installer), also
-append [`linux.md`](linux.md) to the file you wrote, after "Ship": it holds the Linux per-build items, the human test matrix
-(distro x desktop x session x scaling/multi-monitor) and the per-feature human checks, all derived from issues #173-#199.
+Once the Windows part is written (step 5), add the Linux section with the script; don't copy `linux.md` by hand:
 
-- Fill `<ver>`. For the human rows, use the PRs that close an issue #173-#200 (`gh pr list ... --json number,title,body,closingIssuesReferences`)
-  and collect their "Human check" lines under "Collected from merged PRs" in `linux.md`, instead of mixing them into the Windows table.
-- The matrix cells and configuration table stay empty for the person who ran them. Never tick a Linux check from a PR description.
-- The first Linux release is done only when the matrix is filled and every failure is an issue labelled `platform: linux` (#200).
+```bash
+node .claude/skills/release-checklist/linux.mjs            # appends to dist/release-checklist-<ver>.md (re-running replaces it)
+node .claude/skills/release-checklist/linux.mjs --since all  # first Linux release: every Linux PR ever merged
+```
+
+It fills [`linux.md`](linux.md) (edit the rows there, the script only fills the `{{...}}` fields) with:
+- **Automated checks:** `linux/test/ci.sh` if it exists on main, else every `linux/test/*.sh` suite with its header line, all run
+  under a short private `TMPDIR`; the Linux build/tests, catalog/version checks and `desktop-file-validate`.
+- **Packaging:** `build.ps1 -Linux` on this PC, or `linux/package.sh` / `linux/container-package.sh` on a Linux machine, plus the arm64 and contents checks.
+- **The human test matrix** (Ubuntu 24.04 GNOME 46 Wayland, Ubuntu 25.x GNOME 48+, KDE Plasma 6 Wayland, X11 session) with rows for
+  install/uninstall, pinning, edit mode, focus gating, monitors/scaling/suspend, tray, notifications, media, hotkeys, Settings, crash
+  recovery, commands, update notice, sandbox and Flatpak (`blocked #196` while #196 is open).
+- **Collected from merged Linux PRs:** PRs labelled `platform: linux`, with "Linux" in the title or naming an issue #172-#200, merged
+  since the last release that shipped a Linux tarball (`--since <tag|date|all>` overrides). Each bullet of a `## Human check` section
+  becomes a row with its `#PR`; a merged rebase/stack PR without its own section takes the sections of the closed PRs it mentions (`#orig via #merged`).
+
+Run it on any OS with `gh` signed in (no Linux needed to generate it). Matrix cells, the configuration table and every box stay empty
+for the person who ran them; never tick a Linux check from a PR description. The first Linux release is done only when the matrix is
+filled and every failure is an issue labelled `platform: linux` (#200).
 
 ## Template
 

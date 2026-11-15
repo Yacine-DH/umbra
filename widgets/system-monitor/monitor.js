@@ -97,13 +97,16 @@ function render(s) {
   $("stamp").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+/** Drive names are "C:" on Windows but mount points on Linux ("/media/me/My Stick"): text, never markup. */
+const esc = (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
 function renderDrives(drives) {
   const box = $("drives");
   const show = opts().showDrives && opts().showDisk && drives.length > 0;
   box.hidden = !show;
   if (!show) return;
   const max = 3, shown = drives.slice(0, max);
-  box.innerHTML = shown.map((d) => `<div class="drive num"><b>${d.name}</b><div class="meter"><i class="${level(d.usedPercent)}" style="width:${d.usedPercent}%"></i></div><span>${bytes(d.freeBytes)} free</span></div>`).join("")
+  box.innerHTML = shown.map((d) => `<div class="drive num"><b title="${esc(d.name)}">${esc(d.name)}</b><div class="meter"><i class="${level(d.usedPercent)}" style="width:${Number(d.usedPercent) || 0}%"></i></div><span>${bytes(d.freeBytes)} free</span></div>`).join("")
     + (drives.length > max ? `<div class="more">+${drives.length - max} more drive${drives.length - max > 1 ? "s" : ""}</div>` : "");
 }
 

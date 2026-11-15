@@ -133,7 +133,9 @@ TMPDIR=$(mktemp -d /tmp/umbra.XXXX) UMBRA_DATA_DIR=$(mktemp -d) dotnet run --pro
 - **Media:** `umbra.media` reads MPRIS players. Album art shows only when the player gives a local `file://` image; players that only offer an `https://` art URL (such as Spotify) show none.
 - **Notifications** go through your desktop's notification service, with the same permission, buttons and rate limit.
 - **Widget commands** work as on Windows (same approvals and limits). Script Runner is Windows only: Browse marks it "Windows only" and offers no install. A future Flatpak will refuse widget commands until they are reviewed there.
-- **Not on Linux yet:** peek, hiding widgets during fullscreen apps, the webcam timelapse (Pomodoro), saving pictures to a folder (Hearth), Run as administrator, GPU and disk readings in `umbra.system()`, and opening a `.umbrawidget` by double-click (use Browse > Install from file). Re-placing widgets after a monitor or display-scale change is in review. Interface text uses the bundled Inter font where Segoe UI is missing.
+- **Peek and hiding widgets during fullscreen apps** work on X11 and XWayland only; under a native Wayland backend (KDE layer-shell, the GNOME extension) they aren't available. Under XWayland, fullscreen detection sees X11 apps only.
+- **GPU readings** come from AMD (amdgpu) and NVIDIA (proprietary driver) GPUs; on Intel and nouveau the GPU values are empty.
+- **Not on Linux yet:** the webcam timelapse (Pomodoro) and Run as administrator. Interface text uses the bundled Inter font where Segoe UI is missing.
 
 To help, see "Working on the Linux port" in [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -185,7 +187,7 @@ Settings works from the keyboard: **Esc** closes it, **Ctrl+F** or **/** jumps t
 
 The installer puts `umbractl` on your PATH. Every command prints JSON and starts Umbra in the background if it isn't running.
 
-> **Linux:** `install.sh` puts `umbractl` in `~/.local/bin`, and the commands and MCP tools below work the same, except what Linux lacks yet (`peek` answers "not available on Linux yet"; `--hide-fullscreen` is saved but does nothing). The examples use Windows paths. It talks to Umbra over a Unix socket in `$TMPDIR` that only your user can open, so run it with the same `TMPDIR` as Umbra. It doesn't start Umbra by itself on Linux yet: open Umbra first, or set `UMBRA_EXE=~/.local/opt/umbra/umbra/umbra`. There is no Flatpak build yet (#196).
+> **Linux:** `install.sh` puts `umbractl` in `~/.local/bin`, and the commands and MCP tools below work the same, except what the session can't do (`peek` answers "not available" under a native Wayland backend, where `--hide-fullscreen` is saved but does nothing). The examples use Windows paths. It talks to Umbra over a Unix socket in `$TMPDIR` that only your user can open, so run it with the same `TMPDIR` as Umbra. When Umbra isn't running, `umbractl` starts the copy `install.sh` installed (or the one in `UMBRA_EXE`). There is no Flatpak build yet (#196).
 
 ```powershell
 umbractl list                          # widgets, their settings, option schema and window bounds
