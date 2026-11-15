@@ -44,6 +44,34 @@ static class WidgetPlacement
         }
     }
 
+    /// <summary>
+    /// Where and how big a copy's window is in logical pixels on the monitors connected now (<see cref="Locate"/> for the
+    /// spot). The size is the widget's logical size times its scale and never depends on a monitor's scale factor, so a
+    /// monitor that vanished, or a scale that went from 2 to 1, gives the same size on the monitor that is left. The saved
+    /// monitor is not touched: when it comes back, the copy goes back to it.
+    /// </summary>
+    public static Rectangle Layout(WidgetSettings ws, WidgetManifest.PointSpec? manifestDefault, Size logicalSize, IReadOnlyList<MonitorInfo> monitors) =>
+        new(Locate(ws, manifestDefault, logicalSize, monitors), logicalSize);
+
+    /// <summary>
+    /// A logical rectangle in the display server's device pixels for a surface scale (X11 under GTK: the integer scale
+    /// GDK applies; XWayland with native scaling: the scale it was given). Scales below 1 count as 1.
+    /// </summary>
+    public static Rectangle ToDevice(Rectangle logical, double scale)
+    {
+        var k = scale >= 1 ? scale : 1;
+        int D(int v) => (int)Math.Round(v * k, MidpointRounding.AwayFromZero);
+        return new Rectangle(D(logical.X), D(logical.Y), Math.Max(1, D(logical.Width)), Math.Max(1, D(logical.Height)));
+    }
+
+    /// <summary>
+    /// A key for the display layout: the monitors (names, logical rectangles, primary) and their scale factors. When it
+    /// changes (a monitor came or went, a resolution or scale changed, often across a suspend), every widget window and
+    /// overlay is placed, sized and drawn again.
+    /// </summary>
+    public static string LayoutKey(IReadOnlyList<MonitorInfo> monitors, IReadOnlyList<double> scales) =>
+        Placement.Fingerprint(monitors) + "|" + string.Join(',', scales.Select(s => s.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)));
+
     /// <summary>Puts a copy on another monitor, keeping its offset from the monitor's corner (the margin if it had none).</summary>
     public static void MoveToMonitor(WidgetSettings ws, string monitor, Rectangle bounds, IReadOnlyList<MonitorInfo> monitors)
     {

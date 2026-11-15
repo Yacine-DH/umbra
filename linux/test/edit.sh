@@ -2,13 +2,13 @@
 # Edit mode and focus gating on X11 (#183), headless with xdotool as the "real" mouse and keyboard:
 #  - a page that asks for drag, resize, zoom, nudge and focus on its own gets none of them;
 #  - a real press-and-drag moves the widget and the new position is saved; Ctrl+wheel zooms; plain wheel does not;
-#  - typing reaches a widget only after a real click on it; the pill's buttons flip snapping and end edit mode.
+#  - typing reaches a widget only after a real click on its field (a click on its label leaves the focus); the pill's buttons flip snapping and end edit mode.
 #
 #   dotnet build Umbra.Linux.slnf && linux/test/edit.sh
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
 if [ "${UMBRA_PID:-}" = "" ]; then
-  command -v xdotool >/dev/null || { echo "edit.sh: xdotool is not installed" >&2; exit 2; }
+  for tool in xdotool gjs; do command -v $tool >/dev/null || { echo "edit.sh: $tool is not installed" >&2; exit 2; }; done
   json=$(mktemp); printf '{"general":{"logLevel":"verbose","lockAll":false,"snapEnabled":false}}' > "$json"
   "$here/headless.sh" -w "$here/edit-widget" -j "$json" -s 3 -- "$0"; code=$?
   rm -f "$json"; exit $code
@@ -80,9 +80,22 @@ xdotool mousemove $((X + WIDTH - 30)) $((Y + HEIGHT / 2)) click 1; sleep 1
 check "the pill's Done button ends edit mode" '$UMBRACTL edit-mode | grep -q "\"editMode\": false"'
 check 'the pill is gone' '[ -z "$(xdotool search --onlyvisible --name "Umbra - editing widgets" | head -1)" ]'
 
-# Typing after a real click on the text field (widgets locked again: fields are usable).
+# Locked: a click on the label (the page does not ask for the keyboard there) leaves the focus where it was. Before #188
+# the window manager's WM_TAKE_FOCUS made GDK focus the window on any click.
+GDK_BACKEND=x11 gjs "$here/fake-editor.js" "fake editor" "$UMBRA_DATA_DIR/editor.txt" >/dev/null 2>&1 & editor=$!
+for _ in $(seq 1 40); do ed=$(xdotool search --name "^fake editor$" | head -1); [ -n "$ed" ] && break; sleep 0.25; done
+xdotool windowmove "$ed" 1100 100; sleep 0.5
+eval "$(xdotool getwindowgeometry --shell "$ed")"
+xdotool mousemove $((X + WIDTH / 2)) $((Y + 20)); sleep 0.2; xdotool click 1; sleep 0.5
 eval "$(xdotool getwindowgeometry --shell "$w")"
-xdotool mousemove $((X + WIDTH * 30 / 100)) $((Y + HEIGHT * 34 / 100)); sleep 0.2; xdotool click 1; sleep 0.8
+xdotool mousemove $((X + 20)) $((Y + 8)); sleep 0.2; xdotool click 1; sleep 0.8
+check "a click on the widget's label does not take the focus from the editor (focus: $(focused), editor $ed)" '[ -n "$ed" ] && [ "$(focused)" = "$ed" ]'
+
+# Typing after a real click on the text field (widgets locked again: fields are usable). The field fills the middle of
+# the window (viewport units), so the click lands in it at any zoom; before, it aimed at a fixed spot the field had
+# moved away from once the widget zoomed, and the "typing" check failed with nothing focused.
+eval "$(xdotool getwindowgeometry --shell "$w")"
+xdotool mousemove $((X + WIDTH * 30 / 100)) $((Y + HEIGHT * 50 / 100)); sleep 0.2; xdotool click 1; sleep 0.8
 xdotool type --delay 30 "hello"; sleep 0.8
 check "typing after the click reaches the widget ($(grep -o '"typed":"[^"]*"' "$data"))" 'grep -q "\"typed\":\"hello\"" "$data"'
 
@@ -94,5 +107,6 @@ for i in $(seq 1 10); do xdotool mousemove_relative 10 5; sleep 0.02; done
 xdotool mouseup 1; sleep 0.6
 check "locked widgets do not move ($(geometry "$w"))" '[ "$(geometry "$w")" = "$before" ]'
 
+kill $editor 2>/dev/null
 [ $failed = 0 ] && echo "EDIT TEST PASSED" || echo "EDIT TEST FAILED"
 exit $failed

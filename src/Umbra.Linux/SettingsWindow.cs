@@ -81,7 +81,7 @@ sealed class SettingsWindow : ISettingsView
     public void Present()
     {
         if (_closed) return;
-        if (_background) _window.SetVisible(true);
+        if (_background) _app.Pin.SetVisible(_window, true);
         else _window.Present();
     }
 
@@ -739,7 +739,7 @@ sealed class SettingsWindow : ISettingsView
             ["capabilities"] = new JsonObject
             {
                 ["tray"] = _app.TrayShown,
-                ["hotkeys"] = _app.Hotkeys.Backend != Linux.HotkeyBackend.None,
+                ["hotkeys"] = _app.Hotkeys.Supported,
                 ["hotkeysVia"] = Linux.HotkeyRules.Name(_app.Hotkeys.Backend),
                 ["autostart"] = !AppPaths.IsPortable,
                 ["updates"] = "notify",

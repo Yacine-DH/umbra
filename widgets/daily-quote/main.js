@@ -169,7 +169,9 @@ function link(text, url, title) {
   a.addEventListener("click", ev => {
     ev.preventDefault();
     clearTimeout(clickTimer);
-    if (ev.detail < 2) clickTimer = setTimeout(() => umbra.openUrl(url), 250);
+    // Never while arranging widgets (a locked widget gets the click even in edit mode).
+    if (ev.detail < 2 && !umbra.settings.editMode)
+      clickTimer = setTimeout(() => { if (!umbra.settings.editMode) umbra.openUrl(url); }, 250);
   });
   return a;
 }
@@ -210,10 +212,12 @@ function render() {
 /** Shrinks the text (18 px down to 12 px) until it fits the window, so a long quote or a small widget never clips. */
 const MAX_FONT = 18, MIN_FONT = 12;
 function fit() {
-  const body = $("body"), inner = $("inner");
+  const body = $("body"), inner = $("inner"), cs = getComputedStyle(body);
+  // The content box: clientHeight includes the padding the hover strip adds, so leave it out.
+  const room = body.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
   let size = MAX_FONT;
   body.style.fontSize = size + "px";
-  while (size > MIN_FONT && inner.offsetHeight > body.clientHeight) body.style.fontSize = --size + "px";
+  while (size > MIN_FONT && inner.offsetHeight > room) body.style.fontSize = --size + "px";
 }
 
 function renderPanel() {
