@@ -73,13 +73,19 @@ sealed class App : IUmbraHost
         Settings = Settings.Load();
         try { WidgetTrash.Purge(); } catch (Exception ex) { Log.Write($"Trash purge failed: {ex.Message}"); }
         Prefs.Configure(Settings.General);
-        _updater = LinuxUpdater.Create(() => Settings.General.CheckForUpdates, () => _ui.Post(_ => SettingsChangedElsewhere(), null));
+        InstallStats.Enabled = () => Settings.General.CountInstalls; // read at each install: the switch in Data & privacy
+        _updater = LinuxUpdater.Create(() => Settings.General.CheckForUpdates, () => _ui.Post(_ =>
+        {
+            if (Settings.General.CheckForUpdates) _ = CheckWidgetUpdatesAsync();
+            SettingsChangedElsewhere();
+        }, null));
         Manifests = WidgetManifest.DiscoverAll();
         WebHost.Manifests = () => Manifests;
         if (!WebHost.SandboxAvailable)
             Log.Write($"Sandbox extension missing or built for another architecture ({WebHost.ExtensionDir}): no widget is opened. Error: this build is incomplete.");
         _autostart = LinuxAutostart.Create(Environment.GetEnvironmentVariable, File.Exists, AppPaths.ExePath, AppPaths.IsPortable, portal: null);
         Pin = GnomeExtensionPin.TryCreate() ?? LayerShellPin.TryCreate() ?? X11Pin.TryCreate() ?? (IDesktopPin)new NoPin();
+        if (Pin is GnomeExtensionPin gnome) gnome.Lost += RestartOnXWayland;
         Log.Write($"Umbra started, {Manifests.Count} widget(s) found, desktop pinning: {Pin.Name}");
         if (Pin is NoPin) Log.Write("Widgets are plain windows on this session: this compositor has no layer-shell, the Umbra GNOME Shell extension is not running, and no X server was found.");
 
@@ -100,17 +106,127 @@ sealed class App : IUmbraHost
         Hotkeys.Apply(Settings.Hotkeys);
         Session = new LinuxSession(_ui);
         Session.PowerChanged += () => { foreach (var w in _windows.Values) w.PushPower(); };
-        Session.RefreshNeeded += reason => { Log.Write($"Refreshing widgets after {reason}"); foreach (var w in _windows.Values) w.RefreshData(); };
+        Session.RefreshNeeded += reason =>
+        {
+            Log.Write($"Refreshing widgets after {reason}");
+            foreach (var w in _windows.Values) w.RefreshData();
+            // The monitors may have changed while asleep without every signal arriving: check the layout in any case.
+            if (reason == "resume") ScheduleRelayout("resume", resume: true);
+        };
         Session.TimeChanged += () => { foreach (var w in _windows.Values) w.NotifyTimeChanged(); };
         Session.AccentChanged += () => { PushAll(); SettingsChangedElsewhere(); };
-        Session.Start();
+        _ = StartSessionAfterHotkeys();
         _updater.Start();
         SyncWindows();
         if (EditMode) _ui.Post(_ => UpdateEditPills(), null); // left unlocked last time: show the Done pill again
         UiThread.Every(250, () => { TickGroups(); return true; });
-        // A monitor was added, removed or rearranged: put every widget back where its saved monitor and offset say.
+        // A monitor was added, removed, rearranged or rescaled: lay every widget and overlay out again.
+        _layoutKey = LayoutKey();
         if (Gdk.Display.GetDefault() is { } d)
-            d.GetMonitors().OnItemsChanged += (_, _) => _ui.Post(_ => { foreach (var w in _windows.Values) w.ReapplyPlacement(); }, null);
+        {
+            d.GetMonitors().OnItemsChanged += (_, _) => { WatchMonitors(); ScheduleRelayout("monitors changed"); };
+            WatchMonitors();
+        }
+    }
+
+    /// <summary>
+    /// Starts the session watchers once the hotkeys are set up: right away on X11; on Wayland after the portal registered the
+    /// app id (it must come before any other portal call on the connection), without holding up the UI thread meanwhile.
+    /// </summary>
+    async Task StartSessionAfterHotkeys()
+    {
+        try
+        {
+            try { await Hotkeys.Ready; }
+            catch (Exception ex) { Log.Write($"Global hotkeys could not start: {ex.Message}"); }
+            if (_quitting) return; // Quit ran during the portal probe: subscribe to nothing after shutdown
+            Session.Start();
+        }
+        catch (Exception ex) { Log.Write($"Session watchers could not start: {ex.Message}"); }
+    }
+
+    // ---------- display changes (monitors, scale, resume) ----------
+
+    string _layoutKey = "";
+    bool _relayoutQueued, _relayoutResume, _quitting;
+    readonly Dictionary<IntPtr, Gdk.Monitor> _watchedMonitors = new();
+
+    /// <summary>
+    /// Follows each monitor's geometry and scale: GDK keeps the same monitor object when only those change. Rebuilt from the
+    /// current list on every change; the objects are kept (so a watched address is never reused by another monitor) and
+    /// let go when their monitor is gone.
+    /// </summary>
+    void WatchMonitors()
+    {
+        if (Gdk.Display.GetDefault()?.GetMonitors() is not { } monitors) return;
+        var current = new Dictionary<IntPtr, Gdk.Monitor>();
+        for (uint i = 0; i < monitors.GetNItems(); i++)
+            if (monitors.GetObject(i) is Gdk.Monitor m) current[m.Handle.DangerousGetHandle()] = m;
+        foreach (var gone in _watchedMonitors.Keys.Where(k => !current.ContainsKey(k)).ToList()) _watchedMonitors.Remove(gone);
+        foreach (var (handle, m) in current)
+        {
+            if (_watchedMonitors.ContainsKey(handle)) continue;
+            _watchedMonitors[handle] = m;
+            m.OnNotify += (_, e) =>
+            {
+                if (e.Pspec.GetName() is "geometry" or "scale-factor" or "scale") ScheduleRelayout("monitor geometry or scale");
+            };
+        }
+    }
+
+    /// <summary>The scale factor of every monitor (fractional where GDK knows it), with the X11 surface scale for XWayland.</summary>
+    List<double> Scales()
+    {
+        var list = new List<double>();
+        if (Gdk.Display.GetDefault()?.GetMonitors() is not { } monitors) return list;
+        for (uint i = 0; i < monitors.GetNItems(); i++)
+            if (monitors.GetObject(i) is Gdk.Monitor m) list.Add(Math.Max(m.GetScaleFactor(), m.GetScale()));
+        return list;
+    }
+
+    string LayoutKey() => WidgetPlacement.LayoutKey(Monitors(), Scales());
+
+    /// <summary>
+    /// Lays every widget window and overlay out again shortly (the signals of one change arrive in a burst: the monitor list,
+    /// then geometry, then the X11 scale). Nothing happens when the layout key did not change; after a <paramref name="resume"/>
+    /// with an unchanged key the windows are only moved back to their spot (no hide/show, so no flicker and no lost focus).
+    /// </summary>
+    public void ScheduleRelayout(string reason, bool resume = false)
+    {
+        _relayoutResume |= resume;
+        if (_relayoutQueued) return;
+        _relayoutQueued = true;
+        UiThread.Every(300, () =>
+        {
+            try { Relayout(reason); }
+            catch (Exception ex) { Log.Write($"Laying widgets out after a display change failed: {ex.Message}"); }
+            finally { _relayoutQueued = false; _relayoutResume = false; }
+            return false; // never repeats, even after an exception
+        });
+    }
+
+    void Relayout(string reason)
+    {
+        if (_quitting) return;
+        var key = LayoutKey();
+        if (key == _layoutKey)
+        {
+            if (_relayoutResume) foreach (var w in _windows.Values.ToList()) Safely(w, w.ReapplyPlacement);
+            return;
+        }
+        Log.Write($"Display changed ({reason}): laying widgets out again on {key}");
+        _layoutKey = key;
+        foreach (var w in _windows.Values.ToList()) Safely(w, w.Relayout);
+        // Overlays last, at the spots their widgets now give them; then each is asked for its size in the new pixels.
+        TickGroups(); // tab strips follow their widget
+        if (EditMode) UpdateEditPills(); // one pill per monitor that has widgets
+        OverlayWindow.RelayoutAll();
+
+        static void Safely(WidgetWindow w, Action step)
+        {
+            try { step(); }
+            catch (Exception ex) { Log.Write($"[{w.Instance}] relayout failed: {ex.Message}"); }
+        }
     }
 
     /// <summary>Runs work on the UI thread (socket requests arrive on worker threads) and returns its result.</summary>
@@ -151,6 +267,29 @@ sealed class App : IUmbraHost
 
     public bool StartupEnabled { get => _autostart.IsEnabled(); set => _autostart.Set(value); }
 
+    /// <summary>Each monitor as "WxH at 150% (DP-1, primary)": GDK's integer scale times the fractional factor where the session reports one.</summary>
+    IEnumerable<string> MonitorLines()
+    {
+        if (Gdk.Display.GetDefault() is not { } display) yield break;
+        var monitors = display.GetMonitors();
+        for (uint i = 0; i < monitors.GetNItems(); i++)
+        {
+            if (monitors.GetObject(i) is not Gdk.Monitor m) continue;
+            m.GetGeometry(out var g);
+            var scale = Math.Round(m.GetScale() * 100);
+            yield return $"{g.Width}x{g.Height} at {scale}% ({m.GetConnector() ?? "?"}{(i == 0 ? ", primary" : "")})";
+        }
+    }
+
+    /// <summary>Folders hidden in the diagnostics log tail, longest first wins (see <see cref="LogScrub"/>).</summary>
+    static List<(string Path, string Token)> DiagnosticRoots()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var roots = new List<(string, string)> { (AppPaths.AppDir, "<umbra>"), (AppPaths.DataDir, "<data>") };
+        if (home.Length > 1) roots.Add((home, "~"));
+        return roots;
+    }
+
     public string Diagnostics()
     {
         var sb = new System.Text.StringBuilder();
@@ -158,9 +297,20 @@ sealed class App : IUmbraHost
         sb.AppendLine($"- System: {System.Runtime.InteropServices.RuntimeInformation.OSDescription}, {System.Runtime.InteropServices.RuntimeInformation.OSArchitecture}");
         sb.AppendLine($"- Session: {Environment.GetEnvironmentVariable("XDG_SESSION_TYPE") ?? "unknown"}, desktop {Environment.GetEnvironmentVariable("XDG_CURRENT_DESKTOP") ?? "unknown"}");
         sb.AppendLine($"- GTK {Gtk.Functions.GetMajorVersion()}.{Gtk.Functions.GetMinorVersion()}.{Gtk.Functions.GetMicroVersion()}, WebKitGTK {WebKit.Functions.GetMajorVersion()}.{WebKit.Functions.GetMinorVersion()}.{WebKit.Functions.GetMicroVersion()}");
-        sb.AppendLine($"- Monitors: {string.Join(", ", Monitors().Select(m => $"{m.Bounds.Width}x{m.Bounds.Height}"))}");
+        sb.AppendLine($"- Monitors: {string.Join(", ", MonitorLines())}");
+        sb.AppendLine($"- Desktop pinning: {Pin.Name}; tray: {(TrayShown ? "yes" : "no")}; hotkeys: {Linux.HotkeyRules.Name(Hotkeys.Backend)}");
         var enabled = Manifests.Where(m => Settings.Instances(m.Id).Any(i => Settings.For(m, i).Enabled)).Select(m => $"{m.Id} {m.Version}");
         sb.AppendLine($"- Widgets on: {string.Join(", ", enabled)}");
+        // The last log lines, redacted like on Windows (folders, home paths, URL queries, user and host names).
+        var log = LogScrub.Scrub(Log.Tail(30), DiagnosticRoots(),
+            [(Environment.UserName, "<user>"), (Environment.MachineName, "<machine>")]);
+        sb.AppendLine();
+        sb.AppendLine($"<details><summary>Last {log.Count} log lines</summary>");
+        sb.AppendLine();
+        sb.AppendLine("```");
+        foreach (var line in log) sb.AppendLine(line.Replace("```", "'''"));
+        sb.AppendLine("```");
+        sb.AppendLine("</details>");
         return sb.ToString();
     }
 
@@ -231,6 +381,15 @@ sealed class App : IUmbraHost
         if (Updater.Available is { } up)
         {
             yield return new TrayItem { Label = $"Download Umbra v{up.Version}", Click = () => WebHost.OpenExternal(up.PageUrl) };
+            yield return TrayItem.Line();
+        }
+        if (Settings.General.CheckForUpdates && WidgetUpdateCount is > 0 and var pending)
+        {
+            yield return new TrayItem
+            {
+                Label = pending == 1 ? "Update 1 widget" : $"Update {pending} widgets",
+                Click = () => _ = UpdateAllFromTrayAsync(),
+            };
             yield return TrayItem.Line();
         }
         var scripts = Commands.RunningServices();
@@ -313,6 +472,7 @@ sealed class App : IUmbraHost
     public void SyncWindows()
     {
         Groups.Prune(Settings);
+        ImageFolders.Shared.ClearExcept(Manifests.Where(m => m.Permissions.SaveImages).Select(m => m.Id));
         foreach (var m in Manifests)
             foreach (var inst in Settings.Instances(m.Id))
             {
@@ -364,15 +524,25 @@ sealed class App : IUmbraHost
         RefreshTray();
     }
 
-    /// <summary>Settings on a normal start; the first run also shows the welcome tour once.</summary>
+    /// <summary>Settings on a normal start; a first run shows the welcome tour, and an existing profile that never saw it gets a one-time offer.</summary>
     public void OpenSettingsOnStart(bool firstRun)
     {
-        var win = ShowSettings();
-        if (!firstRun || Settings.General.TourDone) return;
-        Settings.General.TourDone = true;
-        SaveSettings();
-        _ = win.ShowPageAsync("welcome").ContinueWith(t => Log.Write($"Welcome tour failed: {t.Exception?.GetBaseException().Message}"),
-            TaskContinuationOptions.OnlyOnFaulted);
+        var win = (SettingsWindow)ShowSettings();
+        switch (Tour.Decide(Settings.General.TourDone, firstRun, SafeMode))
+        {
+            case Tour.Plan.ShowNow:
+                Settings.General.TourDone = true;
+                SaveSettings();
+                _ = win.ShowPageAsync("welcome").ContinueWith(t => Log.Write($"Welcome tour failed: {t.Exception?.GetBaseException().Message}"),
+                    TaskContinuationOptions.OnlyOnFaulted);
+                break;
+            case Tour.Plan.Offer:
+                Settings.General.TourDone = true;
+                SaveSettings();
+                _ = win.OfferTourAsync().ContinueWith(t => Log.Write($"Welcome tour offer failed: {t.Exception?.GetBaseException().Message}"),
+                    TaskContinuationOptions.OnlyOnFaulted);
+                break;
+        }
     }
 
     /// <summary>Whether some copy of the widget has a window (it is on, and not held back by safe mode).</summary>
@@ -426,12 +596,21 @@ sealed class App : IUmbraHost
     }
 
     /// <summary>Starts a fresh Umbra that waits for this one to exit, then quits. For settings that only apply on start.</summary>
-    public void Restart()
+    public void Restart() => Restart(null);
+
+    /// <summary>
+    /// The GNOME Shell extension went away for good while widgets were pinned through it (#187): the same restart, with
+    /// <c>UMBRA_PIN_BACKEND=x11</c> so the new process pins through XWayland instead of waiting for the extension.
+    /// </summary>
+    public void RestartOnXWayland() => Restart("x11");
+
+    void Restart(string? pinBackend)
     {
         try
         {
             var psi = new System.Diagnostics.ProcessStartInfo(AppPaths.ExePath) { UseShellExecute = false };
             psi.ArgumentList.Add(Program.RestartArg);
+            if (pinBackend is not null) psi.Environment["UMBRA_PIN_BACKEND"] = pinBackend;
             using var p = System.Diagnostics.Process.Start(psi);
         }
         catch (Exception ex)
@@ -521,6 +700,16 @@ sealed class App : IUmbraHost
 
     readonly Dictionary<string, GroupTabs> _tabStrips = new();
     readonly Dictionary<string, long> _tabSwitchedAt = new();
+
+    /// <summary>A widget's own tab icon suggestion (umbra.setTabIcon, already checked); the user's pick still wins. Strips redraw on the next tick.</summary>
+    public void SuggestTabIcon(string instance, string? icon)
+    {
+        if (!Settings.Widgets.TryGetValue(instance, out var ws) || ws.SuggestedTabIcon == icon) return;
+        ws.SuggestedTabIcon = icon;
+        SaveSettings();
+        Log.Write($"[{instance}] suggests the tab icon {icon ?? "(none)"}");
+        SettingsChangedElsewhere();
+    }
 
     /// <summary>
     /// Every tick: keeps a group's tab strip on its visible widget (hidden with it) and switches groups that have a cycle
@@ -620,6 +809,7 @@ sealed class App : IUmbraHost
     /// <summary>Closes every widget and ends the main loop.</summary>
     public void Quit()
     {
+        _quitting = true;
         foreach (var id in _windows.Keys.ToList()) CloseWidget(id);
         foreach (var p in _pills) p.Close();
         foreach (var t in _tabStrips.Values) t.Close();
@@ -651,7 +841,7 @@ sealed class App : IUmbraHost
     {
         ["hotkeys"] = Hotkeys.Describe(Settings.Hotkeys),
         ["backend"] = HotkeyRules.Name(Hotkeys.Backend),
-        ["supported"] = Hotkeys.Backend != HotkeyBackend.None,
+        ["supported"] = Hotkeys.Supported,
         ["widgetsHidden"] = WidgetsHidden,
     };
 
@@ -809,7 +999,42 @@ sealed class App : IUmbraHost
         SaveSettings();
     }
 
+    /// <summary>The community catalog as last fetched (daily check, Browse, update all). Null until the first fetch.</summary>
+    JsonArray? _catalogSeen;
     bool _updatingAll;
+
+    /// <summary>Remember a freshly fetched catalog so the tray can offer "Update n widgets" without another request.</summary>
+    public void NoteCatalog(JsonArray catalog)
+    {
+        _catalogSeen = catalog;
+        RefreshTray();
+    }
+
+    /// <summary>How many installed community widgets have a newer catalog version, judged against the last fetched catalog.</summary>
+    public int WidgetUpdateCount => _catalogSeen is null ? 0 : Community.Outdated(_catalogSeen, Manifests).Count;
+
+    /// <summary>The automatic check: refreshes the catalog quietly (offline is fine) so the tray count stays current.</summary>
+    public async Task CheckWidgetUpdatesAsync()
+    {
+        try
+        {
+            _catalogSeen = await Community.FetchCatalogAsync();
+            _ui.Post(_ => RefreshTray(), null);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { Log.Write($"Widget update check failed: {ex.Message}"); }
+    }
+
+    async Task UpdateAllFromTrayAsync()
+    {
+        try
+        {
+            var r = await UpdateAllWidgetsAsync();
+            Log.Write(r.Failed.Count == 0
+                ? $"Updated {r.Updated.Count} widget(s) from the tray"
+                : $"Updated {r.Updated.Count} widget(s) from the tray, failed: {string.Join(", ", r.Failed.Select(f => f.Id))}");
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { Log.Write($"Widget update failed: {ex.Message}"); }
+    }
 
     public async Task<UpdateAllResult> UpdateAllWidgetsAsync(Action<int, int, string>? progress = null)
     {
@@ -817,11 +1042,12 @@ sealed class App : IUmbraHost
         _updatingAll = true;
         try
         {
-            var catalog = await Community.FetchCatalogAsync();
+            _catalogSeen = await Community.FetchCatalogAsync();
             // Never silently accepts new access: such an update is reported as skipped and the widget keeps running.
-            var result = await Community.UpdateAllAsync(Community.Outdated(catalog, Manifests),
+            var result = await Community.UpdateAllAsync(Community.Outdated(_catalogSeen, Manifests),
                 entry => Community.UpdateWithoutNewAccessAsync(entry, CloseWidget), progress);
             ReloadWidgets(); // also reopens a widget whose update failed
+            SettingsChangedElsewhere();
             return result;
         }
         finally { _updatingAll = false; }
