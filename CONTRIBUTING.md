@@ -134,42 +134,53 @@ themes/ember/
 
 ## Working on the app itself
 
-Pick an issue from the [roadmap board](https://github.com/users/AmineChr54/projects/5) (labels `good first issue` and `help wanted` are a good start), comment that you're on it, and open a PR that says `Closes #N`. Build and test with `dotnet build Umbra.slnx` and `dotnet test Umbra.slnx`; CI runs the same on Windows, plus an Ubuntu job for the platform-neutral part (`Umbra.Linux.slnf`). CI runs on the maintainer's PC, not GitHub Actions: `powershell -File scripts/ci-local.ps1` runs every job (the Linux and Node ones in Docker), and you can run it yourself before opening the PR. [CLAUDE.md](CLAUDE.md) explains the architecture and the security rules, and AI coding agents read it too.
+Pick an issue from the [roadmap board](https://github.com/users/AmineChr54/projects/5) (labels `good first issue` and `help wanted` are a good start), comment that you're on it, and open a PR that says `Closes #N`. Build and test with `dotnet build Umbra.slnx` and `dotnet test Umbra.slnx`; CI runs the same on Windows, plus an Ubuntu job for `Umbra.Linux.slnf` (Core, `umbractl` and the Linux host). CI runs on the maintainer's PC, not GitHub Actions: `powershell -File scripts/ci-local.ps1` runs every job (the Linux and Node ones in Docker), and you can run it yourself before opening the PR. [CLAUDE.md](CLAUDE.md) explains the architecture and the security rules, and AI coding agents read it too.
 
 ## Working on the Linux port
 
-Umbra runs on Windows only today. A Linux version for KDE Plasma 6 and GNOME 46+ is in progress, tracked in epic [#172](https://github.com/AmineChr54/umbra/issues/172). **Read the epic first**: it holds the design (repo layout, dependencies, the Windows to Linux mapping) and the ordered child issues (#173 to #200). Each child issue says what it depends on. The Linux host (`src/Umbra.Linux`) and the `linux/` folder do not exist yet; the first host issue is #179.
+The Linux version (KDE Plasma 6, GNOME 46+) is a preview tracked in epic [#172](https://github.com/AmineChr54/umbra/issues/172). **Read the epic first**: it holds the design (repo layout, dependencies, the Windows to Linux mapping) and the ordered child issues (#173 to #200). The Linux host is `src/Umbra.Linux` (GTK 4 + WebKitGTK 6), with its packaging, GNOME Shell extension and test harness in `linux/`. What works today is listed in the README ([Linux (preview)](README.md#linux-preview)); still open are the Flatpak (#196) and the issues the epic lists after it.
 
-**Status of what you can build today.** The platform-neutral part (`src/Umbra.Core`, `src/Umbra.Cli`, `tests/Umbra.Core.Tests`) builds and tests on Linux and on Windows:
-
-```bash
-dotnet build Umbra.Linux.slnf -warnaserror   # 0 warnings
-dotnet test Umbra.Linux.slnf
-```
-
-That needs only the .NET 10 SDK. The Linux host is not part of the solution filter until it exists.
-
-**Dev setup on Ubuntu (GNOME), from the epic.** You need this once the host lands (#179); it is not needed for the commands above. Package names are the epic's and are not yet exercised in this repo:
+**Dev setup on Ubuntu (GNOME):**
 
 ```bash
 # runtime + dev libs
 sudo apt install libgtk-4-1 libgtk-4-dev libwebkitgtk-6.0-4 libwebkitgtk-6.0-dev \
-                 libgtk4-layer-shell0 libgtk4-layer-shell-dev build-essential nodejs gh
+                 libgtk4-layer-shell0 libgtk4-layer-shell-dev build-essential pkg-config nodejs gh
 # test tools (nested/headless sessions, X11 path)
 sudo apt install xvfb openbox xdotool kwin-wayland mutter weston imagemagick dbus-x11
 # .NET 10 SDK: the dotnet backports PPA, or https://dot.net/v1/dotnet-install.sh --channel 10.0
+gh repo fork AmineChr54/umbra --clone && cd umbra
+dotnet build Umbra.Linux.slnf -warnaserror && dotnet test Umbra.Linux.slnf
 ```
 
-If `libgtk4-layer-shell*` is missing from your Ubuntu release, build it from https://github.com/wmww/gtk4-layer-shell (meson). The epic also names the runtime packages for Fedora 41 (`gtk4 webkitgtk6.0 gtk4-layer-shell`) and Arch (`gtk4 webkitgtk-6.0 gtk4-layer-shell`). Node 22 runs the catalog scripts.
+`Umbra.Linux.slnf` is Core, `umbractl`, the Linux host and their tests. Building the host compiles the sandbox's web-process extension (`src/Umbra.Linux/native/umbra-webext.c`) with `gcc`, so it needs `pkg-config` and `libwebkitgtk-6.0-dev`. If `libgtk4-layer-shell*` is missing from your Ubuntu release, build it from https://github.com/wmww/gtk4-layer-shell (meson); the host runs without it (XWayland pinning). Fedora and Arch names are in the README. Node 22 runs the catalog scripts. `linux/package.sh x64` builds the release tarball.
 
-**How to test on Linux (rules from the epic):**
+**Run it from source.** One Umbra runs per user, and the control socket (`CoreFxPipe_Umbra-<user>`) and the single-instance lock live in `$TMPDIR` and ignore `UMBRA_DATA_DIR`. So next to an installed Umbra, give the dev copy its own short `TMPDIR` (a socket path has at most 108 characters) and data folder, and use the same `TMPDIR` for `umbractl`:
+
+```bash
+export TMPDIR=$(mktemp -d /tmp/umbra-dev.XXXX) UMBRA_DATA_DIR=$(mktemp -d /tmp/umbra-data.XXXX)
+dotnet run --project src/Umbra.Linux &
+dotnet src/Umbra.Cli/bin/Debug/net10.0/umbractl.dll status
+```
+
+**Headless tests** (`linux/test/`, after `dotnet build Umbra.Linux.slnf`). Each script starts its own Xvfb + openbox + D-Bus session through `headless.sh`, with a throwaway profile as both `UMBRA_DATA_DIR` and `TMPDIR`, so it never sees an installed Umbra. Set `UMBRA_TEST_TMP` to a short folder if your `TMPDIR` path is long.
+
+```bash
+linux/test/smoke.sh --offline    # umbractl end to end: status, list, new, capture, configure, data, MCP, quit (no --offline: catalog install too)
+linux/test/sandbox.sh            # every way a page can reach an undeclared host; run after touching the sandbox
+linux/test/catalog.sh            # every catalog widget loads
+```
+
+Also there: `pin.sh`, `edit.sh`, `crash.sh`, `tray.sh`, `notify.sh`, `media.sh`, `session.sh`, `commands.sh`, `hotkeys.sh`, `update.sh` and `gnome.sh` (a throwaway headless GNOME Shell for the extension). Each script's header says what it checks and what it needs.
+
+**How to test on Linux:**
 
 - **On your real desktop, inspect only through `umbractl capture <widget|settings:page> out.png`.** It captures just that WebView. **Never take desktop or full-screen screenshots** of a personal desktop: they capture your other windows (same rule as in CLAUDE.md).
-- **Compositor screenshots are fine only in a throwaway session you started yourself**, where nothing personal is on screen. The epic lists these ways to start one (not yet exercised in this repo):
+- **Compositor screenshots are fine only in a throwaway session you started yourself**, where nothing personal is on screen: the `linux/test/` harness, or one of these:
   - X11: `xvfb-run -s "-screen 0 1920x1080x24" openbox ...`
   - KDE: `kwin_wayland --virtual --width 1920 --height 1080 --socket wayland-umbra`, or nested in a window
   - GNOME: `dbus-run-session -- gnome-shell --nested --wayland`, or `mutter --headless --wayland --virtual-monitor 1920x1080`
-- Use a throwaway profile: `UMBRA_DATA_DIR=$(mktemp -d)`. Only one instance runs per user and data dir. Never touch the data folder of an Umbra you actually use, and only kill processes you started.
+- Use a throwaway profile (`UMBRA_DATA_DIR` and `TMPDIR`, as above). Never touch the data folder of an Umbra you actually use (`~/.local/share/umbra`), and only kill processes you started.
 - No `sudo`, system-wide installs or changes to GNOME settings and extensions outside a nested session as part of a test.
 - Drag, typing into widgets, multi-monitor and fractional scaling need a human check on a real desktop: list them in the PR under a "Human check" heading, saying what you tried and on which distribution, desktop and session type.
 
