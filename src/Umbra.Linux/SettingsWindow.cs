@@ -789,13 +789,22 @@ sealed class SettingsWindow : ISettingsView
         });
     }
 
+    /// <summary>Install totals per widget from the relay, fetched with the catalog (not at all while install counting is off).</summary>
+    IReadOnlyDictionary<string, long> _installCounts = new Dictionary<string, long>();
+
     async Task SendCatalog(bool refetch = true)
     {
         string? error = null;
         if (refetch || _catalog.Count == 0)
         {
+            var counts = _app.Settings.General.CountInstalls ? InstallStats.FetchCountsAsync() : null;
             try { _catalog = await Community.FetchCatalogAsync(); }
             catch (Exception ex) when (ex is not OutOfMemoryException) { error = ex.Message; Log.Write($"Catalog fetch failed: {ex.Message}"); }
+            // Counts are a nicety: a slow relay never holds Browse back. Past the catalog fetch they get 1.5 s more; a late answer
+            // is kept for the next render instead.
+            if (counts is null) _installCounts = new Dictionary<string, long>();
+            else if (await Task.WhenAny(counts, Task.Delay(1500)) == counts) _installCounts = await counts;
+            else _ = counts.ContinueWith(t => { if (t.IsCompletedSuccessfully && t.Result.Count > 0) _installCounts = t.Result; }, TaskScheduler.Default);
         }
 
         var previews = await Task.WhenAll(_catalog.Select(async entry =>
@@ -822,8 +831,10 @@ sealed class SettingsWindow : ISettingsView
             copy["local"] = installed is not null && Community.IsLocalInstall(wid);
             copy["supported"] = WidgetPlatforms.Supports(copy, WidgetPlatforms.Current); // false: for another OS, Browse offers no install
             copy["previewUrl"] = previews.FirstOrDefault(x => x.wid == wid).Item2;
+            copy["installs"] = _installCounts.TryGetValue(wid, out var n) ? n : null;
             list.Add(copy);
         }
+        if (error is null) _app.NoteCatalog(_catalog);
         Post(new JsonObject { ["type"] = "catalog", ["error"] = error, ["widgets"] = list });
         _catalogSent.TrySetResult();
     }
@@ -837,12 +848,20 @@ sealed class SettingsWindow : ISettingsView
         if (_catalog.Count > 0) _ = SendCatalog(refetch: false);
     }
 
+    public async Task OfferTourAsync()
+    {
+        await _loaded.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        Post(new JsonObject { ["type"] = "offerTour" });
+    }
+
     public async Task ShowPageAsync(string page)
     {
         if (page == "welcome" || page.StartsWith("welcome:", StringComparison.Ordinal))
         {
             var slide = page.Length > 8 && int.TryParse(page.AsSpan(8), out var n) ? n : 1;
             await _loaded.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            if (slide is >= 3 and <= 5 && _catalog.Count == 0) _catalogSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (slide == 9 && !_themeCatalogLoaded) _themesSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
             await Eval($"welcome({slide})");
             return;
         }
@@ -856,9 +875,11 @@ sealed class SettingsWindow : ISettingsView
     public async Task<byte[]> CaptureAsync(string page)
     {
         await ShowPageAsync(page);
-        if (page == "browse") await Task.WhenAny(_catalogSent.Task, Task.Delay(TimeSpan.FromSeconds(25)));
-        if (page == "themes") await Task.WhenAny(_themesSent.Task, Task.Delay(TimeSpan.FromSeconds(25)));
-        await Task.Delay(page == "browse" ? 1200 : 500); // images decode, transitions settle
+        var waitCatalog = page is "browse" or "welcome:3" or "welcome:4" or "welcome:5";
+        var waitThemes = page is "themes" or "welcome:9";
+        if (waitCatalog) await Task.WhenAny(_catalogSent.Task, Task.Delay(TimeSpan.FromSeconds(25)));
+        if (waitThemes) await Task.WhenAny(_themesSent.Task, Task.Delay(TimeSpan.FromSeconds(25)));
+        await Task.Delay(waitCatalog ? 1200 : 500); // images decode, transitions settle
         return await Snapshot.PngAsync(_view);
     }
 
