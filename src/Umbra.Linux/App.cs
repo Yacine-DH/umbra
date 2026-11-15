@@ -418,6 +418,11 @@ sealed class App : IUmbraHost
             };
             yield return TrayItem.Line();
         }
+        if (UndoRemoveLabel is { } undo)
+        {
+            yield return new TrayItem { Label = $"Undo remove {undo}", Click = UndoRemove };
+            yield return TrayItem.Line();
+        }
         yield return new TrayItem { Label = "Settings...", Click = () => ShowSettings() };
         yield return new TrayItem { Label = "Welcome tour", Click = () => _ = ShowSettings().ShowPageAsync("welcome") };
         yield return new TrayItem { Label = "Arrange widgets (unlock)", Checked = EditMode, Click = () => SetEditMode(!EditMode) };
@@ -1102,8 +1107,18 @@ sealed class App : IUmbraHost
     public string AddInstance(WidgetManifest m)
     {
         var inst = Settings.AddInstance(m) ?? throw new InvalidOperationException($"A widget can have at most {InstanceId.MaxInstances} copies");
+        // Next to the first copy, 32 px further per copy number, as on Windows (it used to open exactly on top of it).
+        if (Window(m.Id) is { } first)
+        {
+            var offset = 32 * (InstanceId.NumberOf(inst) - 1);
+            var ws = Settings.For(m, inst);
+            ws.X = first.Left + offset;
+            ws.Y = first.Top + offset;
+            ws.Monitor = null; ws.RelX = ws.RelY = null; // absolute, like a fresh position; placement keeps it on screen
+        }
         SaveSettings();
         SyncWindows();
+        SettingsChangedElsewhere();
         return inst;
     }
 
@@ -1112,10 +1127,59 @@ sealed class App : IUmbraHost
     {
         if (!InstanceId.IsExtra(instance) || !Settings.Widgets.ContainsKey(instance))
             throw new InvalidOperationException($"'{instance}' is not an extra copy of a widget");
+        var m = Manifests.FirstOrDefault(x => x.Id == InstanceId.WidgetOf(instance));
+        _removed = new RemovedCopy(instance, m is null ? instance : InstanceId.Label(m, instance), Settings.Widgets[instance], WidgetStore.All(instance));
         CloseWidget(instance);
         Settings.Widgets.Remove(instance);
         WidgetStore.Delete(instance);
         SaveSettings();
+        RefreshTray();
+    }
+
+    RemovedCopy? _removed;
+
+    /// <summary>Label of the copy that "Remove copy" can still bring back, or null when there is nothing to undo.</summary>
+    public string? UndoRemoveLabel =>
+        _removed is { } r && r.CanRestore(Settings) && Manifests.Any(m => m.Id == InstanceId.WidgetOf(r.Instance)) ? r.Label : null;
+
+    /// <summary>The widget menu's "Remove copy": removes it and offers Undo in the tray menu (as on Windows; one level, not saved).</summary>
+    public void RemoveInstanceWithUndo(string instance)
+    {
+        RemoveInstance(instance);
+        SettingsChangedElsewhere();
+        if (_removed is { } r) Log.Write($"Removed {r.Label} from its menu; Undo is in the tray menu");
+    }
+
+    /// <summary>Brings back the last removed copy with its settings, position and stored data.</summary>
+    public void UndoRemove()
+    {
+        if (UndoRemoveLabel is null || _removed is not { } r) return;
+        r.Restore(Settings);
+        if (r.Data.Count > 0) WidgetStore.Replace(r.Instance, r.Data);
+        _removed = null;
+        SaveSettings();
+        SyncWindows();
+        RefreshTray();
+        SettingsChangedElsewhere();
+        Log.Write($"Restored {r.Label}");
+    }
+
+    /// <summary>Hides a widget copy (turns it off in Settings); the widget menu's "Hide".</summary>
+    public void DisableWidget(string instance)
+    {
+        if (!Settings.Widgets.TryGetValue(instance, out var ws)) return;
+        ws.Enabled = false;
+        SaveSettings();
+        SyncWindows();
+        RefreshTray();
+        SettingsChangedElsewhere();
+    }
+
+    /// <summary>The widget menu's "Options...": Settings on My widgets, scrolled to this copy's card and highlighted.</summary>
+    public async void ShowWidgetOptions(string instance)
+    {
+        try { await ((SettingsWindow)ShowSettings()).ShowWidgetAsync(instance); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { Log.Write($"Could not open options for {instance}: {ex.Message}"); }
     }
 
     public void ForgetInstances(string widgetId)

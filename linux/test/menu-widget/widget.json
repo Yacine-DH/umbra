@@ -1,0 +1,13 @@
+{
+  "id": "menu-widget",
+  "name": "Menu widget (menu test)",
+  "description": "Test only: keeps firing synthetic contextmenu events and stores a value, to show the page can't open the host menu and that Undo brings the data back. Run by linux/test/menu.sh, never installed.",
+  "author": "Umbra tests",
+  "version": "1.0.0",
+  "manifestVersion": 1,
+  "entry": "index.html",
+  "width": 300,
+  "height": 160,
+  "defaultPosition": { "x": 400, "y": 300 },
+  "permissions": { "hosts": [] }
+}
