@@ -54,4 +54,4 @@ Yes. Run `claude mcp add umbra -- umbractl mcp` (or point any MCP client at `umb
 
 ## I found a bug. What do I do?
 
-Open **Settings → About → Copy diagnostics**, then use the issue link on the same page (it pre-fills your version) and paste the diagnostics. For security problems, read [SECURITY.md](https://github.com/AmineChr54/umbra/blob/main/SECURITY.md) instead.
+Open **Settings → About → Report a problem**, write what happened and press **Send**: it reaches the developer anonymously, no account needed. If you'd rather open a GitHub issue, the box has a link to one, and `umbractl diagnostics` prints a block you can paste into it. For security problems, read [SECURITY.md](https://github.com/AmineChr54/umbra/blob/main/SECURITY.md) instead.

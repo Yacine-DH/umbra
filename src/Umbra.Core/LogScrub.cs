@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace Umbra;
 
 /// <summary>
-/// Redacts a log tail for a pasted bug report (Settings > Copy diagnostics, <c>umbractl diagnostics</c>), on Windows and Linux:
+/// Redacts a log tail for a pasted bug report (<c>umbractl diagnostics</c>), on Windows and Linux:
 /// known folders become tokens, any other user home (<c>X:\Users\name</c>, <c>/home/name</c>) too, the query and fragment of every
 /// http(s) URL go (they can carry keys and tokens), the user and machine names are replaced, and each line is capped.
 /// </summary>

@@ -17,7 +17,7 @@ Open Settings from the tray icon, from the Start or app menu, or by launching Um
 | **Themes** | Install community themes and switch between them live. |
 | **Hotkeys** | Global shortcuts for edit mode, refresh, show/hide, peek and Settings. |
 | **Data & privacy** | What each widget can reach and store, recent blocked requests, backup and restore, reset, and safe mode. |
-| **About** | Version, update status (with release notes once after an update), source link, **Copy diagnostics** for bug reports and pre-filled issue links. |
+| **About** | Version, update status (with release notes once after an update), source link, and **Report a problem** (anonymous bug reports, with a link to a pre-filled GitHub issue). |
 
 ## Keyboard
 

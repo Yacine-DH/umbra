@@ -178,7 +178,7 @@ Right-click any widget for Refresh, Options, Arrange widgets, Hide and Add anoth
 | ![Home](docs/settings-home.png) | ![My widgets](docs/settings-widgets.png) |
 | **Home:** where Settings opens: add widgets, arrange the desktop, change the look, and a few widgets to start with. **General** holds start with Windows, updates and the refresh interval, with the rest (log level, developer mode, GPU, startup delay, proxy) under Advanced; colors, fonts and sizes are under **Appearance**. | **My widgets:** Arrange widgets (the one global lock), turn widgets on or off, edit their options and size (50-300 %), give them their own refresh interval, or reset their position. |
 | ![Browse community widgets](docs/settings-browse.png) | ![About](docs/settings-about.png) |
-| **Browse:** install, update or remove community widgets in one click. | **About:** version and updates (with release notes after an update), **Copy diagnostics** for bug reports, and pre-filled issue links. |
+| **Browse:** install, update or remove community widgets in one click. | **About:** version and updates (with release notes after an update), and **Report a problem**: tell the developer what went wrong, anonymously. |
 
 Settings works from the keyboard: **Esc** closes it, **Ctrl+F** or **/** jumps to the Browse search, **Ctrl+1** to **Ctrl+9** switch pages, and the arrow keys move through the sidebar. Switches and buttons have names for screen readers. The window reopens where you left it.
 </details>
@@ -296,7 +296,7 @@ Umbra is community-built. The [roadmap board](https://github.com/users/AmineChr5
 - **Build a widget:** start with the [10-minute tutorial](docs/widgets/tutorial.md), then the [widget SDK](docs/widget-sdk.md), the [cookbook](docs/widgets/cookbook.md) and [CONTRIBUTING.md](CONTRIBUTING.md). `umbractl new my-widget` scaffolds one that already runs, `umbractl pack` makes a shareable `.umbrawidget`, and anyone can install one by double-click or from a link (Browse > Install from file / From URL).
 - **Make a theme:** a single `theme.json` with colors and corner radius, no code. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - **Work on the app:** pick a [`good first issue`](https://github.com/AmineChr54/umbra/labels/good%20first%20issue) and read [CLAUDE.md](CLAUDE.md) for the architecture and security rules (AI coding agents read it too).
-- **Found a bug?** [Open an issue](https://github.com/AmineChr54/umbra/issues/new/choose). About > **Copy diagnostics** gives you everything to paste. For security problems, see [SECURITY.md](SECURITY.md).
+- **Found a bug?** Use **Settings > About > Report a problem** (anonymous, no account), or [open an issue](https://github.com/AmineChr54/umbra/issues/new/choose); `umbractl diagnostics` gives you a block to paste. For security problems, see [SECURITY.md](SECURITY.md).
 
 ## Good to know
 

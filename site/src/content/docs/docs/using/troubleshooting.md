@@ -13,7 +13,7 @@ sidebar: { order: 9 }
 
 ## Reporting a bug
 
-**Settings → About → Copy diagnostics** (or `umbractl diagnostics`) produces a Markdown block with the Umbra version, Windows build, WebView2 version, monitors with DPI, GPU and proxy state, enabled widgets with versions and the last 30 log lines with your user paths hidden. It contains no option values, no proxy address and no widget data. Paste it into an [issue](https://github.com/AmineChr54/umbra/issues/new/choose); the link on the About page pre-fills your version.
+**Settings → About → Report a problem** sends the developer what you write, anonymously. For a GitHub issue, `umbractl diagnostics` produces a Markdown block with the Umbra version, Windows build, WebView2 version, monitors with DPI, GPU and proxy state, enabled widgets with versions and the last 30 log lines with your user paths hidden. It contains no option values, no proxy address and no widget data. Paste it into an [issue](https://github.com/AmineChr54/umbra/issues/new/choose); the GitHub link in the Report a problem box pre-fills your version.
 
 ## Common problems
 

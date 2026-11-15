@@ -124,7 +124,6 @@ function applyPlatform() {
   const rowOf = (id) => { const el = document.getElementById(id); return el && el.closest(".row"); };
   const startRow = rowOf("startup");
   if (startRow) $(".row-title", startRow).textContent = startLabel();
-  title("#copyDiagnostics", "Copies your Umbra and system versions, session type and monitors to the clipboard. No settings values, proxy address or widget data.");
   if (!can("tray")) {
     text("#homeHint", "Close this window and your widgets keep running; open Umbra again from your app menu to come back.");
     title("#arrangeBox", "Widgets are locked unless you arrange them. Also on the Done pill on your desktop.");
@@ -163,7 +162,6 @@ function openLink(key) {
   post({ type: "openUrl", url: urls[key] || key });
 }
 $("#reportProblem").addEventListener("click", () => openReport({ where: "about" }));
-$("#copyDiagnostics").addEventListener("click", () => post({ type: "copyDiagnostics" }));
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-url]");
   if (b) openLink(b.dataset.url);

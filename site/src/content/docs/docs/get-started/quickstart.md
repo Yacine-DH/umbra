@@ -53,5 +53,5 @@ umbractl new my-widget
 This creates a working widget in `%APPDATA%\Umbra\widgets\my-widget` and shows it on your desktop. Edit its files, run `umbractl reload`, and follow [Your first widget](/umbra/docs/widgets/first-widget/).
 
 :::tip
-If something looks wrong, **Settings → About → Copy diagnostics** gives you a block you can paste into a bug report, and **safe mode** turns community widgets off without deleting anything. See [Troubleshooting](/umbra/docs/using/troubleshooting/).
+If something looks wrong, **Settings → About → Report a problem** tells the developer anonymously, and **safe mode** turns community widgets off without deleting anything. See [Troubleshooting](/umbra/docs/using/troubleshooting/).
 :::

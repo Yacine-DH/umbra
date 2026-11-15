@@ -408,16 +408,6 @@ sealed class SettingsWindow : Form, ISettingsView
                 }
                 break;
 
-            case "copyDiagnostics":
-                try
-                {
-                    Clipboard.SetDataObject(Diagnostics.Format(Diagnostics.Collect(_app)), true, 5, 100);
-                    Post(new JsonObject { ["type"] = "notice", ["text"] = "Copied, paste it into the issue" });
-                }
-                catch (Exception ex) when (ex is System.Runtime.InteropServices.ExternalException or System.Threading.ThreadStateException)
-                { Post(new JsonObject { ["type"] = "commandError", ["error"] = $"Couldn't copy: {ex.Message}" }); }
-                break;
-
             case "reportIssue":
             {
                 var snap = Diagnostics.Collect(_app);

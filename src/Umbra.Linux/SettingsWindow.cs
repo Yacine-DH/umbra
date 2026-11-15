@@ -403,14 +403,6 @@ sealed class SettingsWindow : ISettingsView
                 if (_app.Updater.Available is { } rel) WebHost.OpenExternal(rel.PageUrl);
                 break;
 
-            case "copyDiagnostics":
-                if (Gdk.Display.GetDefault() is { } display)
-                {
-                    display.GetClipboard().SetText(_app.Diagnostics());
-                    Post(new JsonObject { ["type"] = "notice", ["text"] = "Copied, paste it into the issue" });
-                }
-                break;
-
             case "reportIssue":
                 WebHost.OpenExternal($"https://github.com/{Community.Repo}/issues/new?template=bug.yml&version={Uri.EscapeDataString(AppInfo.Version)}"
                     + $"&windows={Uri.EscapeDataString(App.SystemLine())}");

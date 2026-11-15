@@ -6,7 +6,7 @@ using Microsoft.Win32;
 namespace Umbra;
 
 /// <summary>
-/// The "Copy diagnostics" block for bug reports (Settings > About, <c>umbractl diagnostics</c>): version, Windows build,
+/// The diagnostics block for bug reports (<c>umbractl diagnostics</c>): version, Windows build,
 /// WebView2, monitors, a few switches, the enabled widgets and the last log lines. Deliberately contains no option values,
 /// proxy address, widget data or file contents, and user folders in the log are replaced by environment-variable names.
 /// </summary>
