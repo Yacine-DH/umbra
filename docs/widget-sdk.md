@@ -505,8 +505,10 @@ This is what the Linux design plans, so you can write widgets that will carry ov
 - **`umbra.notify`** is planned through the freedesktop Notifications service (#189), with the same permission, rate limit and action buttons.
 - **`umbra.media`** is planned through MPRIS (#190), with the same `permissions.media` rules. Planned limit: album art is only read from
   `file://` art URLs, so a player that only offers an `https://` art URL (Spotify) returns no `art`, because the host does not fetch undeclared hosts.
-- **`umbra.system`** is planned from `/proc` and `/sys/class/power_supply` (#178), in the same JSON shape. `disk` maps to `/proc/diskstats`
-  and `statvfs` of the mounts; `gpu` has no generic Linux source, so it is planned to read `percent: null` there unless a driver exposes one.
+- **`umbra.system`** reads `/proc` and `/sys` (#178, #364), in the same JSON shape. `disk` comes from `/proc/diskstats` (whole disks:
+  rates summed, `activePercent` of the busiest) and `drives` from the mounted disks with their mount point as `name` (`"/"`, `"/home"`,
+  `"/media/you/My Stick"`; snaps, pseudo file systems and `/boot` skipped), so show `name` as text, never as HTML. `gpu` comes from
+  amdgpu's sysfs files or NVIDIA's NVML; on Intel and nouveau `percent` and `memoryUsedBytes` are `null`.
 - **`umbra.run` / `permissions.commands`** is planned with the same rules, approvals and limits (#194). Linux details: the command runs in its
   own process group that is killed on timeout, and in a Flatpak it would run through `flatpak-spawn --host`. The commands you declare
   must exist on the target system, so a Windows-only program (`powershell`, `tasklist`) will not work there.

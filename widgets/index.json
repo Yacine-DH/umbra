@@ -558,7 +558,7 @@
       "name": "System Monitor",
       "description": "CPU, RAM, GPU, disk and network usage at a glance, with a history line for CPU and GPU and the free space on each drive. Bars turn amber, then red, when something is busy.",
       "author": "tahabenissa",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "category": "system",
       "manifestVersion": 1,
       "minUmbraVersion": "1.15.0",
