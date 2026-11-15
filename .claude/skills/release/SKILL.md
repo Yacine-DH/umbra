@@ -8,7 +8,8 @@ description: Ship a new Umbra version with scripts/release.mjs (bump, checks, re
 Never bump versions by hand: `release.mjs` does it. The tag and the release come only from step 6 (`gh release create --target` on the
 merge commit of the release PR), never from a hand-pushed tag.
 
-1. **Checklist:** run `.claude/skills/release-checklist` first (`dist/release-checklist-<ver>.md`).
+1. **Checklist:** run `.claude/skills/release-checklist` first (`dist/release-checklist-<ver>.md`; when the release ships Linux
+   tarballs, its `linux.mjs` adds the Linux section: automated suites, packaging, the human test matrix).
 2. **Pick the bump** (semver): `patch` for fixes only, `minor` for features, `major` for breaking changes to the widget SDK
    or the protocol. Preview with `node scripts/release.mjs minor --dry-run`: it prints the next version and the draft notes
    and changes nothing.

@@ -32,12 +32,13 @@
     .net-line { grid-column: 2; grid-row: 1; display: flex; gap: 12px; font-size: 11px; color: var(--text-3); }
     .net-line b { color: var(--text-2); font-weight: 600; }
 
-    .drives { border-top: 1px solid var(--line, rgba(255,255,255,.08)); margin-top: 6px; padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+    .drives { border-top: 1px solid var(--line, rgba(255,255,255,.08)); margin-top: 6px; padding-top: 8px; display: grid; grid-template-columns: minmax(26px, max-content) 1fr auto; gap: 6px 8px; align-items: center; }
     .drives[hidden] { display: none; }
-    .drive { display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; align-items: center; font-size: 11px; color: var(--text-3); }
-    .drive b { color: var(--text-2); font-weight: 600; }
+    .drive { display: contents; }
+    .drive > * { font-size: 11px; color: var(--text-3); }
+    .drive b { color: var(--text-2); font-weight: 600; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .drive .meter { height: 4px; }
-    .more { font-size: 11px; color: var(--text-3); }
+    .more { grid-column: 1 / -1; font-size: 11px; color: var(--text-3); }
     .empty { margin: auto; text-align: center; color: var(--text-3); font-size: 12px; }
     .empty b { display: block; color: var(--text-2); font-size: 14px; margin-bottom: 4px; }
   </style>

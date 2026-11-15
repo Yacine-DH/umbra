@@ -1,0 +1,20 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><script src="https://umbra.local/shared/umbra.js"></script></head>
+<body style="background:#000;color:#fff;font:14px sans-serif;height:100vh;margin:0">
+<p>images test</p>
+<script>
+  const TinyPng = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+  const log = (k, v) => umbra.store.set(k, v);
+  const run = async (what) => {
+    try {
+      let data;
+      if (what === "folder") data = await umbra.images.folder();
+      else if (what === "save") data = await umbra.images.save(TinyPng);
+      else if (what === "save-bad") data = await umbra.images.save("data:image/jpeg;base64,AAAA");
+      else if (what === "choose") data = await umbra.images.chooseFolder();
+      log("result", { what, ok: true, data });
+    } catch (e) { log("result", { what, ok: false, error: e.message || String(e) }); }
+  };
+  umbra.store.onChange(async (key) => { if (key === "go") run(await umbra.store.get("go")); });
+</script>
+</body></html>

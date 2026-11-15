@@ -44,6 +44,12 @@ for w in "${widgets[@]}"; do cp -r "$w" "$profile/widgets/$(basename "$w")"; don
 printf '#!/bin/sh\nprintf "%%s\\n" "$1" >> "%s"\n' "$profile/opened.txt" > "$profile/bin/xdg-open"
 chmod +x "$profile/bin/xdg-open"
 : > "$profile/opened.txt"
+# The daily update check never reaches api.github.com from a test host: unless the test set its own feed (update.sh),
+# it reads a local file announcing an old release (UMBRA_RELEASE_URL, honoured by Debug builds only, the default here).
+if [ -z "${UMBRA_RELEASE_URL:-}" ]; then
+  printf '{ "tag_name": "v0.0.1", "draft": false, "prerelease": false, "body": "", "assets": [] }\n' > "$profile/no-update.json"
+  export UMBRA_RELEASE_URL="$profile/no-update.json"
+fi
 
 # TMPDIR: .NET puts the control socket (CoreFxPipe_Umbra-<user>) and the single-instance mutex under it, and their names
 # ignore UMBRA_DATA_DIR on Linux; a private TMPDIR keeps umbractl and the host away from an installed Umbra.

@@ -126,8 +126,11 @@ function applyPlatform() {
   if (!can("tray")) {
     text("#homeHint", "Close this window and your widgets keep running; open Umbra again from your app menu to come back.");
     title("#arrangeBox", "Widgets are locked unless you arrange them. Also on the Done pill on your desktop.");
-    WELCOME[2].title = "Umbra keeps running";
-    WELCOME[2].text = "Close this window and your widgets keep running. Open Umbra from your app menu to come back to Settings.";
+    WELCOME[WELCOME.length - 1].title = "Umbra keeps running";
+    WELCOME[WELCOME.length - 1].text = "Close this window and your widgets keep running. Open Umbra from your app menu to come back to Settings.";
+  } else {
+    WELCOME[WELCOME.length - 1].title = "Umbra stays in the tray";
+    WELCOME[WELCOME.length - 1].text = "Close this window and your widgets keep running. Click the tray icon to come back. You can replay this tour from About.";
   }
   const accent = rowOf("pf-accentWindows");
   if (accent) {
@@ -180,16 +183,14 @@ function renderGeneral() {
   renderGnomeHint();
   labelRows();
 }
-// Linux, GNOME Wayland without the Umbra Shell extension (#187): a hint until the user installs it or says "Not now".
-// "install": the button copies it (the host asks nothing else); "relogin": installed, active after the next login;
-// "link": under Flatpak, opens the extension's page.
+// Linux, GNOME Wayland without the Umbra Shell extension (#187), shown in one Settings window. "install": the button
+// asks the host, which confirms in its own dialog; "turnOn": installed but not running (never under Flatpak).
 function renderGnomeHint() {
   const offer = state.gnomeExtension;
   $("#gnomeHint").hidden = !offer;
   if (!offer) return;
-  $("#gnomeInstall").hidden = offer === "relogin";
-  $("#gnomeInstall").textContent = offer === "link" ? "Get it" : "Install";
-  if (offer === "relogin") $("#gnomeHintSub").textContent = "The extension is installed. Log out and back in to start using it.";
+  $("#gnomeInstall").hidden = offer === "turnOn";
+  if (offer === "turnOn") $("#gnomeHintSub").textContent = "The Umbra GNOME extension is installed but not running. Turn it on in the Extensions app (if you just installed it, log out and back in first).";
 }
 $("#gnomeInstall").addEventListener("click", () => post({ type: "installGnomeExtension" }));
 $("#gnomeDismiss").addEventListener("click", () => { post({ type: "dismissGnomeExtension" }); $("#gnomeHint").hidden = true; });
@@ -1586,7 +1587,10 @@ function renderCatalog() {
     $(".cver", card).textContent = `v${w.version}`;
     $(".cauthor", card).textContent = [w.author ? `by ${w.author}` : "", catOf(w) !== "other" ? catLabel(catOf(w)) : "", installsText(w.installs)].filter(Boolean).join(" · ");
     $(".cdesc", card).textContent = w.description || "";
-    permissionChips($(".chips", card), w);
+    // Declared first: the platform chip below uses it (it was used before its const, a ReferenceError that stopped Browse
+    // rendering at the first single-platform widget).
+    const chips = $(".chips", card);
+    permissionChips(chips, w);
     // A widget restricted to one OS says so ("Windows only"), whichever OS Umbra runs on.
     if (Array.isArray(w.platforms) && w.platforms.length === 1) {
       const c = document.createElement("span");
@@ -1596,7 +1600,6 @@ function renderCatalog() {
     }
     // A widget that can start programs on this PC is flagged with the exact commands (you approve each one on first use).
     // Collapsed cards show one summary chip; "Read more" lists every command in full.
-    const chips = $(".chips", card);
     const cmds = w.commands || [];
     const open = expandedCards.has(w.id);
     // Only a lot of command text is folded away; one short command stays visible as it is.
@@ -1826,6 +1829,9 @@ bridge && bridge.listen((m) => {
     }
     case "layoutDeleted":
       toast(`Deleted layout ${m.name}`, false, { label: "Undo", run: () => post({ type: "undoDeleteLayout" }) });
+      break;
+    case "offerTour":
+      toast("New: take a quick tour of Umbra?", false, { label: "Take tour", run: () => welcome(1) });
       break;
     case "commandError":
       toast(m.error, true);

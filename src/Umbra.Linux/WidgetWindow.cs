@@ -42,6 +42,34 @@ sealed partial class WidgetWindow : IWidgetView
     /// <summary>False once the window is closed or its copy was removed: nothing may be written for it.</summary>
     bool Alive => !_closed && _app.Settings.Widgets.ContainsKey(Instance);
 
+    readonly Queue<long> _tabIconCalls = new();
+
+    /// <summary>
+    /// umbra.setTabIcon (#369, as on Windows): the page may suggest one name from the bundled shared/tabicons (null or "" clears it).
+    /// Anything else is ignored and logged. It only fills in when the user picked no icon for this copy (the user's TabIcon always
+    /// wins), and changes are rate limited so a page can't churn settings.json. No control command reads or sets it.
+    /// </summary>
+    void HandleTabIcon(JsonNode msg)
+    {
+        var node = msg["name"];
+        string? name = null;
+        if (node is not null && node.GetValueKind() != System.Text.Json.JsonValueKind.Null)
+        {
+            if (node.GetValueKind() != System.Text.Json.JsonValueKind.String) { Log.Write($"[{Instance}] tab icon suggestion ignored: not a string"); return; }
+            name = node.GetValue<string>();
+        }
+        string? clean = null;
+        if (!string.IsNullOrEmpty(name) && (clean = Groups.CleanSuggestion(name)) is null)
+        {
+            var shown = new string(name.Take(40).Select(c => char.IsControl(c) ? '?' : c).ToArray());
+            Log.Write($"[{Instance}] tab icon suggestion ignored: '{shown}' is not a bundled tab icon");
+            return;
+        }
+        if (!Alive || clean == Ws.SuggestedTabIcon) return; // nothing changes: repeated calls (say from onSettings) cost nothing
+        if (!Groups.AllowSuggestion(_tabIconCalls, Environment.TickCount64)) return;
+        _app.SuggestTabIcon(Instance, clean);
+    }
+
     public WidgetWindow(App app, WidgetManifest manifest, string instance)
     {
         _app = app;
@@ -65,6 +93,8 @@ sealed partial class WidgetWindow : IWidgetView
         _app.Pin.Init(_window); // before realize, and before our close-request handler (a backend may refuse that request)
         _window.OnCloseRequest += (_, _) => { MarkClosed(); return false; };
         InitInput();
+        // The surface scale changed (on X11 all windows at once, e.g. XWayland's scale after a monitor went away).
+        _window.OnNotify += (_, e) => { if (e.Pspec.GetName() == "scale-factor") _app.ScheduleRelayout("scale change"); };
         ApplySize();
         // Realize now, so the pin backend can mark the window (type, state, position) before it is first shown.
         ((Gtk.Widget)_window).Realize(); // the widget's realize (creates the surface), not Gtk.Native's
@@ -119,22 +149,54 @@ sealed partial class WidgetWindow : IWidgetView
     void Place()
     {
         if (_closed) return;
-        var at = WidgetPlacement.Locate(Ws, Manifest.DefaultPosition, new Size(Width, Height), _app.Monitors());
+        var at = WidgetPlacement.Layout(Ws, Manifest.DefaultPosition, new Size(Width, Height), _app.Monitors());
         Left = at.X; Top = at.Y;
         _app.Pin.Move(_window, at.X, at.Y);
     }
 
-    /// <summary>Re-places the window from its saved monitor and offset (monitors were added, removed or rearranged).</summary>
-    public void ReapplyPlacement() => Place();
+    /// <summary>
+    /// Re-places the window from its saved monitor and offset (monitors were added, removed or rearranged). Not during a hand
+    /// move or resize: the window follows the pointer then, and its end saves and places it.
+    /// </summary>
+    public void ReapplyPlacement() { if (!_moving && !_resizing) Place(); }
+
+    /// <summary>A display change arrived during a hand move or resize: <see cref="Relayout"/> runs when it ends.</summary>
+    bool _relayoutPending;
+
+    void RunPendingRelayout() { if (_relayoutPending) Relayout(); }
+
+    /// <summary>
+    /// The monitors or their scale changed (unplugged, docked, resumed with the lid closed): size the window again from its
+    /// settings (logical size x widget scale, the same on any monitor), put it on a connected monitor from its saved monitor
+    /// and offset (<see cref="WidgetPlacement.Layout"/>; the saved monitor stays, so the widget goes back when it returns),
+    /// ask the display server for those bounds in its current pixels, and draw it again.
+    /// </summary>
+    public void Relayout()
+    {
+        if (_closed) return;
+        // Mid-drag or mid-resize the window follows the pointer: lay it out once the hand move or resize ends.
+        if (_moving || _resizing) { _relayoutPending = true; return; }
+        _relayoutPending = false;
+        SetWindowSize(SavedSize());
+        var r = WidgetPlacement.Layout(Ws, Manifest.DefaultPosition, new Size(Width, Height), _app.Monitors());
+        Left = r.X; Top = r.Y;
+        var remap = _app.Pin.RemapOnRelayout && _window.GetVisible();
+        if (remap) _window.SetVisible(false);
+        _app.Pin.Relayout(_window, r);
+        if (remap) _window.SetVisible(true); // OnMap re-asserts the pin hints and the position
+        _window.QueueResize();
+        _view.QueueDraw();
+    }
 
     public bool Visible
     {
         get => _window.GetVisible();
-        set { if (!_closed && _window.GetVisible() != value) _window.SetVisible(value); }
+        // Through the pin: it may hold a show back (GNOME extension away), and a hide also cancels a held-back show.
+        set { if (_closed) return; if (!value) _app.Pin.SetVisible(_window, false); else if (!_window.GetVisible()) _app.Pin.SetVisible(_window, true); }
     }
 
     /// <summary>Shows the window without activating it: a widget never takes focus by appearing.</summary>
-    public void Show() => _window.SetVisible(true);
+    public void Show() => _app.Pin.SetVisible(_window, true);
 
     public void Close()
     {
@@ -148,6 +210,7 @@ sealed partial class WidgetWindow : IWidgetView
     {
         if (_closed) return;
         _closed = true;
+        EndFocus();
         _closing.Cancel(); // running commands of this copy are killed
         CrashRecovery.SetStopped(Instance, false);
         Closed?.Invoke();
@@ -290,6 +353,10 @@ sealed partial class WidgetWindow : IWidgetView
                     await HandleMedia(msg);
                     break;
 
+                case "images":
+                    await HandleImages(msg);
+                    break;
+
                 case "run":
                     await HandleRun(msg);
                     break;
@@ -301,6 +368,10 @@ sealed partial class WidgetWindow : IWidgetView
                 case "stop":
                 case "commandOutput":
                     HandleScriptControl(type, msg);
+                    break;
+
+                case "tabIcon":
+                    HandleTabIcon(msg);
                     break;
 
                 case null:
@@ -340,6 +411,81 @@ sealed partial class WidgetWindow : IWidgetView
         reply["ok"] = error is null;
         if (error is not null) reply["error"] = error;
         Post(reply);
+    }
+
+    static bool _pickingImageFolder;
+
+    /// <summary>
+    /// umbra.images (needs permissions.saveImages): folder (the picture folder's name: the picked one, else the default
+    /// Pictures/Umbra/&lt;name&gt;), chooseFolder (host folder dialog, only after a physical left click) and save (a small PNG,
+    /// written by the host into that folder under a name the host picks). The page never gives a path or a name and never reads a file back.
+    /// </summary>
+    async Task HandleImages(JsonNode msg)
+    {
+        var reply = new JsonObject { ["type"] = "imagesResult", ["id"] = msg["id"]?.DeepClone() };
+        try
+        {
+            if (!Manifest.Permissions.SaveImages) throw new ImageArchiveException("This widget has no permissions.saveImages");
+            if (!(Alive && Ws.Enabled)) throw new ImageArchiveException("The widget is disabled");
+            var op = msg["op"] is JsonValue o && o.GetValueKind() == System.Text.Json.JsonValueKind.String ? o.GetValue<string>() : null;
+            switch (op)
+            {
+                case "folder":
+                    reply["data"] = new JsonObject { ["folder"] = ImageArchive.Label(ImageFolders.Shared.Resolve(Manifest.Id, Manifest.Name)) };
+                    break;
+                case "chooseFolder":
+                    if (!RecentLeftClick()) throw new ImageArchiveException("Click the widget first: the folder dialog opens only from a physical click");
+                    reply["data"] = await ChooseImageFolder();
+                    break;
+                case "save":
+                    var png = msg["png"] is JsonValue p && p.GetValueKind() == System.Text.Json.JsonValueKind.String ? p.GetValue<string>() : null;
+                    var file = await Task.Run(() => ImageFolders.Shared.Save(Manifest.Id, Manifest.Name, png));
+                    reply["data"] = new JsonObject { ["file"] = file, ["folder"] = ImageArchive.Label(ImageFolders.Shared.Resolve(Manifest.Id, Manifest.Name)) };
+                    break;
+                default:
+                    throw new ImageArchiveException("Unknown images operation");
+            }
+            reply["ok"] = true;
+        }
+        catch (Exception ex)
+        {
+            reply["ok"] = false;
+            reply["error"] = ex is ImageArchiveException ? ex.Message : "Saving pictures is not available";
+            Log.Write($"[{Instance}] images {msg["op"]} failed: {ex.Message}");
+        }
+        Post(reply);
+    }
+
+    async Task<JsonObject> ChooseImageFolder()
+    {
+        if (await PickImageFolderAsync(Manifest, null) is { } picked)
+        {
+            _app.SettingsChangedElsewhere();
+            return new JsonObject { ["folder"] = ImageArchive.Label(picked), ["changed"] = true };
+        }
+        return new JsonObject { ["folder"] = ImageArchive.Label(ImageFolders.Shared.Resolve(Manifest.Id, Manifest.Name)), ["changed"] = false };
+    }
+
+    /// <summary>
+    /// The host's folder dialog for a widget's pictures (the widget's button after a click, or Settings > My widgets). Opens on
+    /// the current folder, saves the user's pick and returns it, or null when cancelled.
+    /// </summary>
+    internal static async Task<string?> PickImageFolderAsync(WidgetManifest m, Gtk.Window? parent)
+    {
+        if (_pickingImageFolder || Dialogs.IsOpen) return null;
+        _pickingImageFolder = true;
+        try
+        {
+            var current = ImageFolders.Shared.Resolve(m.Id, m.Name);
+            var initial = current is not null && Directory.Exists(current)
+                ? current
+                : ImageFolders.LinuxPicturesDir(Environment.GetEnvironmentVariable, p => File.Exists(p) ? File.ReadAllText(p) : null);
+            var picked = await Dialogs.PickFolderAsync(parent, $"Where should \"{Dialogs.Clean(m.Name, 40)}\" save pictures?", initial);
+            if (picked is null || !Path.IsPathFullyQualified(picked) || !Directory.Exists(picked)) return null;
+            ImageFolders.Shared.Set(m.Id, picked);
+            return picked;
+        }
+        finally { _pickingImageFolder = false; }
     }
 
     /// <summary>
@@ -588,6 +734,7 @@ sealed partial class WidgetWindow : IWidgetView
     public void PushSettings()
     {
         if (_closed) return;
+        NoteEditMode();
         ApplySize();
         Place();
         if (_ready) Post(new JsonObject { ["type"] = "settings", ["settings"] = SettingsPayload() });

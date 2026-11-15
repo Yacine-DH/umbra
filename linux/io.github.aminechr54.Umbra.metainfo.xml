@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata (#196): software centres, Flathub and `appstreamcli validate`. install.sh copies it to
+     $XDG_DATA_HOME/metainfo; the Flatpak manifest will install it to /app/share/metainfo. -->
+<component type="desktop-application">
+  <id>io.github.aminechr54.Umbra</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Umbra</name>
+  <summary>Desktop widgets that live on your wallpaper</summary>
+  <developer id="io.github.aminechr54">
+    <name>AmineChr54</name>
+  </developer>
+  <description>
+    <p>
+      Umbra pins small, crisp, true-black widgets to your desktop, under your windows: a clock, the weather, notes,
+      system and network monitors, now playing, a pomodoro timer and more from the community catalog.
+    </p>
+    <p>
+      Every widget runs sandboxed: it can only reach the internet hosts it declares, it cannot take the keyboard while
+      you type elsewhere, and anything that runs a program on your computer needs your approval first.
+    </p>
+    <ul>
+      <li>Arrange widgets by dragging, with snapping, zoom and tab groups</li>
+      <li>Install widgets from the catalog or from a .umbrawidget file</li>
+      <li>Themes, layouts, global hotkeys and a tray icon</li>
+      <li>Scriptable from the command line and from AI agents with umbractl and its MCP server</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.aminechr54.Umbra.desktop</launchable>
+  <url type="homepage">https://github.com/AmineChr54/umbra</url>
+  <url type="bugtracker">https://github.com/AmineChr54/umbra/issues</url>
+  <url type="vcs-browser">https://github.com/AmineChr54/umbra</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Widgets on the wallpaper</caption>
+      <image>https://raw.githubusercontent.com/AmineChr54/umbra/main/docs/demo-umbra.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Browsing the widget catalog</caption>
+      <image>https://raw.githubusercontent.com/AmineChr54/umbra/main/docs/settings-browse.png</image>
+    </screenshot>
+  </screenshots>
+  <categories>
+    <category>Utility</category>
+  </categories>
+  <keywords>
+    <keyword>widgets</keyword>
+    <keyword>desktop</keyword>
+    <keyword>clock</keyword>
+    <keyword>weather</keyword>
+  </keywords>
+  <provides>
+    <binary>umbra</binary>
+    <binary>umbractl</binary>
+    <mediatype>application/x-umbra-widget</mediatype>
+  </provides>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.17.0" date="2026-11-12">
+      <url type="details">https://github.com/AmineChr54/umbra/releases/tag/v1.17.0</url>
+    </release>
+  </releases>
+</component>

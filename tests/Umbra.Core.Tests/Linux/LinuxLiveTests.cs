@@ -27,6 +27,37 @@ public class LinuxLiveTests
     }
 
     [LinuxFact]
+    public void Gpu_and_disk_read_the_live_proc_and_sys_files()
+    {
+        var clock = Stopwatch.StartNew();
+        var metrics = new LinuxMetrics(new FileProcSource(), () => clock.ElapsedMilliseconds + 1);
+        metrics.Read(["gpu", "disk"]);
+        Thread.Sleep(600);
+        var o = metrics.Read(["gpu", "disk"]);
+
+        if (ProcParsers.ParseDiskStats(File.ReadAllText("/proc/diskstats")).Count > 0)
+        {
+            Assert.InRange(o["disk"]!["activePercent"]!.GetValue<double>(), 0, 100);
+            Assert.True(o["disk"]!["readBytesPerSec"]!.GetValue<long>() >= 0);
+            Assert.True(o["disk"]!["writeBytesPerSec"]!.GetValue<long>() >= 0);
+        }
+        var drives = o["disk"]!["drives"]!.AsArray();
+        // The root file system is a drive wherever it is a real disk; in a container (the local CI's Docker job) it is an
+        // overlay, which DriveMounts skips on purpose.
+        var mounts = ProcParsers.DriveMounts(ProcParsers.ParseMounts(File.ReadAllText("/proc/self/mounts")));
+        if (mounts.Any(m => m.MountPoint == "/")) Assert.Contains(drives, d => d!["name"]!.GetValue<string>() == "/");
+        Assert.DoesNotContain(drives, d => d!["name"]!.GetValue<string>().StartsWith("/snap/", StringComparison.Ordinal));
+        Assert.All(drives, d =>
+        {
+            Assert.InRange(d!["freeBytes"]!.GetValue<long>(), 0, d["totalBytes"]!.GetValue<long>());
+            Assert.InRange(d["usedPercent"]!.GetValue<double>(), 0, 100);
+        });
+        Assert.True(o["gpu"]!.AsObject().ContainsKey("percent"));
+        if (o["gpu"]!["percent"] is { } p) Assert.InRange(p.GetValue<double>(), 0, 100);
+        Assert.Null(new FileProcSource().FileSystemSpace("/umbra-does-not-exist"));
+    }
+
+    [LinuxFact]
     public void Missing_files_read_as_nothing()
     {
         var source = new FileProcSource();
