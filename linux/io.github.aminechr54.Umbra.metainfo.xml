@@ -60,6 +60,9 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.18.0" date="2026-11-15">
+      <url type="details">https://github.com/AmineChr54/umbra/releases/tag/v1.18.0</url>
+    </release>
     <release version="1.17.0" date="2026-11-12">
       <url type="details">https://github.com/AmineChr54/umbra/releases/tag/v1.17.0</url>
     </release>
