@@ -74,7 +74,27 @@ abstract class OverlayWindow
         }
     }
 
-    public void Show() { if (!_closed && !Window.GetVisible()) App.Pin.SetVisible(Window, true); }
+    /// <summary>
+    /// Shows the overlay, and brings it back when the window manager minimized it: "show desktop" (Super+D) minimizes normal and
+    /// utility windows but not the DESKTOP-type widgets, so a tab strip vanished while its widget stayed, and GTK still called it
+    /// visible. Unminimizing never activates it. Callers run this on their tick (the tab strips every 250 ms).
+    /// </summary>
+    bool _unminimizing;
+
+    public void Show()
+    {
+        if (_closed) return;
+        if (!Window.GetVisible()) App.Pin.SetVisible(Window, true);
+        else if (Window.IsSuspended())
+        {
+            // The window manager may take a moment (or keep "show desktop" on for a while): ask on every tick, log once.
+            if (!_unminimizing) Log.Write($"{Window.GetTitle()} was minimized by the window manager (show desktop?): showing it again");
+            _unminimizing = true;
+            Window.Unminimize();
+            return;
+        }
+        _unminimizing = false;
+    }
     public void Hide() { if (!_closed) App.Pin.SetVisible(Window, false); }
 
     public void Close()
