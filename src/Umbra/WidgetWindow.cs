@@ -21,6 +21,8 @@ sealed class WidgetWindow : Form, IWidgetView
     long _focusGrantedFor = long.MinValue; // the press (_pressedAt) TakeKeyboardFocus last acted on
     bool _resizing;
     long _lastZoomAt = long.MinValue / 2;
+    bool _drawing = true; // false while a maximized or fullscreen window covers this widget (#409)
+    int _captureHolds;     // captures in progress: they need pixels, so the view draws even while covered
 
     public WidgetManifest Manifest { get; }
 
@@ -101,6 +103,65 @@ sealed class WidgetWindow : Form, IWidgetView
         if (Visible) DesktopPin.Apply(Handle);
         // Hidden (group tab, hide hotkey, fullscreen app...): a recording pauses with the camera off until the widget is back.
         _app.Timelapse.SetPaused(Instance, !Visible);
+        if (!Visible) SetDrawing(true); // shown again later: draw at once, the next covered check decides from there
+    }
+
+    /// <summary>
+    /// Starts or stops drawing while the window stays shown (#409): hiding the WebView2 control sets its controller's
+    /// <c>IsVisible</c>, so Chromium stops painting and animating, while the page keeps running (hidden-page timer rules apply).
+    /// The form itself is not hidden, so nothing moves in the z-order. Before the view is hidden its last frame becomes the
+    /// window's background, so uncovering the desktop shows the widget at once (a moment stale), never an empty black window.
+    /// </summary>
+    public async void SetDrawing(bool on)
+    {
+        if (_drawing == on) return;
+        _drawing = on;
+        var generation = ++_drawGeneration;
+        if (on)
+        {
+            ApplyDrawing();
+            // Chromium paints its first frame a moment after the view is shown: keep the snapshot underneath until then.
+            await Task.Delay(500);
+            if (generation == _drawGeneration && _drawing) ClearLastFrame();
+            return;
+        }
+        await SnapshotLastFrameAsync();
+        if (generation == _drawGeneration && !_drawing) ApplyDrawing(); // not uncovered while the snapshot was taken
+    }
+
+    int _drawGeneration;
+    Bitmap? _lastFrame;
+
+    async Task SnapshotLastFrameAsync()
+    {
+        if (!_ready || _view.IsDisposed || _view.CoreWebView2 is null) return;
+        try
+        {
+            using var ms = new MemoryStream();
+            await _view.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, ms);
+            ms.Position = 0;
+            using var decoded = Image.FromStream(ms);
+            var frame = new Bitmap(decoded); // a copy that does not need the stream
+            ClearLastFrame();
+            _lastFrame = frame;
+            BackgroundImageLayout = ImageLayout.Stretch;
+            BackgroundImage = frame;
+        }
+        catch (Exception ex) { Log.Verbose($"[{Instance}] keeping the last frame failed: {ex.Message}"); }
+    }
+
+    void ClearLastFrame()
+    {
+        if (_lastFrame is null) return;
+        BackgroundImage = null;
+        _lastFrame.Dispose();
+        _lastFrame = null;
+    }
+
+    void ApplyDrawing()
+    {
+        var show = _drawing || _captureHolds > 0;
+        if (_view.Visible != show && !_view.IsDisposed) _view.Visible = show;
     }
 
     protected override void WndProc(ref Message m)
@@ -322,6 +383,9 @@ sealed class WidgetWindow : Form, IWidgetView
         Controls.Remove(old);
         try { old.Dispose(); } catch (Exception ex) { Log.Write($"[{Instance}] disposing the crashed WebView2 failed: {ex.Message}"); }
         _view = NewView();
+        _drawing = true; // a new control starts shown; the next covered check hides it again if needed
+        _drawGeneration++;
+        ClearLastFrame();
         Controls.Add(_view);
         _recordingDot?.BringToFront();
         ApplyZoom(ZoomFor(Size));
@@ -846,6 +910,8 @@ sealed class WidgetWindow : Form, IWidgetView
         // Disposed later: this can run inside a click on the menu's own item (Hide, Remove copy).
         if (_menu is { } menu) { _menu = null; SynchronizationContext.Current?.Post(_ => menu.Dispose(), null); }
         CrashRecovery.SetStopped(Instance, false);
+        _drawGeneration++;
+        ClearLastFrame();
         base.OnFormClosed(e);
     }
 
@@ -1335,9 +1401,23 @@ sealed class WidgetWindow : Form, IWidgetView
         await Task.WhenAny(_renderedTcs.Task, Task.Delay(3000));
         var settle = _renderedTcs.Task.IsCompleted ? TimeSpan.FromMilliseconds(2500) - (DateTime.UtcNow - _renderedAt) : TimeSpan.Zero;
         if (settle > TimeSpan.Zero) await Task.Delay(settle);
-        using var ms = new MemoryStream();
-        await _view.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, ms);
-        return ms.ToArray();
+        _captureHolds++;
+        try
+        {
+            if (!_drawing)
+            {
+                ApplyDrawing();
+                await Task.Delay(250); // let Chromium paint a fresh frame after being covered
+            }
+            using var ms = new MemoryStream();
+            await _view.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, ms);
+            return ms.ToArray();
+        }
+        finally
+        {
+            _captureHolds--;
+            ApplyDrawing();
+        }
     }
 
     async Task HandleFetch(JsonNode msg, bool asText)

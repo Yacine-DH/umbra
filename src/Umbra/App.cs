@@ -114,12 +114,52 @@ sealed class App : ApplicationContext, IUmbraHost
         ApplyVisibility();
     }
 
+    /// <summary>Monitors whose desktop a maximized or fullscreen window hid at the last check (#409). Not saved.</summary>
+    HashSet<string> _covered = new(StringComparer.OrdinalIgnoreCase);
+    IDisposable? _windowWatch;
+    readonly System.Windows.Forms.Timer _coverRecheck = new() { Interval = 250 };
+
+    /// <summary>
+    /// Another window came to the front, or was minimized or restored (Show desktop included): check now, so a widget draws again
+    /// the moment the desktop shows, and once more shortly after, when minimize/restore animations have settled.
+    /// </summary>
+    void OnWindowChanged()
+    {
+        CheckCovered();
+        _coverRecheck.Stop();
+        _coverRecheck.Start();
+    }
+
+    /// <summary>
+    /// Stops drawing the shown widgets whose monitor is covered by a maximized or fullscreen window, and draws them again once it
+    /// isn't (#409). Only the drawing stops: the window stays shown and the page's timers keep running. Polled with the fullscreen check.
+    /// </summary>
+    void CheckCovered()
+    {
+        var screens = Screens.All();
+        var covered = EditMode || Peeking || _windows.Count == 0
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : Occlusion.CoveredMonitors(screens, Screens.TopLevelWindows());
+        if (!covered.SetEquals(_covered))
+        {
+            Log.Verbose(covered.Count == 0 ? "Desktop uncovered: widgets draw" : $"Desktop covered on {string.Join(", ", covered)}: widgets there stop drawing");
+            _covered = covered;
+        }
+        foreach (var w in _windows.Values)
+        {
+            if (w.IsDisposed || !w.Visible) continue;
+            var on = Placement.Find(screens, w.Bounds) is { } m && covered.Contains(m.Name);
+            w.SetDrawing(Occlusion.ShouldDraw(on, EditMode, Peeking, capturing: false));
+        }
+    }
+
     /// <summary>Raises the widgets above other windows for General.PeekSeconds (never activating them), then returns them to the bottom.</summary>
     public void Peek()
     {
         if (ShouldHide) return;
         DesktopPin.Peeking = true;
         Peeking = true;
+        CheckCovered(); // draw at once: the widgets are about to be raised above the covering window
         foreach (var w in _windows.Values) if (w.IsHandleCreated) DesktopPin.Raise(w.Handle);
         _peekTimer ??= new System.Windows.Forms.Timer();
         _peekTimer.Stop();
@@ -452,7 +492,9 @@ sealed class App : ApplicationContext, IUmbraHost
         SyncWindows();
         _hotkeys = new HotkeyService(RunHotkey);
         _hotkeys.Apply(Settings.Hotkeys);
-        _fullscreenTimer.Tick += (_, _) => CheckFullscreen();
+        _fullscreenTimer.Tick += (_, _) => { CheckFullscreen(); CheckCovered(); };
+        _coverRecheck.Tick += (_, _) => { _coverRecheck.Stop(); CheckCovered(); };
+        _windowWatch = Screens.WatchWindowChanges(OnWindowChanged);
         _fullscreenTimer.Start();
         _tabTimer.Tick += (_, _) => TickGroups();
         _tabTimer.Start();
@@ -1126,6 +1168,7 @@ sealed class App : ApplicationContext, IUmbraHost
         EditSelection = null;
         Log.Write($"Edit mode {(on ? "on" : "off")}");
         foreach (var w in _windows.Values) w.PushSettings();
+        CheckCovered(); // arranging always draws
         UpdateEditPills();
         SettingsChangedElsewhere();
     }
@@ -1328,6 +1371,8 @@ sealed class App : ApplicationContext, IUmbraHost
         _timeTimer.Dispose();
         _wakeRefresh?.Dispose();
         _fullscreenTimer.Dispose();
+        _windowWatch?.Dispose();
+        _coverRecheck.Dispose();
         _tabTimer.Dispose();
         foreach (var t in _tabStrips.Values) t.Close();
         _layoutTimer.Dispose();
