@@ -75,4 +75,63 @@ public sealed class WidgetPlacementTests
         Assert.Equal(("HDMI-1", 100, 200), (ws.Monitor, ws.RelX, ws.RelY));
         Assert.Equal(new Point(1920 + 100, 200), WidgetPlacement.Locate(ws, null, Size, [Main, Side]));
     }
+
+    // ---------- display changes: a monitor vanished, the scale changed (the suspend/undock report) ----------
+
+    static readonly MonitorInfo Panel = new("eDP-1", new Rectangle(0, 0, 1440, 900), new Rectangle(0, 0, 1440, 900), true);
+    static readonly MonitorInfo External = new("DP-1", new Rectangle(1440, 0, 3440, 1440), new Rectangle(1440, 0, 3440, 1440), false);
+    static readonly MonitorInfo ExternalAlone = External with { Bounds = new Rectangle(0, 0, 3440, 1440), WorkArea = new Rectangle(0, 0, 3440, 1440), Primary = true };
+
+    [Fact]
+    public void When_the_saved_monitor_vanishes_the_widget_goes_to_a_connected_one_at_the_same_size_and_the_setting_stays()
+    {
+        var ws = new WidgetSettings { Monitor = "eDP-1", RelX = 100, RelY = 100, X = 100, Y = 100 };
+        var before = WidgetPlacement.Layout(ws, null, Size, [Panel, External]);
+        var after = WidgetPlacement.Layout(ws, null, Size, [ExternalAlone]);
+        Assert.Equal(new Rectangle(100, 100, 260, 128), before);
+        Assert.Equal(new Rectangle(100, 100, 260, 128), after);
+        Assert.True(ExternalAlone.WorkArea.Contains(after));
+        Assert.Equal(("eDP-1", 100, 100), (ws.Monitor, ws.RelX, ws.RelY)); // not rewritten: it comes back with the panel
+        Assert.Equal(before, WidgetPlacement.Layout(ws, null, Size, [Panel, External]));
+    }
+
+    [Fact]
+    public void A_widget_far_into_a_vanished_monitor_is_pulled_inside_the_one_left()
+    {
+        var ws = new WidgetSettings { Monitor = "DP-1", RelX = 3200, RelY = 1300 };
+        var r = WidgetPlacement.Layout(ws, null, Size, [Panel]);
+        Assert.True(Panel.WorkArea.Contains(r), $"{r} is not inside {Panel.WorkArea}");
+    }
+
+    [Fact]
+    public void Scale_2_to_1_keeps_the_logical_bounds_and_halves_the_device_pixels()
+    {
+        var logical = new Rectangle(100, 100, 211, 104); // 260x128 x widget scale 0.81
+        Assert.Equal(new Rectangle(200, 200, 422, 208), WidgetPlacement.ToDevice(logical, 2));
+        Assert.Equal(new Rectangle(100, 100, 211, 104), WidgetPlacement.ToDevice(logical, 1));
+    }
+
+    [Theory]
+    [InlineData(1.25, 125, 125, 264, 130)]
+    [InlineData(1.5, 150, 150, 317, 156)]
+    public void Fractional_scales_round_to_whole_device_pixels(double scale, int x, int y, int w, int h)
+    {
+        Assert.Equal(new Rectangle(x, y, w, h), WidgetPlacement.ToDevice(new Rectangle(100, 100, 211, 104), scale));
+    }
+
+    [Fact]
+    public void A_scale_below_1_or_a_tiny_window_never_gives_an_empty_or_shrunken_rectangle()
+    {
+        Assert.Equal(new Rectangle(10, 10, 1, 1), WidgetPlacement.ToDevice(new Rectangle(10, 10, 0, 0), 0));
+    }
+
+    [Fact]
+    public void The_layout_key_changes_with_monitors_and_scales_only()
+    {
+        var docked = WidgetPlacement.LayoutKey([Panel, External], [2, 1]);
+        Assert.Equal(docked, WidgetPlacement.LayoutKey([Panel, External], [2, 1]));
+        Assert.NotEqual(docked, WidgetPlacement.LayoutKey([ExternalAlone], [1]));          // a monitor vanished
+        Assert.NotEqual(docked, WidgetPlacement.LayoutKey([Panel, External], [1, 1]));     // same monitors, scale 2 -> 1
+        Assert.NotEqual(WidgetPlacement.LayoutKey([Panel], [1.25]), WidgetPlacement.LayoutKey([Panel], [1.5])); // fractional
+    }
 }

@@ -20,12 +20,18 @@ sealed class LinuxSession
     public static readonly TimeSpan ResumeDelay = TimeSpan.FromSeconds(3);
 
     readonly UiThread _ui;
-    bool _locked, _saver, _onBattery;
+    bool _locked, _saver, _displayOff, _onBattery;
     string? _zone;
     long _lockedAt;
 
-    /// <summary>Widgets should pause (the session is locked).</summary>
-    public bool Paused => _locked;
+    /// <summary>Widgets should pause: the session is locked, or the display is off (Windows pauses on both too).</summary>
+    public bool Paused => _locked || _displayOff;
+
+    /// <summary>
+    /// Mutter's <c>PowerSaveMode</c> (org.gnome.Mutter.DisplayConfig): 0 on, 1 standby, 2 suspend, 3 off, -1 unknown. Anything but
+    /// "on" or "unknown" counts as off. Pure, so it is unit tested.
+    /// </summary>
+    public static bool DisplayOff(long powerSaveMode) => powerSaveMode is 1 or 2 or 3;
     /// <summary>The power-saver profile is active.</summary>
     public bool EnergySaver => _saver;
 
@@ -79,6 +85,17 @@ sealed class LinuxSession
                 using var active = v[0];
                 SetLocked(active.Bool);
             });
+
+        // Display off (GNOME): Mutter's PowerSaveMode, read once and followed. KDE has no stable D-Bus property for it yet, so
+        // there only the lock pauses (most KDE setups lock before blanking).
+        _ = ReadDisplayAsync(session);
+        DBus.Subscribe(session, "org.gnome.Mutter.DisplayConfig", "org.freedesktop.DBus.Properties", "PropertiesChanged", "/org/gnome/Mutter/DisplayConfig", (_, v) =>
+        {
+            using var changed = v[1];
+            var d = changed.Dict();
+            if (d.TryGetValue("PowerSaveMode", out var m)) SetDisplayOff(DisplayOff(NumberOf(m)));
+            foreach (var x in d.Values) x.Dispose();
+        });
 
         // Power profile: read once, then follow changes (both the old and the new bus name of power-profiles-daemon).
         foreach (var (name, path) in new[] { ("net.hadess.PowerProfiles", "/net/hadess/PowerProfiles"), ("org.freedesktop.UPower.PowerProfiles", "/org/freedesktop/UPower/PowerProfiles") })
@@ -156,6 +173,34 @@ sealed class LinuxSession
         _saver = on;
         Log.Write(on ? "Power saver is on" : "Power saver is off");
         PowerChanged?.Invoke();
+    }
+
+    static long NumberOf(DBus.Value v)
+    {
+        if (v.Type != "v") return v.Number;
+        using var inner = v.Unbox;
+        return inner.Number;
+    }
+
+    void SetDisplayOff(bool off)
+    {
+        if (off == _displayOff) return;
+        _displayOff = off;
+        Log.Write(off ? "Display off: widgets pause" : "Display on");
+        PowerChanged?.Invoke();
+    }
+
+    async Task ReadDisplayAsync(IntPtr session)
+    {
+        try
+        {
+            using var r = await DBus.CallAsync(session, "org.gnome.Mutter.DisplayConfig", "/org/gnome/Mutter/DisplayConfig", "org.freedesktop.DBus.Properties", "Get",
+                $"({V.Str("org.gnome.Mutter.DisplayConfig")}, {V.Str("PowerSaveMode")})", 2000);
+            using var v = r[0];
+            var off = DisplayOff(NumberOf(v));
+            _ui.Post(_ => SetDisplayOff(off), null);
+        }
+        catch (DBusException) { } // not GNOME
     }
 
     static bool BoolOf(DBus.Value v)

@@ -13,7 +13,6 @@ namespace Umbra;
 static class Diagnostics
 {
     public const int LogLines = 30;
-    const int MaxLogLineLength = 300;
 
     public readonly record struct MonitorLine(int Width, int Height, int Dpi, bool Primary);
     public readonly record struct WidgetLine(string Id, string Version, string Source);
@@ -134,32 +133,8 @@ static class Diagnostics
     /// proxy address, strips the query and fragment from every http(s) URL (they can carry keys and tokens), replaces the
     /// given user and machine names, and caps each line's length, so a pasted log doesn't reveal the Windows user name.
     /// </summary>
-    internal static List<string> ScrubLog(IEnumerable<string> lines, IEnumerable<(string Path, string Token)> roots, IEnumerable<(string Name, string Token)>? names = null)
-    {
-        var ordered = roots.Where(r => r.Path.Trim('\\', '/').Length > 0)
-            .Select(r => (Path: r.Path.TrimEnd('\\', '/'), r.Token)).OrderByDescending(r => r.Path.Length).ToList();
-        var userDir = new System.Text.RegularExpressions.Regex(@"[A-Za-z]:[\\/]+Users[\\/]+[^\\/\s""']+", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        var nameRx = (names ?? Array.Empty<(string, string)>())
-            .Where(n => n.Name is { Length: >= 3 })
-            .Select(n => (Rx: new System.Text.RegularExpressions.Regex(@"(?<![A-Za-z0-9])" + System.Text.RegularExpressions.Regex.Escape(n.Name) + @"(?![A-Za-z0-9])",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase), n.Token)).ToList();
-        return lines.Select(line =>
-        {
-            foreach (var (path, token) in ordered)
-            {
-                line = line.Replace(path, token, StringComparison.OrdinalIgnoreCase);
-                line = line.Replace(path.Replace('\\', '/'), token, StringComparison.OrdinalIgnoreCase);
-            }
-            line = userDir.Replace(line, "%USERPROFILE%");
-            line = UrlSecrets.Replace(line, "");
-            foreach (var (rx, token) in nameRx) line = rx.Replace(line, token);
-            return line.Length > MaxLogLineLength ? line[..MaxLogLineLength] + "..." : line;
-        }).ToList();
-    }
-
-    /// <summary>The query and fragment of an http(s) URL (up to whitespace, a quote or a bracket), which can carry API keys.</summary>
-    static readonly System.Text.RegularExpressions.Regex UrlSecrets = new(
-        @"(?<=https?://[^\s?#""'<>()\[\]]*)[?#][^\s""'<>()\[\]]*", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    internal static List<string> ScrubLog(IEnumerable<string> lines, IEnumerable<(string Path, string Token)> roots, IEnumerable<(string Name, string Token)>? names = null) =>
+        LogScrub.Scrub(lines, roots, names);
 
     /// <summary>The bug template with the version and Windows build filled in (issue-form fields are prefilled by id in the query).</summary>
     internal static string IssueUrl(string repo, string version, string windows) =>

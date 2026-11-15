@@ -13,3 +13,15 @@ static class TestEnv
     [ModuleInitializer]
     internal static void Init() => Environment.SetEnvironmentVariable("UMBRA_DATA_DIR", DataDir);
 }
+
+/// <summary>A fact that runs only on Linux (Umbra.slnx also runs this assembly on Windows CI, where Unix paths and libc don't exist).</summary>
+public sealed class LinuxFactAttribute : FactAttribute
+{
+    public LinuxFactAttribute() { if (!OperatingSystem.IsLinux()) Skip = "Linux only"; }
+}
+
+/// <summary>A theory that runs only on Linux.</summary>
+public sealed class LinuxTheoryAttribute : TheoryAttribute
+{
+    public LinuxTheoryAttribute() { if (!OperatingSystem.IsLinux()) Skip = "Linux only"; }
+}

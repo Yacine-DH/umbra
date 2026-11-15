@@ -167,4 +167,22 @@ public class ImageArchiveTests : IDisposable
             Assert.DoesNotContain("picture", c.Cmd, StringComparison.OrdinalIgnoreCase);
         }
     }
+
+    [Fact]
+    public void Linux_pictures_dir_follows_xdg_and_falls_back_to_home_pictures_before_it_exists()
+    {
+        var home = Path.Combine(_root, "home", "u");
+        var custom = Path.Combine(_root, "custom-pics");
+        Assert.Equal(custom, ImageFolders.LinuxPicturesDir(k => k == "XDG_PICTURES_DIR" ? custom + Path.DirectorySeparatorChar : k == "HOME" ? home : null));
+        Assert.Equal(Path.Combine(home, "Images"), ImageFolders.LinuxPicturesDir(
+            k => k == "HOME" ? home : null,
+            _ => "# comment\nXDG_PICTURES_DIR=\"$HOME/Images/\"\n"));
+        // Pointing at $HOME (or $HOME/) disables the directory per the xdg-user-dirs spec: returns null so a folder must be picked.
+        Assert.Null(ImageFolders.LinuxPicturesDir(k => k == "XDG_PICTURES_DIR" ? home + Path.DirectorySeparatorChar : k == "HOME" ? home : null));
+        Assert.Null(ImageFolders.LinuxPicturesDir(k => k == "HOME" ? home : null, _ => "XDG_PICTURES_DIR=\"$HOME/\"\n"));
+        Assert.Null(ImageFolders.LinuxPicturesDir(k => k == "HOME" ? home : null, _ => "XDG_PICTURES_DIR=\"$HOME\"\n"));
+        // Even when ~/Pictures does not exist yet on disk, it is returned so the first save creates ~/Pictures/Umbra/<widget>.
+        Assert.False(Directory.Exists(home));
+        Assert.Equal(Path.Combine(home, "Pictures"), ImageFolders.LinuxPicturesDir(k => k == "HOME" ? home : null, _ => null));
+    }
 }
