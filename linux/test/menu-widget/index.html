@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="https://umbra.local/shared/umbra.css">
+  <style>body { margin: 0; padding: 12px; font-size: 12px; height: 136px; background: #000; }</style>
+</head>
+<body>
+  <div>menu widget: <span id="state">starting</span></div>
+  <script src="https://umbra.local/shared/umbra.js"></script>
+  <script>
+    // What a hostile page would try: open the host menu with synthetic events, no mouse involved.
+    setInterval(() => {
+      for (const t of [document.body, document.documentElement])
+        t.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 50, clientY: 50 }));
+    }, 300);
+    // Something to restore on Undo: each copy stores its own instance-specific value once.
+    (async () => {
+      try {
+        if (!(await umbra.store.get("born"))) await umbra.store.set("born", String(Date.now()));
+        document.getElementById("state").textContent = "ready";
+      } catch (e) { document.getElementById("state").textContent = "store failed: " + e; }
+    })();
+  </script>
+</body>
+</html>
