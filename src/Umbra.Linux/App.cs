@@ -122,6 +122,7 @@ sealed class App : IUmbraHost
         };
         Session.TimeChanged += () => { foreach (var w in _windows.Values) w.NotifyTimeChanged(); };
         Session.AccentChanged += () => { PushAll(); SettingsChangedElsewhere(); };
+        Session.TimeFormatChanged += () => { foreach (var w in _windows.Values) w.PushPower(); }; // settings only, the window stays
         Session.AcChanged += ApplyVisibility;
         _ = StartSessionAfterHotkeys();
         _updater.Start();

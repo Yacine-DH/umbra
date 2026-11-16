@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net.NetworkInformation;
 
 namespace Umbra.Linux;
@@ -11,7 +12,9 @@ namespace Umbra.Linux;
 /// <item>the screen lock (<c>org.gnome.ScreenSaver</c> / <c>org.freedesktop.ScreenSaver</c> <c>ActiveChanged</c>): widgets pause;</item>
 /// <item>the power-saver profile (power-profiles-daemon <c>ActiveProfile</c>): the Energy Saver policy;</item>
 /// <item>clock jumps (wall clock against a monotonic clock) and time-zone changes: umbra.onTimeChanged;</item>
-/// <item>the desktop accent colour (portal <c>org.freedesktop.appearance accent-color</c>, GNOME 47+, KDE): "Match system accent".</item>
+/// <item>the desktop accent colour (portal <c>org.freedesktop.appearance accent-color</c>, GNOME 47+, KDE): "Match system accent";</item>
+/// <item>the time format: GNOME's 12/24-hour switch (portal <c>org.gnome.desktop.interface clock-format</c>) and <c>LC_TIME</c>
+/// (<see cref="DesktopLocale"/>): <c>settings.hour12</c> and <c>settings.locale</c>.</item>
 /// </list>
 /// Each source is optional: a missing service only means that signal never comes.
 /// </summary>
@@ -49,6 +52,11 @@ sealed class LinuxSession
     public event Action? TimeChanged;
     /// <summary>The desktop accent colour changed (<see cref="Prefs.SystemAccent"/> is already updated).</summary>
     public event Action? AccentChanged;
+    /// <summary>The 12/24-hour setting changed (<see cref="TimeFormat"/> is already updated).</summary>
+    public event Action? TimeFormatChanged;
+
+    /// <summary>The locale and 12-hour flag widgets format times with (the desktop's, not only <c>LANG</c>'s; #359).</summary>
+    public (string Locale, bool Hour12) TimeFormat { get; private set; } = ComputeTimeFormat(null);
 
     public LinuxSession(UiThread ui) { _ui = ui; }
 
@@ -145,14 +153,16 @@ sealed class LinuxSession
 
         // Accent colour from the desktop portal.
         _ = ReadAccentAsync(session);
+        // GNOME's 12/24-hour switch, through the same portal (also inside a Flatpak, where gsettings can't see the host's).
+        _ = ReadClockFormatAsync(session);
         DBus.Subscribe(session, null, "org.freedesktop.portal.Settings", "SettingChanged", "/org/freedesktop/portal/desktop", (_, v) =>
         {
             using var ns = v[0];
             using var key = v[1];
-            if (ns.Str != "org.freedesktop.appearance" || key.Str != "accent-color") return;
             using var value = v[2];
             using var inner = value.Type == "v" ? value.Unbox : null;
-            SetAccent(ParseAccent(inner ?? value));
+            if (ns.Str == "org.freedesktop.appearance" && key.Str == "accent-color") SetAccent(ParseAccent(inner ?? value));
+            else if (ns.Str == "org.gnome.desktop.interface" && key.Str == "clock-format") SetClockFormat((inner ?? value).AsString);
         });
     }
 
@@ -265,6 +275,45 @@ sealed class LinuxSession
             _ui.Post(_ => SetAccent(accent), null);
         }
         catch (DBusException ex) { Log.Verbose($"No accent colour from the portal: {ex.Message}"); }
+    }
+
+    async Task ReadClockFormatAsync(IntPtr session)
+    {
+        try
+        {
+            using var r = await DBus.CallAsync(session, "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+                "org.freedesktop.portal.Settings", "ReadOne", $"({V.Str("org.gnome.desktop.interface")}, {V.Str("clock-format")})", 3000);
+            using var v = r[0];
+            var format = v.AsString; // read here: the reply is freed when this method returns
+            _ui.Post(_ => SetClockFormat(format), null);
+        }
+        catch (DBusException ex) { Log.Verbose($"No clock format from the portal: {ex.Message}"); }
+    }
+
+    void SetClockFormat(string? format)
+    {
+        var next = ComputeTimeFormat(format);
+        if (next == TimeFormat) return;
+        TimeFormat = next;
+        Log.Verbose($"Time format: {next.Locale}, {(next.Hour12 ? "12" : "24")}-hour");
+        TimeFormatChanged?.Invoke();
+    }
+
+    static (string Locale, bool Hour12) ComputeTimeFormat(string? clockFormat) =>
+        DesktopLocale.Resolve(Environment.GetEnvironmentVariable, ReadPlasmaLocale(), clockFormat, CultureInfo.CurrentCulture);
+
+    /// <summary>KDE's saved region formats (<c>~/.config/plasma-localerc</c>); null without KDE or when it can't be read.</summary>
+    static string? ReadPlasmaLocale()
+    {
+        try
+        {
+            var config = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
+            if (string.IsNullOrEmpty(config) || !Path.IsPathRooted(config))
+                config = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config");
+            var file = new FileInfo(Path.Combine(config, "plasma-localerc"));
+            return file.Exists && file.Length < 64 * 1024 ? File.ReadAllText(file.FullName) : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
     }
 
     static Prefs.AccentPair? ParseAccent(DBus.Value v)

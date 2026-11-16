@@ -157,8 +157,8 @@ is WebView2 on Windows, and other platforms use a different one that `umbra.js` 
 | `umbra.setTabIcon(name)` | Suggests this copy's icon in a tab group's strip, e.g. per `view` option so Overview, Board and Pet copies look different by default. `name` is one of the bundled [`shared/tabicons`](../shared/tabicons/index.json) names such as `"chart-line"`, or `null` to clear. Call it again whenever the view changes: the host stores it (`SuggestedTabIcon` in `settings.json`) and redraws the strip at once. See [Tab icon suggestions](#tab-icon-suggestions) |
 | `umbra.rendered()` | Call once the first real frame is drawn; screenshots wait for it |
 | `umbra.tween(from, to, ms, onFrame)` | Ease-out-cubic number animation; jumps straight to `to` when motion is off or the window is hidden |
-| `umbra.locale` | The user's Windows region format as a BCP-47 tag (`"de-DE"`). Pass it to `Intl.*` and `toLocale*String` instead of `[]` or a hard-coded `"en-US"`; `"en-US"` before the host has sent settings |
-| `umbra.hour12` | `true` when Windows (Region > Time format) uses a 12-hour clock. Pass it as `hour12` to `Intl.DateTimeFormat` or `toLocaleTimeString`, and let an option override it if you offer one |
+| `umbra.locale` | The user's region format as a BCP-47 tag (`"de-DE"`): Windows Region; on Linux the locale for times (`LC_ALL`, `LC_TIME`, then `LANG`). Pass it to `Intl.*` and `toLocale*String` instead of `[]` or a hard-coded `"en-US"`; `"en-US"` before the host has sent settings |
+| `umbra.hour12` | `true` when the user's clock is 12-hour: Windows Region > Time format; on Linux GNOME's 24-hour time switch, else the `LC_TIME` region format (KDE Region & Language). It follows a change live through `umbra.onSettings`. Pass it as `hour12` to `Intl.DateTimeFormat` or `toLocaleTimeString`, and let an option override it if you offer one |
 | `umbra.fmt(n, decimals = 2)` | `7744.06` to `"7,744.06"`, or `"7.744,06"` when Windows is set to German: it follows `umbra.locale` |
 
 Plain `fetch()` also works for declared hosts if the server allows CORS; `umbra.fetchJson` always works.

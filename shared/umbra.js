@@ -499,7 +499,7 @@
     get widget() { return widget; },
     /** The user's Windows region format as a BCP-47 tag, e.g. "de-DE". Pass it to Intl or toLocale*String. */
     get locale() { return locale(); },
-    /** True when Windows (Region > Time format) uses a 12-hour clock. Pass it as `hour12` to Intl.DateTimeFormat. */
+    /** True when the user's clock is 12-hour (Windows Region > Time format; Linux: GNOME's switch, else LC_TIME). Pass it as `hour12` to Intl.DateTimeFormat. */
     get hour12() { return !!settings.hour12; },
     onSettings: (fn) => handlers.settings.push(fn),
     /** fn({ id, tag }) when the user clicks a button on one of this widget's toasts (id from notify's actions, tag as sent or null). */

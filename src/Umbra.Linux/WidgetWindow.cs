@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
 using System.Text.Json.Nodes;
 using Umbra.Linux;
 
@@ -822,8 +821,9 @@ sealed partial class WidgetWindow : IWidgetView
             ["locked"] = !_app.EditMode,
             ["accent"] = Prefs.ResolveAccent(general, Prefs.SystemAccent),
             ["scale"] = ws.Scale,
-            ["locale"] = Prefs.LocaleOf(CultureInfo.CurrentCulture),
-            ["hour12"] = Prefs.Hour12Of(CultureInfo.CurrentCulture),
+            // The desktop's time format (GNOME clock-format, LC_TIME), not only LANG's culture (#359).
+            ["locale"] = _app.Session.TimeFormat.Locale,
+            ["hour12"] = _app.Session.TimeFormat.Hour12,
             ["editMode"] = _app.EditMode,
             ["editSelected"] = _app.EditMode && _app.EditSelection == Instance,
             ["options"] = ws.Options.DeepClone(),

@@ -3,7 +3,8 @@
 <body style="background:#000;color:#fff;font:14px sans-serif"><p>session test</p>
 <script>
   const record = () => umbra.store.set("seen", { accent: umbra.settings.accent, paused: !!umbra.settings.paused,
-    energySaver: !!umbra.settings.energySaver, refresh: umbra.settings.refreshSeconds });
+    energySaver: !!umbra.settings.energySaver, refresh: umbra.settings.refreshSeconds,
+    hour12: !!umbra.settings.hour12, locale: umbra.settings.locale });
   umbra.onSettings(record);
   setTimeout(record, 500);
 </script></body></html>

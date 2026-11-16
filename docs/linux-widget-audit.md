@@ -83,7 +83,8 @@ These are not widget bugs, but widgets rely on them behaving the same on Linux:
 
 1. **Locale and 12/24-hour clock.** `umbra.locale` and `umbra.hour12` (documented as the Windows region) must be filled from the
    Linux session (`LANG` / `LC_TIME`, or the portal) or "Follow system" in clock, calendar-glance and prayer-times will show the
-   `en-US` / 24-hour default.
+   `en-US` / 24-hour default. Done in #359: `LinuxSession.TimeFormat` (`DesktopLocale` in Core) uses GNOME's `clock-format`
+   through the settings portal (followed live), else the `LC_TIME` locale (KDE's `plasma-localerc` when not exported).
 2. **Interface font choices.** `src/Umbra.Core/Preferences.cs` (`Fonts`) and `settings/prefs.js` offer Segoe UI, Arial, Verdana,
    Tahoma, Georgia and Consolas, and write `--font:<name>,system-ui,sans-serif`. Arial, Verdana, Tahoma and Consolas do not exist on
    most Linux systems, so choosing one silently falls back to `system-ui`. Follow-up: offer Linux fonts on Linux. Not done here
