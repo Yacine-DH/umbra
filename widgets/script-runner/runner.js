@@ -144,6 +144,7 @@ async function runScript(id) {
   if (keeps(c)) return startService(c);
   if (running.has(id)) return;
   running.set(id, Date.now());
+  updateKeepAlive();
   selected = id; saveUi();
   live = null;
   render();
@@ -165,6 +166,7 @@ async function runScript(id) {
     entry = { at: Date.now(), exitCode: null, ms: Date.now() - t0, stdout: "", stderr: "", kind: d.kind, note: d.note };
   }
   running.delete(id);
+  updateKeepAlive();
   if (live && live.id === id) live = null;
   remember(id, entry);
   if (entry.kind === "ok") notify(c, `Finished in ${fmtMs(entry.ms)}.${lastLine(entry.stdout) ? ` ${lastLine(entry.stdout)}` : ""}`.slice(0, 200), false);
@@ -214,14 +216,19 @@ function autoId() {
   return c ? c.id : "";
 }
 
+function updateKeepAlive() {
+  umbra.keepAlive?.(!!autoTimer || running.size > 0);
+}
+
 function setupAuto() {
   clearInterval(autoTimer); autoTimer = null;
   const id = autoId();
   const c = commands.find((x) => x.id === id);
   // A script that keeps running has its own "Start automatically" switch in Settings; one that runs as administrator only runs on a click.
-  if (!c || keeps(c) || admin(c)) return;
+  if (!c || keeps(c) || admin(c)) { updateKeepAlive(); return; }
   const mins = Math.max(1, Number(opts().everyMinutes) || 15);
   autoTimer = setInterval(() => { if (canAuto(id)) runScript(id); }, mins * 60000);
+  updateKeepAlive();
 }
 
 /**

@@ -492,6 +492,18 @@
     return formatters.get(key).format(n);
   }
 
+  let keptAlive = false;
+  /**
+   * Keep this widget running while hidden (a group tab in the background, or hide-on-fullscreen), e.g. while a focus
+   * session or a scheduled script is active. Call keepAlive(false) once it ends so the hidden tab can be suspended.
+   */
+  function keepAlive(on = true) {
+    const next = !!on;
+    if (next === keptAlive) return;
+    keptAlive = next;
+    post({ type: "keepAlive", on: next });
+  }
+
   window.umbra = {
     ready,
     get settings() { return settings; },
@@ -533,6 +545,7 @@
     setTabIcon: (name) => post({ type: "tabIcon", name: typeof name === "string" ? name : null }),
     /** Call after the first real frame is drawn; screenshots (umbractl capture) wait for it. */
     rendered: () => post({ type: "rendered" }),
+    keepAlive,
     tween,
     fmt,
   };

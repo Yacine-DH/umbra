@@ -84,16 +84,22 @@ sealed class App : ApplicationContext, IUmbraHost
     readonly HashSet<string> _startHidden = new();
     readonly System.Windows.Forms.Timer _rulesTimer = new() { Interval = 15000 };
 
-    /// <summary>Whether this widget copy may be on screen: global hide states, start-hidden and its "show only when" rules.</summary>
-    bool WantVisible(string inst)
+    bool RulesAllow(string inst)
     {
-        if (ShouldHide || _startHidden.Contains(inst) || !Groups.IsShownTab(Settings, inst)) return false;
         var rules = Settings.Widgets.TryGetValue(inst, out var ws) ? ws.ShowWhen : null;
         if (rules is null) return true;
         return Prefs.RulesAllow(rules, DateTime.Now.TimeOfDay,
             SystemInformation.PowerStatus.PowerLineStatus != PowerLineStatus.Offline,
             name => Screen.AllScreens.Any(s => s.DeviceName.Equals(name, StringComparison.OrdinalIgnoreCase)));
     }
+
+    /// <summary>Whether this widget copy may be on screen: global hide states, start-hidden and its "show only when" rules.</summary>
+    bool WantVisible(string inst) =>
+        !ShouldHide && !_startHidden.Contains(inst) && Groups.IsShownTab(Settings, inst) && RulesAllow(inst);
+
+    /// <summary>Whether this widget copy's hide reason (background group tab or hide-on-fullscreen) allows suspending it after 30 s (#409).</summary>
+    bool CanSuspendWhenHidden(string inst) =>
+        Occlusion.CanSuspendWhenHidden(Groups.IsShownTab(Settings, inst), HiddenByFullscreen, WidgetsHidden, _startHidden.Contains(inst), RulesAllow(inst));
 
     /// <summary>Shows or hides every widget window from the hotkey and fullscreen states. Only changes windows whose state differs, so nothing flickers.</summary>
     void ApplyVisibility()
@@ -102,6 +108,7 @@ sealed class App : ApplicationContext, IUmbraHost
         {
             var want = WantVisible(inst);
             if (w.Visible != want) w.Visible = want;
+            w.SetSuspendable(!want && CanSuspendWhenHidden(inst));
         }
     }
 

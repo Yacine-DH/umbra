@@ -44,4 +44,27 @@ public static class Occlusion
     /// </summary>
     public static bool ShouldDraw(bool covered, bool editMode, bool peeking, bool capturing) =>
         !covered || editMode || peeking || capturing;
+
+    /// <summary>How long a widget must stay hidden for a suspendable reason before the host suspends its WebView (#409).</summary>
+    public static readonly TimeSpan SuspendDelay = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Whether a hidden widget's reason for being hidden allows suspending it (#409): background group tabs and hide-on-fullscreen
+    /// suspend after <see cref="SuspendDelay"/>; widgets hidden only by the hotkey, start-hidden or show-when rules stay live.
+    /// </summary>
+    public static bool CanSuspendWhenHidden(bool isShownTab, bool hiddenByFullscreen, bool widgetsHidden = false, bool startHidden = false, bool rulesAllow = true) =>
+        !isShownTab || (hiddenByFullscreen && !widgetsHidden && !startHidden && rulesAllow);
+
+    /// <summary>
+    /// Whether a widget is eligible to be (or stay) suspended once <see cref="SuspendDelay"/> has elapsed: hidden for a
+    /// suspendable reason (<see cref="CanSuspendWhenHidden"/>), not kept alive by <c>umbra.keepAlive(true)</c>, and not being captured.
+    /// </summary>
+    public static bool CanSuspend(bool visible, bool canSuspendWhenHidden, bool keepAlive, bool capturing) =>
+        !visible && canSuspendWhenHidden && !keepAlive && !capturing;
+
+    /// <summary>
+    /// Whether a widget should be suspended now: <see cref="CanSuspend"/> holds and it has been eligible for at least <see cref="SuspendDelay"/>.
+    /// </summary>
+    public static bool ShouldSuspend(bool visible, bool canSuspendWhenHidden, bool keepAlive, bool capturing, TimeSpan hiddenFor) =>
+        CanSuspend(visible, canSuspendWhenHidden, keepAlive, capturing) && hiddenFor >= SuspendDelay;
 }

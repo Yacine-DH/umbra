@@ -104,6 +104,107 @@ sealed class WidgetWindow : Form, IWidgetView
         // Hidden (group tab, hide hotkey, fullscreen app...): a recording pauses with the camera off until the widget is back.
         _app.Timelapse.SetPaused(Instance, !Visible);
         if (!Visible) SetDrawing(true); // shown again later: draw at once, the next covered check decides from there
+        UpdateSuspension();
+    }
+
+    bool _canSuspendWhenHidden, _keepAlive, _suspended, _refreshOnShow;
+    int _suspendGeneration;
+    DateTime? _suspendableSince;
+    System.Windows.Forms.Timer? _suspendTimer;
+
+    /// <summary>Updates whether this copy's current hide reason allows suspending it after <see cref="Occlusion.SuspendDelay"/> (#409).</summary>
+    public void SetSuspendable(bool canSuspendWhenHidden)
+    {
+        if (_canSuspendWhenHidden == canSuspendWhenHidden) return;
+        _canSuspendWhenHidden = canSuspendWhenHidden;
+        UpdateSuspension();
+    }
+
+    /// <summary>umbra.keepAlive(on): opts this widget copy out of hidden-tab suspension while a session or schedule runs (#409).</summary>
+    void SetKeepAlive(bool on)
+    {
+        if (_keepAlive == on) return;
+        _keepAlive = on;
+        Log.Verbose($"[{Instance}] keepAlive {(on ? "on" : "off")}");
+        UpdateSuspension();
+    }
+
+    bool EligibleToSuspend => _ready && !_stopped && !_recovering && !_view.IsDisposed && _view.CoreWebView2 is not null
+        && Occlusion.CanSuspend(Visible, _canSuspendWhenHidden, _keepAlive, _captureHolds > 0);
+
+    /// <summary>
+    /// Background group tabs and widgets hidden by fullscreen suspend after 30 s (<c>TrySuspendAsync</c> + low memory target)
+    /// unless kept alive with <c>umbra.keepAlive(true)</c>, and resume (with a refresh) as soon as they are shown again (#409).
+    /// </summary>
+    void UpdateSuspension()
+    {
+        if (!EligibleToSuspend)
+        {
+            _suspendableSince = null;
+            _suspendTimer?.Stop();
+            _suspendGeneration++;
+            if (_suspended || _view.CoreWebView2 is { IsSuspended: true }) ResumeNow();
+            if (Visible && _refreshOnShow) { _refreshOnShow = false; RefreshData(); }
+            return;
+        }
+        if (_suspended) return;
+        _suspendableSince ??= DateTime.UtcNow;
+        var elapsed = DateTime.UtcNow - _suspendableSince.Value;
+        if (!Occlusion.ShouldSuspend(Visible, _canSuspendWhenHidden, _keepAlive, _captureHolds > 0, elapsed))
+        {
+            _suspendTimer ??= new System.Windows.Forms.Timer();
+            _suspendTimer.Stop();
+            _suspendTimer.Interval = Math.Max(1, (int)Math.Ceiling((Occlusion.SuspendDelay - elapsed).TotalMilliseconds));
+            _suspendTimer.Tick -= OnSuspendTimerTick;
+            _suspendTimer.Tick += OnSuspendTimerTick;
+            _suspendTimer.Start();
+            return;
+        }
+        _suspendTimer?.Stop();
+        _ = SuspendNowAsync(++_suspendGeneration);
+    }
+
+    void OnSuspendTimerTick(object? sender, EventArgs e)
+    {
+        _suspendTimer?.Stop();
+        UpdateSuspension();
+    }
+
+    async Task SuspendNowAsync(int generation)
+    {
+        if (!EligibleToSuspend || _view.CoreWebView2 is not { } core) return;
+        _suspended = true;
+        _refreshOnShow = true;
+        ApplyDrawing(); // TrySuspendAsync requires CoreWebView2Controller.IsVisible to be false
+        try
+        {
+            core.MemoryUsageTargetLevel = CoreWebView2MemoryUsageTargetLevel.Low;
+            var ok = await core.TrySuspendAsync();
+            if (generation != _suspendGeneration || !EligibleToSuspend)
+            {
+                ResumeNow();
+                if (Visible && _refreshOnShow) { _refreshOnShow = false; RefreshData(); }
+                return;
+            }
+            Log.Verbose($"[{Instance}] suspended (paused={ok}, memory=low)");
+        }
+        catch (Exception ex) { Log.Verbose($"[{Instance}] suspend failed: {ex.Message}"); }
+    }
+
+    void ResumeNow()
+    {
+        _suspended = false;
+        if (!_view.IsDisposed && _view.CoreWebView2 is { } core)
+        {
+            try
+            {
+                core.Resume();
+                core.MemoryUsageTargetLevel = CoreWebView2MemoryUsageTargetLevel.Normal;
+            }
+            catch (Exception ex) { Log.Verbose($"[{Instance}] resume failed: {ex.Message}"); }
+        }
+        ApplyDrawing();
+        Log.Verbose($"[{Instance}] resumed");
     }
 
     /// <summary>
@@ -160,7 +261,7 @@ sealed class WidgetWindow : Form, IWidgetView
 
     void ApplyDrawing()
     {
-        var show = _drawing || _captureHolds > 0;
+        var show = (_drawing && !_suspended) || _captureHolds > 0;
         if (_view.Visible != show && !_view.IsDisposed) _view.Visible = show;
     }
 
@@ -269,6 +370,10 @@ sealed class WidgetWindow : Form, IWidgetView
     /// <summary>Initialises the current WebView2 (sandbox, bridge, crash handler) and opens <paramref name="url"/>.</summary>
     async Task StartViewAsync(string url)
     {
+        _keepAlive = false;
+        _suspended = false;
+        _refreshOnShow = false;
+        UpdateSuspension();
         _envGeneration = WebHost.EnvironmentGeneration;
         await WebHost.InitAsync(_view, sandbox: Manifest);
         _view.CoreWebView2.WebMessageReceived += OnMessage;
@@ -323,6 +428,9 @@ sealed class WidgetWindow : Form, IWidgetView
         {
             var giveUp = !_recovery.TryAcquire(System.Environment.TickCount64);
             _ready = false; // the reloaded page says "ready" again
+            _keepAlive = false;
+            _suspended = false;
+            UpdateSuspension();
             if (giveUp)
             {
                 _stopped = true;
@@ -668,6 +776,11 @@ sealed class WidgetWindow : Form, IWidgetView
                 _ready = true;
                 SendInit();
                 _readyTcs.TrySetResult();
+                UpdateSuspension();
+                break;
+
+            case "keepAlive":
+                SetKeepAlive(msg?["on"]?.GetValueKind() == JsonValueKind.True);
                 break;
 
 
@@ -911,6 +1024,9 @@ sealed class WidgetWindow : Form, IWidgetView
         if (_menu is { } menu) { _menu = null; SynchronizationContext.Current?.Post(_ => menu.Dispose(), null); }
         CrashRecovery.SetStopped(Instance, false);
         _drawGeneration++;
+        _suspendGeneration++;
+        _suspendTimer?.Dispose();
+        _suspendTimer = null;
         ClearLastFrame();
         base.OnFormClosed(e);
     }
@@ -1404,10 +1520,12 @@ sealed class WidgetWindow : Form, IWidgetView
         _captureHolds++;
         try
         {
-            if (!_drawing)
+            var wasSuspended = _suspended;
+            UpdateSuspension();
+            if (!_drawing || wasSuspended)
             {
                 ApplyDrawing();
-                await Task.Delay(250); // let Chromium paint a fresh frame after being covered
+                await Task.Delay(250); // let Chromium paint a fresh frame after being covered or suspended
             }
             using var ms = new MemoryStream();
             await _view.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, ms);
@@ -1417,6 +1535,7 @@ sealed class WidgetWindow : Form, IWidgetView
         {
             _captureHolds--;
             ApplyDrawing();
+            UpdateSuspension();
         }
     }
 
@@ -1470,7 +1589,7 @@ sealed class WidgetWindow : Form, IWidgetView
 
     public void RefreshData()
     {
-        if (_ready) Post(new JsonObject { ["type"] = "refresh" });
+        if (_ready && !_suspended) Post(new JsonObject { ["type"] = "refresh" });
     }
 
     /// <summary>The system clock or time zone changed: the SDK runs the page's onTimeChanged handlers, or its refresh handlers when it has none.</summary>

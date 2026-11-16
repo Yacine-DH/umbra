@@ -210,6 +210,7 @@ function schedule() {
   const want = !!(session && session.running) && (!umbra.settings.paused || tlActive());
   if (want && !timer) timer = setInterval(tick, 1000);
   if (!want && timer) { clearInterval(timer); timer = null; }
+  umbra.keepAlive?.(!!(session && session.running));
 }
 
 // ---- inputs ----
