@@ -20,6 +20,11 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw "Docker is 
 foreach ($a in $Arch) {
   if ($a -notin @('x64', 'arm64')) { throw "Unknown arch '$a' (x64 or arm64)" }
   $emulated = $Qemu -and $a -eq 'arm64'
+  if ($emulated) {
+    # Docker Desktop may not have arm64 binfmt registered yet (#407); install it before running linux/arm64 steps.
+    docker run --privileged --rm tonistiigi/binfmt --install arm64 | Out-Null
+    if ($LASTEXITCODE) { throw "Could not register arm64 binfmt for -Qemu" }
+  }
   $platform = if ($emulated) { 'linux/arm64' } else { 'linux/amd64' }
   $target = if ($emulated) { 'native' } else { $a }
   $image = "umbra-linux-package:$target-$($platform.Replace('/', '-'))"

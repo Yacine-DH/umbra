@@ -16,13 +16,15 @@ FROM x64 AS native
 
 FROM base AS arm64
 # The archive mirrors carry amd64 only; arm64 packages come from ports.ubuntu.com.
+# python3 (amd64, Multi-Arch: allowed) satisfies python3:any for libglib2.0-dev-bin so apt does not pull
+# python3.12-minimal:arm64, whose postinst cannot run in an amd64 container (#407).
 RUN set -eu; src=/etc/apt/sources.list.d/ubuntu.sources; \
     sed -i '/^Types:/a Architectures: amd64' "$src"; \
     printf 'Types: deb\nURIs: http://ports.ubuntu.com/ubuntu-ports/\nSuites: noble noble-updates noble-security\nComponents: main universe\nArchitectures: arm64\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n' \
       > /etc/apt/sources.list.d/ubuntu-ports.sources; \
     dpkg --add-architecture arm64; \
     apt-get update; \
-    apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross pkg-config libwebkitgtk-6.0-dev:arm64; \
+    apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross pkg-config python3 libwebkitgtk-6.0-dev:arm64; \
     rm -rf /var/lib/apt/lists/*
 ENV WEBEXT_CC=aarch64-linux-gnu-gcc \
     PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
