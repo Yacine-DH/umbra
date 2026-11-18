@@ -143,7 +143,8 @@ sealed class WidgetWindow : Form, IWidgetView
             _suspendableSince = null;
             _suspendTimer?.Stop();
             _suspendGeneration++;
-            if (_suspended || _view.CoreWebView2 is { IsSuspended: true }) ResumeNow();
+            // Only our own flag: after BrowserProcessExited the CoreWebView2 getter throws, and crash recovery runs through here.
+            if (_suspended) ResumeNow();
             if (Visible && _refreshOnShow) { _refreshOnShow = false; RefreshData(); }
             return;
         }
@@ -194,15 +195,16 @@ sealed class WidgetWindow : Form, IWidgetView
     void ResumeNow()
     {
         _suspended = false;
-        if (!_view.IsDisposed && _view.CoreWebView2 is { } core)
+        try
         {
-            try
+            // Inside the try: the getter throws once the browser process has exited.
+            if (!_view.IsDisposed && _view.CoreWebView2 is { } core)
             {
                 core.Resume();
                 core.MemoryUsageTargetLevel = CoreWebView2MemoryUsageTargetLevel.Normal;
             }
-            catch (Exception ex) { Log.Verbose($"[{Instance}] resume failed: {ex.Message}"); }
         }
+        catch (Exception ex) { Log.Verbose($"[{Instance}] resume failed: {ex.Message}"); }
         ApplyDrawing();
         Log.Verbose($"[{Instance}] resumed");
     }
@@ -774,6 +776,8 @@ sealed class WidgetWindow : Form, IWidgetView
         {
             case "ready":
                 _ready = true;
+                // The new page's own keepAlive state (a self-reload must not keep the old page's keepAlive(true)).
+                _keepAlive = msg?["keepAlive"]?.GetValueKind() == JsonValueKind.True;
                 SendInit();
                 _readyTcs.TrySetResult();
                 UpdateSuspension();

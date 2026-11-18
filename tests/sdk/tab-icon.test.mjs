@@ -63,3 +63,9 @@ test("keepAlive posts only when the boolean state changes, and defaults to true"
     { type: "keepAlive", on: false },
   ]);
 });
+
+test("ready carries the page's own keepAlive state, so a reloaded page starts from false", () => {
+  const { posted } = load();
+  const ready = JSON.parse(JSON.stringify(posted)).filter((m) => m.type === "ready");
+  assert.deepEqual(ready, [{ type: "ready", keepAlive: false }]);
+});

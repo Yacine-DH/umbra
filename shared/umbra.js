@@ -551,6 +551,8 @@
   };
 
   applyMotion();
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => post({ type: "ready" }));
-  else post({ type: "ready" });
+  // keepAlive carries what the page already asked for, so a reloaded page never inherits the old page's keepAlive(true).
+  const sendReady = () => post({ type: "ready", keepAlive: keptAlive });
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", sendReady);
+  else sendReady();
 })();
